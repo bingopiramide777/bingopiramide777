@@ -31,6 +31,22 @@ Diseño: morado + dorado + verde, portada con el puente sobre el lago de Maracai
 ## Pruebas
 196 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
 
+## DESPLEGADO EN RENDER (2026-11-07)
+- **URL pública: https://bingopiramide777.onrender.com** (live, HTTP 200).
+- Servicio Render `bingopiramide777`, id **`srv-dbnn2upsrm7s739tio40`**, owner `tea-d737nuvkijhs73dbvnb0`
+  (equipo TakTak-App), repo GitHub público, rama `main`, autoDeploy sí, plan **free**, región oregon.
+- Creado por API con `$TAKTAKapikey` (la key SÍ puede crear servicios). `POST /v1/services` exige
+  `buildCommand` no vacío → `pip install -r requirements.txt` (el repo no tiene dependencias).
+- Env vars puestas: BINGO_ADMIN_EMAIL, GMAIL_USER, BINGO_ADMIN_CLAVE, GROQ_API_KEY, PYTHON_VERSION.
+- **PROBLEMA GRAVE: sin disco persistente (plan free no lo permite).** La base de datos
+  (`bingo777.db`) vive en el sistema de ficheros efímero: **cada deploy o reinicio borra TODAS
+  las cuentas, saldos, salas, depósitos y retiros**. Además el plan free **duerme el servicio
+  a los 15 min sin visitas** (tarda ~30s en despertar). Para producción de verdad: plan de pago
+  + disco montado en `/var/data` + `BINGO_DB=/var/data/bingo777.db` (ya previsto en `render.yaml`).
+- La app arranca y responde SIN claves (Glenis y correo son opcionales): probado con
+  `env -u GROQ_API_KEY`. Si falta `BINGO_ADMIN_CLAVE` genera una aleatoria y la imprime en el log.
+- `GET /v1/repos` NO existe en la API de Render (404); los logs por API tampoco (`/logs` 404).
+
 ## Salas y economía del bingo (2026-11-07)
 - **Modelo copiado de Juegoactivo** (verificado en su web): 3 salas de la casa (Dubai/Roma/
   Estelar) con precio propio, 3 modos (Normal/Cartón lleno/Competencia) y **salas
