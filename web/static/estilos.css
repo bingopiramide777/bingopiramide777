@@ -465,3 +465,60 @@ input[type="text"], input[type="email"], input[type="password"], select {
   padding: .8rem 1rem; margin: .8rem 0; text-align: center;
   user-select: all; -webkit-user-select: all;
 }
+
+/* --- Chat de Glenis IA --- */
+.chat { display: flex; flex-direction: column; gap: .7rem; }
+.chat__mensajes {
+  display: flex; flex-direction: column; gap: .6rem;
+  max-height: 46vh; min-height: 140px; overflow-y: auto;
+  padding: .9rem; border-radius: 14px;
+  background: rgba(0, 0, 0, .3); border: 1px solid var(--borde);
+}
+.chat__burbuja {
+  max-width: 88%; padding: .65rem .9rem; border-radius: 14px;
+  font-size: .95rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.chat__burbuja--glenis {
+  align-self: flex-start; background: rgba(247, 201, 72, .14);
+  border: 1px solid rgba(247, 201, 72, .35); color: var(--crema);
+}
+.chat__burbuja--yo {
+  align-self: flex-end; background: rgba(47, 191, 113, .18);
+  border: 1px solid rgba(47, 191, 113, .4); color: var(--crema);
+}
+.chat__burbuja--error { background: rgba(214, 69, 69, .2); border-color: rgba(214, 69, 69, .5); }
+.chat__quien { font-size: .72rem; color: var(--gris); margin-bottom: .2rem; text-transform: uppercase; letter-spacing: .08em; }
+.chat__form { display: flex; gap: .5rem; }
+.chat__form input { flex: 1; min-width: 0; }
+.chat__sugerencias { display: flex; flex-wrap: wrap; gap: .4rem; }
+.pastilla--boton {
+  cursor: pointer; font: inherit; border: 1px solid var(--borde);
+  background: rgba(255, 255, 255, .05); color: var(--crema);
+}
+.pastilla--boton:hover { border-color: var(--dorado); color: var(--dorado); }
+.chat__acciones { font-size: .78rem; color: var(--gris); margin-top: .35rem; }
+
+/* Datos para hacer el pago */
+.datos-pago {
+  display: grid; gap: .5rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-bottom: 1.1rem;
+}
+.dato-pago {
+  background: rgba(0, 0, 0, .28); border: 1px solid var(--borde);
+  border-radius: 12px; padding: .7rem .9rem;
+}
+.dato-pago span { display: block; font-size: .72rem; color: var(--gris); text-transform: uppercase; letter-spacing: .08em; }
+.dato-pago strong { font-size: 1rem; }
+
+/* Etiquetas de estado */
+.etiqueta { padding: .2rem .55rem; border-radius: 999px; font-size: .78rem; font-weight: 700; }
+.etiqueta--pendiente { background: rgba(247, 201, 72, .2); color: var(--dorado); }
+.etiqueta--acreditado { background: rgba(47, 191, 113, .2); color: var(--verde); }
+.etiqueta--rechazado { background: rgba(214, 69, 69, .22); color: #ff9a9a; }
+
+/* Cara de Glenis IA en el chat */
+.chat__cara {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 1px solid rgba(247, 201, 72, .55); float: left;
+  margin: .1rem .5rem .2rem 0;
+}

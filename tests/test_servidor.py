@@ -10,6 +10,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -236,6 +237,89 @@ class ServidorTest(unittest.TestCase):
         token = self.usuario("ana@correo.com")
         estado, _ = self.pedir("/api/admin/restablecer", {"correo": "ana@correo.com"}, token)
         self.assertEqual(estado, 403)
+
+    # -- depósitos y Glenis --
+
+    def test_el_jugador_declara_un_deposito(self):
+        token = self.usuario("ana@correo.com")
+        estado, r = self.pedir("/api/deposito", {
+            "importe": "150,00", "referencia": "123456789", "banco": "Banco de Venezuela",
+            "dia": time.strftime("%Y-%m-%d"), "metodo": "pago_movil"}, token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["deposito"]["estado"], "pendiente")
+        # Y todavía no hay dinero.
+        self.assertEqual(self.pedir("/api/saldo", token=token)[1]["saldo"], 0)
+
+    def test_declarar_deposito_necesita_entrar(self):
+        estado, _ = self.pedir("/api/deposito", {"importe": "100,00", "referencia": "123456",
+                                                 "banco": "Banco de Venezuela",
+                                                 "dia": time.strftime("%Y-%m-%d")})
+        self.assertEqual(estado, 401)
+
+    def test_la_misma_referencia_se_rechaza(self):
+        token = self.usuario("ana@correo.com")
+        hoy = time.strftime("%Y-%m-%d")
+        base = {"importe": "100,00", "referencia": "555555", "banco": "Banesco", "dia": hoy}
+        self.assertEqual(self.pedir("/api/deposito", base, token)[0], 200)
+        self.assertEqual(self.pedir("/api/deposito", base, token)[0], 400)
+
+    def test_el_admin_acredita_el_deposito(self):
+        token = self.usuario("ana@correo.com")
+        _, r = self.pedir("/api/deposito", {"importe": "150,00", "referencia": "999888",
+                                            "banco": "Banesco",
+                                            "dia": time.strftime("%Y-%m-%d")}, token)
+        at = self.admin()
+        estado, res = self.pedir("/api/admin/deposito",
+                                 {"id": r["deposito"]["id"], "accion": "acreditar"}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(res["deposito"]["estado"], "acreditado")
+        self.assertEqual(self.pedir("/api/saldo", token=token)[1]["saldo"], 15_000)
+
+    def test_solo_el_admin_acredita(self):
+        token = self.usuario("ana@correo.com")
+        _, r = self.pedir("/api/deposito", {"importe": "100,00", "referencia": "777777",
+                                            "banco": "Banesco",
+                                            "dia": time.strftime("%Y-%m-%d")}, token)
+        estado, _ = self.pedir("/api/admin/deposito",
+                               {"id": r["deposito"]["id"], "accion": "acreditar"}, token)
+        self.assertEqual(estado, 403)
+        self.assertEqual(self.pedir("/api/saldo", token=token)[1]["saldo"], 0)
+
+    def test_el_jugador_ve_sus_depositos(self):
+        token = self.usuario("ana@correo.com")
+        self.pedir("/api/deposito", {"importe": "100,00", "referencia": "444444",
+                                     "banco": "Banesco", "dia": time.strftime("%Y-%m-%d")}, token)
+        estado, r = self.pedir("/api/depositos", token=token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(len(r["depositos"]), 1)
+
+    def test_glenis_solo_para_admin(self):
+        token = self.usuario("ana@correo.com")
+        self.assertEqual(self.pedir("/api/admin/glenis", token=token)[0], 403)
+        self.assertEqual(self.pedir("/api/admin/glenis",
+                                    {"mensaje": "hola"}, token)[0], 403)
+
+    def test_glenis_avisa_si_no_tiene_clave(self):
+        """Sin clave configurada, el panel lo dice en vez de aparentar que funciona."""
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/glenis", token=at)   # GET
+        self.assertEqual(estado, 200)
+        self.assertFalse(r["configurada"])
+
+    def test_glenis_no_inventa_si_no_hay_clave(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/glenis", {"mensaje": "¿cuántos jugadores?"}, at)
+        self.assertEqual(estado, 400)
+        self.assertIn("clave", r["error"].lower())
+
+    def test_el_resumen_cuenta_los_depositos(self):
+        token = self.usuario("ana@correo.com")
+        self.pedir("/api/deposito", {"importe": "100,00", "referencia": "333333",
+                                     "banco": "Banesco", "dia": time.strftime("%Y-%m-%d")}, token)
+        at = self.admin()
+        _, r = self.pedir("/api/admin/resumen", token=at)
+        self.assertEqual(r["depositos_pendientes"], 1)
+        self.assertEqual(r["depositos_pendiente_centimos"], 10_000)
 
     # -- administración --
 

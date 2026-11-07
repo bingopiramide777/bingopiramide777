@@ -29,7 +29,24 @@ Diseño: morado + dorado + verde, portada con el puente sobre el lago de Maracai
   `almacen.cerrar()` en `tearDown` (si no, SQLite se queja al cerrar).
 
 ## Pruebas
-114 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
+161 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
+
+## Glenis IA + depósitos (2026-11-07)
+- **Glenis IA** (`nucleo/glenis.py` + `nucleo/glenis_herramientas.py`): chat en el panel
+  (`/api/admin/glenis`). Modelo **`openai/gpt-oss-120b` de Groq**; clave en `GROQ_API_KEY`
+  (la del usuario que funciona es **`$Asistente`**; `$IAasistenteGlenis` está INVÁLIDA, 401).
+  Cloudflare bloquea el UA de Python: hay que mandar `User-Agent` propio. El plan gratuito
+  limita **8000 tokens/minuto** → `_pedir` reintenta leyendo "try again in X" del 429.
+  10 herramientas; las que tocan dinero se anotan a nombre de "Glenis IA".
+  **El premio NO se paga solo** y el depósito NO se acredita solo: Glenis avisa, la persona paga.
+- **Depósitos** (`nucleo/depositos.py`): Pago Móvil/transferencia. El jugador declara monto,
+  referencia, banco y día; queda `pendiente` hasta que el admin acredita. Frenos: **misma
+  referencia no vale dos veces el mismo día** (índice único parcial), tope diario (cuenta
+  pendientes Y acreditados: si no, se salta el tope), y solo 3 días atrás, nunca futuro.
+- `_estatico` manda **`Cache-Control: no-store`**: sin esto el navegador servía JS viejo y
+  parecía que el chat no funcionaba.
+- Ojo al editar `admin.js` con `str.replace`: un bloque se coló DENTRO de `resolverDeposito`.
+  Los enganches de eventos van al final, antes de `cargarTodo()`.
 
 ## Recuperación de cuenta (2026-11-07)
 Tres vías: **código por correo** (6 cifras, 15 min, 1 uso, 5 intentos, tope 3/hora),

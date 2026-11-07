@@ -273,6 +273,125 @@ function restablecerClave(correo) {
   };
 }
 
+/* --- depósitos --- */
+
+async function cargarDepositos() { return refrescarDepositos(); }
+
+async function refrescarDepositos() {
+  const cuerpo = $("#cuerpo-depositos");
+  if (!cuerpo) return;
+  try {
+    const res = await get("/api/admin/depositos?estado=pendiente");
+    $("#contador-depositos").textContent = res.depositos.length;
+    if (!res.depositos.length) {
+      cuerpo.innerHTML = '<tr><td colspan="7" class="vacio">No hay depósitos por revisar.</td></tr>';
+      return;
+    }
+    cuerpo.innerHTML = res.depositos.map((d) => `
+      <tr>
+        <td>${d.correo}</td>
+        <td><strong>${d.importe_texto}</strong></td>
+        <td>${d.metodo === "pago_movil" ? "Pago Móvil" : "Transferencia"}</td>
+        <td>${d.banco}</td>
+        <td class="mono">${d.referencia}</td>
+        <td>${d.dia}</td>
+        <td class="acciones-celda">
+          <button class="boton boton--brillo boton--mini" data-acreditar="${d.id}">Acreditar</button>
+          <button class="boton boton--fantasma boton--mini" data-rechazar="${d.id}">Rechazar</button>
+        </td>
+      </tr>`).join("");
+    cuerpo.querySelectorAll("[data-acreditar]").forEach((b) =>
+      (b.onclick = () => resolverDeposito(b.dataset.acreditar, "acreditar")));
+    cuerpo.querySelectorAll("[data-rechazar]").forEach((b) =>
+      (b.onclick = () => resolverDeposito(b.dataset.rechazar, "rechazar")));
+  } catch (err) { avisar(err.message, "error"); }
+}
+
+async function resolverDeposito(id, accion) {
+  const palabra = accion === "acreditar" ? "Acreditar" : "Rechazar";
+  const aviso = accion === "acreditar"
+    ? "Se sumará el dinero al saldo del jugador. ¿Comprobaste la referencia en el banco?"
+    : "No se moverá dinero. ¿Seguro?";
+  if (!confirm(`${palabra} este depósito.\n\n${aviso}`)) return;
+  try {
+    await post("/api/admin/deposito", { id, accion });
+    avisar(accion === "acreditar" ? "Depósito acreditado." : "Depósito rechazado.", "bien");
+    refrescarDepositos();
+    cargarResumen();
+  } catch (err) { avisar(err.message, "error"); }
+}
+
+/* --- Glenis IA --- */
+
+let historialGlenis = [];
+
+function burbuja(quien, texto, clase = "") {
+  const div = document.createElement("div");
+  div.className = `chat__burbuja chat__burbuja--${clase}`;
+  if (clase === "glenis") {
+    const cara = document.createElement("img");
+    cara.className = "chat__cara";
+    cara.src = "/emblema.svg";
+    cara.alt = "Glenis IA";
+    div.appendChild(cara);
+  }
+  const nombre = document.createElement("div");
+  nombre.className = "chat__quien";
+  nombre.textContent = quien;
+  const cuerpo = document.createElement("div");
+  cuerpo.textContent = texto;
+  div.append(nombre, cuerpo);
+  return div;
+}
+
+function pintarMensaje(quien, texto, clase) {
+  const caja = $("#chat-mensajes");
+  caja.appendChild(burbuja(quien, texto, clase));
+  caja.scrollTop = caja.scrollHeight;
+}
+
+async function cargarGlenis() {
+  try {
+    const res = await get("/api/admin/glenis");
+    $("#glenis-estado").textContent = res.configurada ? "conectada" : "sin clave";
+    if (!res.historial.length) {
+      pintarMensaje("Glenis IA", "¡Hola! Soy Glenis. Pregúntame por el dinero, los jugadores "
+        + "o los depósitos, o pídeme que anote algo. ¿Qué necesitas?", "glenis");
+    } else {
+      res.historial.slice(-12).forEach((m) =>
+        pintarMensaje(m.quien, m.texto, m.quien === "Glenis IA" ? "glenis" : "yo"));
+    }
+    historialGlenis = res.historial.map((m) => ({
+      role: m.quien === "Glenis IA" ? "assistant" : "user", content: m.texto,
+    }));
+  } catch (err) { avisar(err.message, "error"); }
+}
+
+async function hablarConGlenis(texto) {
+  if (!texto.trim()) return;
+  pintarMensaje("Tú", texto, "yo");
+  historialGlenis.push({ role: "user", content: texto });
+  const caja = $("#chat-texto");
+  if (caja) caja.value = "";
+  pintarMensaje("Glenis IA", "…", "glenis");
+  const puntos = $("#chat-mensajes").lastChild;
+  try {
+    const res = await post("/api/admin/glenis", { mensaje: texto, historial: historialGlenis });
+    puntos.remove();
+    pintarMensaje("Glenis IA", res.respuesta, "glenis");
+    historialGlenis.push({ role: "assistant", content: res.respuesta });
+    if (res.acciones && res.acciones.length) {
+      const hechas = res.acciones.map((a) => a.herramienta).join(", ");
+      pintarMensaje("Sistema", `Consultó y ejecutó: ${hechas}`, "error");
+      refrescarDepositos();
+      cargarResumen();
+    }
+  } catch (err) {
+    puntos.remove();
+    pintarMensaje("Glenis IA", err.message, "error");
+  }
+}
+
 /* --- partidas y movimientos --- */
 
 async function cargarPartidas() {
@@ -320,7 +439,8 @@ async function cargarTodo() {
     const s = await get("/api/saldo");
     if (!s.admin) throw new Error("Esa cuenta no es de administración.");
     pintarSesion(localStorage.getItem("bp777_correo"));
-    await Promise.all([cargarResumen(), cargarRetiros(), cargarJugadores(), cargarPartidas(), cargarMovimientos()]);
+    await Promise.all([cargarResumen(), cargarDepositos(), cargarRetiros(), cargarJugadores(),
+                       cargarPartidas(), cargarMovimientos(), cargarGlenis()]);
   } catch (err) {
     avisar(err.message, "error");
     localStorage.removeItem(CLAVE_TOKEN);
@@ -329,5 +449,17 @@ async function cargarTodo() {
 }
 
 $("#buscar-jugador").oninput = pintarJugadores;
+
+const formChat = $("#chat-form");
+if (formChat) {
+  formChat.onsubmit = (e) => {
+    e.preventDefault();
+    hablarConGlenis($("#chat-texto").value);
+  };
+}
+document.querySelectorAll("[data-sugerencia]").forEach((b) => {
+  b.onclick = () => hablarConGlenis(b.dataset.sugerencia);
+});
+
 cargarTodo();
 setInterval(() => { if (token) { cargarResumen(); cargarRetiros(); } }, 20000);

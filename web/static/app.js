@@ -234,6 +234,7 @@ function abrirAcceso(modo) {
         pintarSesion();
         refrescarTodo();
         refrescarRetiros();
+  refrescarDepositos();
       } else {
         await post("/api/registro", datos);
         avisar("Cuenta creada. Ahora entra.", "bien");
@@ -243,6 +244,63 @@ function abrirAcceso(modo) {
       avisar(err.message, "error");
     }
   };
+}
+
+/* --- depósitos --- */
+
+async function cargarDepositos() {
+  const banco = $("#select-banco");
+  if (banco && banco.options.length === 0) {
+    (configRetiro.bancos || []).forEach((b) => {
+      const o = document.createElement("option");
+      o.value = b; o.textContent = b;
+      banco.appendChild(o);
+    });
+    const dia = document.querySelector("#form-deposito [name=dia]");
+    if (dia) dia.value = new Date().toISOString().slice(0, 10);
+  }
+
+  const form = $("#form-deposito");
+  if (form && !form.dataset.listo) {
+    form.dataset.listo = "1";
+    form.onsubmit = async (e) => {
+      e.preventDefault();
+      if (!token) return abrirAcceso("entrar");
+      const datos = Object.fromEntries(new FormData(e.target));
+      try {
+        const res = await post("/api/deposito", datos);
+        avisar(res.mensaje, "bien");
+        form.reset();
+        document.querySelector("#form-deposito [name=dia]").value =
+          new Date().toISOString().slice(0, 10);
+        refrescarDepositos();
+      } catch (err) { avisar(err.message, "error"); }
+    };
+  }
+  refrescarDepositos();
+}
+
+async function refrescarDepositos() {
+  const caja = $("#mis-depositos");
+  if (!caja) return;
+  if (!token) { caja.innerHTML = ""; return; }
+  try {
+    const res = await get("/api/depositos");
+    if (!res.depositos.length) {
+      caja.innerHTML = '<p class="ayuda">Todavía no has anotado ningún pago.</p>';
+      return;
+    }
+    caja.innerHTML = `
+      <h3 class="tabla__titulo">Mis pagos</h3>
+      <div class="tabla-scroll"><table class="tabla">
+        <thead><tr><th>Monto</th><th>Referencia</th><th>Día</th><th>Estado</th></tr></thead>
+        <tbody>${res.depositos.map((d) => `
+          <tr><td>${d.importe_texto}</td><td>${d.referencia}</td><td>${d.dia}</td>
+          <td><span class="etiqueta etiqueta--${d.estado}">${
+            { pendiente: "En revisión", acreditado: "Acreditado", rechazado: "Rechazado" }[d.estado]
+            || d.estado}</span></td></tr>`).join("")}
+        </tbody></table></div>`;
+  } catch (err) { /* sin sesión: no se muestra nada */ }
 }
 
 /* --- juego --- */
@@ -319,6 +377,7 @@ function refrescarTodo() {
   refrescarSaldo();
   refrescarHistorial();
   refrescarRetiros();
+  refrescarDepositos();
 }
 
 /* --- acciones --- */
@@ -376,6 +435,7 @@ function conectarBotones() {
       refrescarSaldo();
       refrescarHistorial();
       refrescarRetiros();
+  refrescarDepositos();
     } catch (err) { avisar(err.message, "error"); }
   };
 

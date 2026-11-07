@@ -10,6 +10,7 @@ import json
 import os
 import re
 import secrets
+import time
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
@@ -17,6 +18,9 @@ from urllib.parse import urlparse
 from bingo import MesaBingo, Sala
 from nucleo import Almacen, ErrorDeDinero, ErrorDeMonedero, Monedero, Usuarios, a_centimos, a_texto
 from nucleo.correo import Correo, ErrorDeCorreo
+from nucleo.depositos import BANCOS, ErrorDeDeposito, Depositos
+from nucleo.glenis import ErrorDeGlenis, Glenis
+from nucleo.glenis_herramientas import Herramientas
 from nucleo.retiros import ErrorDeRetiro, Retiros
 
 RAIZ_WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -37,6 +41,9 @@ class Juego:
         self.usuarios = Usuarios(self.almacen)
         self.monedero = Monedero(self.almacen)
         self.retiros = Retiros(self.almacen, self.monedero)
+        self.depositos = Depositos(self.almacen, self.monedero)
+        self.herramientas = Herramientas(self)
+        self.glenis = Glenis(self.herramientas.esquemas(), self.herramientas.ejecutar)
         self.correo = Correo()
         self.mesa = MesaBingo(sala=Sala(), monedero=self.monedero)
         self._partida = None
@@ -135,6 +142,8 @@ class Juego:
             "total_en_cuentas": self.monedero.total_en_cuentas(),
             "retiros_pendientes": len(self.retiros.pendientes()),
             "total_pendiente": self.retiros.total_pendiente(),
+            "depositos_pendientes": len(self.depositos.pendientes()),
+            "depositos_pendiente_centimos": self.depositos.total_pendiente(),
             "partidas": len(partidas),
             "apostado": apostado,
             "pagado": pagado,
@@ -204,8 +213,18 @@ class Manejador(BaseHTTPRequestHandler):
         self.send_header("Content-Type", f"{tipos.get(ext, 'application/octet-stream')}; charset=utf-8")
         self.send_header("Content-Length", str(len(cuerpo)))
         self.send_header("X-Content-Type-Options", "nosniff")
+        # Sin caché: al cambiar el programa, el navegador tiene que traer la
+        # versión nueva y no una vieja guardada.
+        self.send_header("Cache-Control", "no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(cuerpo)
+
+    def _deposito_json(self, d) -> dict:
+        return {"id": d.id, "correo": d.correo, "centimos": d.centimos,
+                "importe_texto": a_texto(d.centimos), "metodo": d.metodo,
+                "referencia": d.referencia, "banco": d.banco, "dia": d.dia,
+                "estado": d.estado, "nota": d.nota, "pedido": d.pedido,
+                "revisado": d.revisado, "revisado_por": d.revisado_por}
 
     def _retiro_json(self, r) -> dict:
         return {"id": r.id, "correo": r.correo, "centimos": r.centimos,
@@ -231,6 +250,10 @@ class Manejador(BaseHTTPRequestHandler):
             from nucleo.usuarios import PREGUNTAS
             self._json({
                 "preguntas": list(PREGUNTAS),
+                "bancos": list(BANCOS),
+                "metodos_deposito": ["pago_movil", "transferencia"],
+                "deposito_minimo_texto": a_texto(self.juego.depositos.config.minimo),
+                "deposito_tope_texto": a_texto(self.juego.depositos.config.tope_diario),
                 "retiro_minimo": self.juego.retiros.config.minimo,
                 "retiro_minimo_texto": a_texto(self.juego.retiros.config.minimo),
                 "retiro_tope_texto": a_texto(self.juego.retiros.config.tope_diario),
@@ -259,6 +282,16 @@ class Manejador(BaseHTTPRequestHandler):
                          "saldo": m.saldo_despues, "cuando": m.cuando}
                         for m in self.juego.monedero.historial(jugador, 50)]
             self._json({"movimientos": movs})
+            return
+
+        if ruta == "/api/depositos":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            with self.juego.candado:
+                lista = [self._deposito_json(d) for d in self.juego.depositos.listar(correo=jugador)]
+            self._json({"depositos": lista})
             return
 
         if ruta == "/api/retiros":
@@ -326,6 +359,31 @@ class Manejador(BaseHTTPRequestHandler):
                         "apostado_texto": a_texto(f["precio_carton"] * len(cartones)),
                     })
             self._json({"partidas": salida})
+            return
+
+        if ruta == "/api/admin/depositos":
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            from urllib.parse import parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            estado = qs["estado"][0] if qs.get("estado") else None
+            with self.juego.candado:
+                lista = [self._deposito_json(d) for d in self.juego.depositos.listar(estado=estado)]
+            self._json({"depositos": lista})
+            return
+
+        if ruta == "/api/admin/glenis":
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            with self.juego.candado:
+                filas = self.juego.almacen.historial_glenis(40)
+            self._json({
+                "configurada": self.juego.glenis.configurada,
+                "historial": [{"quien": f["quien"], "texto": f["texto"], "cuando": f["cuando"]}
+                              for f in reversed(filas)],
+            })
             return
 
         if ruta == "/api/admin/retiros":
@@ -456,6 +514,23 @@ class Manejador(BaseHTTPRequestHandler):
                 self._error(str(exc))
             return
 
+        if ruta == "/api/deposito":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            try:
+                with self.juego.candado:
+                    d = self.juego.depositos.declarar(
+                        jugador, datos.get("importe", ""), datos.get("referencia", ""),
+                        datos.get("banco", ""), datos.get("dia", ""),
+                        datos.get("metodo", "pago_movil"), datos.get("nota", ""))
+                self._json({"ok": True, "deposito": self._deposito_json(d),
+                            "mensaje": "Depósito declarado. Lo revisamos y te lo acreditamos."})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
         if ruta == "/api/retiro":
             jugador = self._jugador()
             if not jugador:
@@ -536,6 +611,57 @@ class Manejador(BaseHTTPRequestHandler):
                     else:
                         raise ErrorDeRetiro("Acción no válida (usa 'pagar' o 'rechazar').")
                 self._json({"ok": True, "retiro": self._retiro_json(retiro)})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/deposito":
+            admin = self._admin()
+            if not admin:
+                self._error("Solo para administración.", 403)
+                return
+            accion = datos.get("accion")
+            id_ = datos.get("id", "")
+            nota = datos.get("nota", "")
+            try:
+                with self.juego.candado:
+                    if accion == "acreditar":
+                        d = self.juego.depositos.acreditar(id_, admin, nota)
+                    elif accion == "rechazar":
+                        d = self.juego.depositos.rechazar(id_, admin, nota)
+                    else:
+                        raise ErrorDeDeposito("Acción no válida (usa 'acreditar' o 'rechazar').")
+                self._json({"ok": True, "deposito": self._deposito_json(d)})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/glenis":
+            admin = self._admin()
+            if not admin:
+                self._error("Solo para administración.", 403)
+                return
+            mensaje = (datos.get("mensaje") or "").strip()
+            if not mensaje:
+                self._error("Escribe algo.")
+                return
+            try:
+                historial = [m for m in (datos.get("historial") or [])
+                             if isinstance(m, dict) and m.get("content")]
+                # El mensaje del administrador tiene que llegar a la IA. Si el
+                # cliente ya lo incluyó en el historial, no se repite.
+                if not (historial and historial[-1].get("role") == "user"
+                        and historial[-1].get("content") == mensaje):
+                    historial.append({"role": "user", "content": mensaje})
+                with self.juego.candado:
+                    respuesta = self.juego.glenis.conversar(historial, nombre_admin=admin)
+                    self.juego.almacen.anotar_glenis(
+                        f"g-{secrets.token_hex(8)}", admin, mensaje,
+                        json.dumps(respuesta.acciones, ensure_ascii=False, default=str), time.time())
+                    self.juego.almacen.anotar_glenis(
+                        f"g-{secrets.token_hex(8)}", "Glenis IA", respuesta.texto, "", time.time())
+                self._json({"ok": True, "respuesta": respuesta.texto,
+                            "acciones": respuesta.acciones, "pasos": respuesta.pasos})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
             return

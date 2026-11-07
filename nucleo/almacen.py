@@ -75,6 +75,33 @@ CREATE TABLE IF NOT EXISTS partidas (
     terminada      REAL
 );
 
+CREATE TABLE IF NOT EXISTS depositos (
+    id            TEXT PRIMARY KEY,
+    correo        TEXT NOT NULL,
+    centimos      INTEGER NOT NULL,
+    metodo        TEXT NOT NULL,
+    referencia    TEXT NOT NULL,
+    banco         TEXT NOT NULL DEFAULT '',
+    dia           TEXT NOT NULL,
+    estado        TEXT NOT NULL DEFAULT 'pendiente',
+    nota          TEXT NOT NULL DEFAULT '',
+    pedido        REAL NOT NULL,
+    revisado      REAL,
+    revisado_por  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_depositos ON depositos(estado, pedido);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_depositos_ref
+    ON depositos(referencia, dia) WHERE estado != 'rechazado';
+
+CREATE TABLE IF NOT EXISTS glenis (
+    id        TEXT PRIMARY KEY,
+    quien     TEXT NOT NULL,
+    texto     TEXT NOT NULL,
+    acciones  TEXT NOT NULL DEFAULT '',
+    cuando    REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_glenis ON glenis(cuando);
+
 CREATE TABLE IF NOT EXISTS codigos (
     id       TEXT PRIMARY KEY,
     correo   TEXT NOT NULL,
@@ -353,6 +380,76 @@ class Almacen:
             if intentos >= 5:
                 c.execute("UPDATE codigos SET usado = 1 WHERE id = ?", (id_,))
             return intentos
+
+    # -- depósitos --
+
+    def crear_deposito(self, d: dict) -> None:
+        with self.transaccion() as c:
+            c.execute(
+                "INSERT INTO depositos (id, correo, centimos, metodo, referencia, banco, dia,"
+                " estado, nota, pedido) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (d["id"], d["correo"], d["centimos"], d["metodo"], d["referencia"],
+                 d.get("banco", ""), d["dia"], "pendiente", d.get("nota", ""), d["pedido"]),
+            )
+
+    def deposito(self, id_: str) -> sqlite3.Row | None:
+        return self._uno("SELECT * FROM depositos WHERE id = ?", (id_,))
+
+    def depositos(self, estado: str | None = None, correo: str | None = None) -> list[sqlite3.Row]:
+        sql = "SELECT * FROM depositos WHERE 1=1"
+        args: list = []
+        if estado:
+            sql += " AND estado = ?"
+            args.append(estado)
+        if correo:
+            sql += " AND correo = ?"
+            args.append(correo)
+        sql += " ORDER BY pedido DESC"
+        return self._todos(sql, tuple(args))
+
+    def referencia_usada(self, referencia: str, dia: str) -> sqlite3.Row | None:
+        """Busca si esa referencia ya se usó ese día.
+
+        Es el freno contra el mismo pago reclamado dos veces, o contra una captura
+        de pantalla reenviada.
+        """
+        return self._uno(
+            "SELECT * FROM depositos WHERE referencia = ? AND dia = ? AND estado != 'rechazado'",
+            (referencia, dia),
+        )
+
+    def resolver_deposito(self, id_: str, estado: str, revisado: float, por: str,
+                          nota: str = "") -> int:
+        with self.transaccion() as c:
+            cur = c.execute(
+                "UPDATE depositos SET estado = ?, revisado = ?, revisado_por = ?, nota = ?"
+                " WHERE id = ? AND estado = 'pendiente'",
+                (estado, revisado, por, nota, id_),
+            )
+            return cur.rowcount
+
+    def deposito_hoy(self, correo: str, desde: float) -> int:
+        """Cuánto ha declarado ese jugador hoy, sumando pendientes y acreditados.
+
+        Cuentan los pendientes a propósito: si solo contaran los acreditados, se
+        podrían declarar mil depósitos sin revisar y saltarse el tope.
+        """
+        fila = self._uno(
+            "SELECT COALESCE(SUM(centimos), 0) AS t FROM depositos"
+            " WHERE correo = ? AND pedido >= ? AND estado IN ('pendiente', 'acreditado')",
+            (correo, desde),
+        )
+        return int(fila["t"]) if fila else 0
+
+    # -- registro de Glenis IA --
+
+    def anotar_glenis(self, id_: str, quien: str, texto: str, acciones: str, cuando: float) -> None:
+        with self.transaccion() as c:
+            c.execute("INSERT INTO glenis (id, quien, texto, acciones, cuando) VALUES (?,?,?,?,?)",
+                      (id_, quien, texto, acciones, cuando))
+
+    def historial_glenis(self, limite: int = 40) -> list[sqlite3.Row]:
+        return self._todos("SELECT * FROM glenis ORDER BY cuando DESC LIMIT ?", (limite,))
 
     # -- partidas --
 

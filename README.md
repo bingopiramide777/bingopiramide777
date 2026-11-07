@@ -59,6 +59,9 @@ nucleo/          lo común a todo
   monedero.py    saldos y movimientos, siempre en céntimos
   usuarios.py    registro, contraseñas, roles, sesiones y recuperación
   correo.py      envío de correos (contraseña de aplicación de Gmail)
+  depositos.py   pagos declarados por el jugador (Pago Móvil y transferencia)
+  glenis.py      el motor de Glenis IA (habla con el modelo)
+  glenis_herramientas.py  lo que Glenis puede consultar y hacer
   retiros.py     pedir, pagar y rechazar retiros
 bingo/           el juego
   cartones.py    cartón, bombo y patrones de premio
@@ -67,8 +70,46 @@ bingo/           el juego
 web/             servidor e interfaz
   servidor.py    http.server + API
   static/        interfaz del jugador y panel de administración
-tests/           pruebas (114)
+tests/           pruebas (161)
 ```
+
+## Glenis IA (asistente de administración)
+
+En el panel, la pestaña **Glenis IA** es un chat para llevar la cuenta. Habla con un modelo
+de lenguaje y tiene **herramientas** para mirar y mover cosas de verdad.
+
+**Consulta**: resumen del día, buscar jugador, listar jugadores, depósitos, retiros y partidas.
+**Actúa** (queda anotado a su nombre): acreditar o rechazar un depósito, ajustar un saldo,
+dejar constancia de un ganador y anotar un pago manual.
+
+Reglas de diseño, y son a propósito:
+
+- **No inventa.** Si no puede comprobarlo, lo dice. Mira los datos antes de responder.
+- **El premio no se paga solo.** Glenis deja el aviso; el pago lo hace la persona.
+- **El depósito tampoco se acredita solo por una foto.** El jugador lo declara, Glenis y tú
+  lo revisáis, y el administrador confirma. La IA ayuda; no firma.
+- **Un administrador no es un jugador.** Al contar jugadores, cuenta solo el rol `jugador`.
+
+Configuración: `GROQ_API_KEY` en el entorno (se saca en console.groq.com). Sin clave, el panel
+lo dice claro en vez de fallar sin explicación. El plan gratuito de Groq limita los tokens por
+minuto; Glenis espera y reintenta en vez de dar error.
+
+## Depósitos (Pago Móvil y transferencia)
+
+Como en Juegoactivo: el jugador paga por fuera desde su banco y **declara** aquí el monto, la
+referencia, el banco y el día. El dinero **no se acredita solo**.
+
+Tres frenos, porque aquí es donde se pierde el dinero en estas webs:
+
+1. **La misma referencia no vale dos veces el mismo día.** Si reenvían la misma captura, se
+   rechaza. Una referencia rechazada sí se puede volver a usar.
+2. **Tope diario por jugador**, contando pendientes y acreditados. Si solo contaran los
+   acreditados, se podrían declarar mil sin revisar y saltarse el tope.
+3. **Solo se admite declarar pagos de los últimos 3 días**, y nunca con fecha futura.
+
+El administrador comprueba la referencia en su banco y acredita o rechaza. Igual que en los
+retiros, un depósito **solo se resuelve una vez**: si dos personas pulsan a la vez, solo una
+cobra.
 
 ## Recuperación de cuenta
 

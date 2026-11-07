@@ -19,6 +19,8 @@
   </a>
   <nav class="nav">
     <a href="#resumen">Resumen</a>
+    <a href="#glenis">Glenis IA</a>
+    <a href="#depositos">Depósitos</a>
     <a href="#retiros">Retiros</a>
     <a href="#jugadores">Jugadores</a>
     <a href="#partidas">Partidas</a>
@@ -32,6 +34,46 @@
     <p class="entrada">Aquí ves el dinero, los jugadores, las partidas y los retiros pendientes.</p>
 
     <div id="resumen" class="tarjetas-resumen"></div>
+  </section>
+
+  <section class="panel panel--suave" id="glenis">
+    <div class="panel__cabecera">
+      <h2>Glenis IA</h2>
+      <div class="pastilla" id="glenis-estado">—</div>
+    </div>
+    <p class="entrada">Tu asistente. Pregúntale por el dinero, los jugadores o los depósitos,
+       o pídele que anote o acredite algo. Lo que toca dinero queda registrado a su nombre.</p>
+    <div class="chat" id="chat-glenis">
+      <div class="chat__mensajes" id="chat-mensajes"></div>
+      <form class="chat__form" id="chat-form">
+        <input type="text" id="chat-texto" placeholder="Escríbele a Glenis…" autocomplete="off">
+        <button class="boton boton--brillo" type="submit">Enviar</button>
+      </form>
+      <div class="chat__sugerencias">
+        <button class="pastilla pastilla--boton" data-sugerencia="Dame el resumen del día">Resumen del día</button>
+        <button class="pastilla pastilla--boton" data-sugerencia="¿Qué depósitos hay pendientes?">Depósitos pendientes</button>
+        <button class="pastilla pastilla--boton" data-sugerencia="¿Qué retiros hay pendientes?">Retiros pendientes</button>
+        <button class="pastilla pastilla--boton" data-sugerencia="¿Cuánto dinero hay en las cuentas?">Dinero en cuentas</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" id="depositos">
+    <div class="panel__cabecera">
+      <h2>Depósitos por revisar</h2>
+      <div class="pastilla" id="contador-depositos">—</div>
+    </div>
+    <p class="entrada">Pagos declarados por los jugadores (Pago Móvil o transferencia).
+       Comprueba la referencia en tu banco antes de acreditar.</p>
+    <div class="tabla-scroll">
+      <table class="tabla">
+        <thead>
+          <tr><th>Jugador</th><th>Monto</th><th>Método</th><th>Banco</th><th>Referencia</th>
+              <th>Día</th><th>Acciones</th></tr>
+        </thead>
+        <tbody id="cuerpo-depositos"></tbody>
+      </table>
+    </div>
   </section>
 
   <section class="panel panel--suave" id="retiros">
