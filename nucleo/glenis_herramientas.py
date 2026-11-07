@@ -29,10 +29,23 @@ class Herramientas:
 
     def esquemas(self) -> list[dict]:
         def f(nombre, descripcion, propiedades=None, requeridos=None):
+            props = dict(propiedades or {})
+            requeridos = list(requeridos or [])
+            # Un parámetro opcional puede llegar como null (el modelo lo manda así
+            # cuando no lo usa). Si el esquema solo admite "string", la validación
+            # de la IA rechaza la llamada entera y la herramienta no se ejecuta.
+            # Se le permite null a todo lo que no sea obligatorio.
+            for clave, definicion in props.items():
+                if clave in requeridos:
+                    continue
+                tipo = definicion.get("type")
+                if isinstance(tipo, str) and "null" not in tipo:
+                    definicion = dict(definicion, type=[tipo, "null"])
+                    props[clave] = definicion
             return {"type": "function", "function": {
                 "name": nombre, "description": descripcion,
-                "parameters": {"type": "object", "properties": propiedades or {},
-                               "required": requeridos or []}}}
+                "parameters": {"type": "object", "properties": props,
+                               "required": requeridos}}}
 
         return [
             f("resumen", "Resumen del negocio: jugadores, dinero en cuentas, retiros y "

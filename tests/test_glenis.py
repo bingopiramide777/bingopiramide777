@@ -11,6 +11,7 @@ from nucleo.depositos import Depositos, hoy
 from nucleo.glenis import ErrorDeGlenis, Glenis
 from nucleo.glenis_herramientas import Herramientas
 from nucleo.retiros import Retiros
+from nucleo.salas import Salas
 
 
 class FalsoJuego:
@@ -24,6 +25,7 @@ class FalsoJuego:
         self.monedero = Monedero(self.almacen)
         self.retiros = Retiros(self.almacen, self.monedero)
         self.depositos = Depositos(self.almacen, self.monedero)
+        self.salas = Salas(self.almacen)
         self.candado = threading.RLock()
         self.usuarios.registrar("ana@correo.com", "miClaveSegura1", "Ana")
 
@@ -53,6 +55,28 @@ class HerramientasTest(unittest.TestCase):
             f = esquema["function"]
             self.assertTrue(f["name"] and f["description"])
             self.assertEqual(f["parameters"]["type"], "object")
+
+    def test_los_parametros_opcionales_aceptan_null(self):
+        """La IA manda null en lo opcional que no usa. Si el esquema lo rechaza,
+        la llamada entera falla y la herramienta no llega a ejecutarse."""
+        for esquema in self.h.esquemas():
+            f = esquema["function"]
+            props = f["parameters"]["properties"]
+            req = f["parameters"]["required"]
+            for clave, definicion in props.items():
+                if clave in req:
+                    continue
+                tipo = definicion["type"]
+                self.assertIsInstance(tipo, list,
+                                      f"{f['name']}.{clave} debería aceptar null")
+                self.assertIn("null", tipo, f"{f['name']}.{clave} debería aceptar null")
+
+    def test_ganancias_tolera_correo_nulo(self):
+        """Regresión: la IA pidió ganancias con correo=null y la validación la tumbó."""
+        r = self.h.ejecutar("ganancias", {"correo": None})
+        self.assertIn("ganancia_de_la_app", r)
+        r2 = self.h.ejecutar("ganancias", {})
+        self.assertIn("ganancia_de_la_app", r2)
 
     def test_resumen(self):
         r = self.h.ejecutar("resumen", {})
