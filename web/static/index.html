@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bingo Pirámide 777</title>
+<meta name="description" content="Bingo Pirámide 777 — sala de bingo en línea con cartones de 75 bolas.">
+<link rel="stylesheet" href="/estilos.css">
+<link rel="icon" href="/logo.svg" type="image/svg+xml">
+</head>
+<body>
+
+<header class="cabecera">
+  <a class="marca" href="/">
+    <svg class="marca__icono" viewBox="0 0 48 48" aria-hidden="true">
+      <path d="M24 4 43 14v20L24 44 5 34V14z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
+      <circle cx="24" cy="24" r="6" fill="currentColor"/>
+    </svg>
+    <span class="marca__texto">Bingo<b>Pirámide</b><em>777</em></span>
+  </a>
+  <nav class="nav">
+    <a href="#jugar">Jugar</a>
+    <a href="#como">Cómo se juega</a>
+    <a href="#premios">Premios</a>
+  </nav>
+  <div class="sesion" id="sesion"></div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <div class="hero__texto">
+      <p class="etiqueta">Bingo de 75 bolas</p>
+      <h1>Tu cartón, tus números,<br><span class="brillo">tu premio en bolívares.</span></h1>
+      <p class="entrada">Compra un cartón, sigue las bolas y canta bingo cuando completes
+        la línea. El bote se reparte al ganador en el momento.</p>
+      <div class="acciones">
+        <a class="boton boton--principal" href="#jugar">Jugar ahora</a>
+        <a class="boton boton--fantasma" href="#como">Cómo se juega</a>
+      </div>
+      <ul class="datos">
+        <li><strong>75</strong><span>bolas por partida</span></li>
+        <li><strong>80 %</strong><span>del bote al ganador</span></li>
+        <li><strong>5×5</strong><span>cartón con centro libre</span></li>
+      </ul>
+    </div>
+    <div class="hero__carton" aria-hidden="true">
+      <div class="letras"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
+      <div class="rejilla" id="carton-demo"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="jugar">
+    <div class="panel__cabecera">
+      <h2>La mesa</h2>
+      <div class="pastilla" id="estado-partida">Cargando…</div>
+    </div>
+
+    <div class="mesa">
+      <div class="mesa__izq">
+        <div class="bombo">
+          <p class="bombo__etiqueta">Última bola</p>
+          <div class="bola" id="ultima-bola">—</div>
+          <p class="bombo__pie" id="contador-bolas">0 bolas sacadas</p>
+          <div class="bolas-sacadas" id="bolas-sacadas"></div>
+          <button class="boton boton--principal boton--ancho" id="btn-bola" disabled>
+            Sacar bola
+          </button>
+        </div>
+      </div>
+
+      <div class="mesa__der">
+        <div class="tarjeta">
+          <div class="tarjeta__cabecera">
+            <h3>Tu cartón</h3>
+            <span class="pastilla pastilla--suave" id="precio-carton">—</span>
+          </div>
+          <div class="letras letras--pequenas"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
+          <div class="rejilla" id="carton-jugador">
+            <p class="vacio">Todavía no tienes cartón.</p>
+          </div>
+          <div class="acciones acciones--pegadas">
+            <button class="boton boton--principal" id="btn-carton">Comprar cartón</button>
+            <button class="boton boton--brillo" id="btn-bingo" disabled>Cantar BINGO</button>
+          </div>
+        </div>
+
+        <div class="tarjeta tarjeta--saldo">
+          <div>
+            <p class="tarjeta__etiqueta">Tu saldo</p>
+            <p class="saldo" id="saldo">Bs 0,00</p>
+          </div>
+          <div class="recarga">
+            <input type="text" id="importe" inputmode="decimal" placeholder="Bs 100,00" aria-label="Importe a recargar">
+            <button class="boton boton--fantasma" id="btn-recargar">Recargar</button>
+          </div>
+        </div>
+
+        <div class="tarjeta">
+          <h3>Movimientos</h3>
+          <ul class="historial" id="historial"><li class="vacio">Sin movimientos.</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel panel--suave" id="como">
+    <h2>Cómo se juega</h2>
+    <div class="pasos">
+      <article><span class="numero">1</span><h3>Entra</h3><p>Crea tu cuenta con correo y contraseña. Sin redes sociales de por medio.</p></article>
+      <article><span class="numero">2</span><h3>Recarga</h3><p>Añade saldo a tu monedero. Todo en bolívares, al céntimo.</p></article>
+      <article><span class="numero">3</span><h3>Compra tu cartón</h3><p>Un cartón de 5×5 con el centro libre. Cada número vive en su columna.</p></article>
+      <article><span class="numero">4</span><h3>Canta bingo</h3><p>Completa la línea y canta. La mesa comprueba tus números contra las bolas.</p></article>
+    </div>
+  </section>
+
+  <section class="panel" id="premios">
+    <h2>Premios y reglas</h2>
+    <div class="rejilla-info">
+      <div><h3>El bote</h3><p>Todo lo recaudado con los cartones de la partida. El <strong>80 %</strong> va al ganador y el 20 % queda para la casa.</p></div>
+      <div><h3>Las bolas</h3><p>75 bolas, del 1 al 75. La columna B lleva del 1 al 15, la I del 16 al 30, la N del 31 al 45, la G del 46 al 60 y la O del 61 al 75.</p></div>
+      <div><h3>El centro libre</h3><p>El centro del cartón nace marcado: cuenta como número bueno para cualquier línea o patrón.</p></div>
+      <div><h3>Sin cantadas falsas</h3><p>Si cantas bingo sin tener la línea completa, la mesa lo rechaza. El premio solo se paga si los números están de verdad.</p></div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="pie">
+  <p><strong>Bingo Pirámide 777</strong> — plataforma de bingo en línea.</p>
+  <p class="aviso">Juega con responsabilidad. Prohibido para menores de edad.
+     Este sitio no está afiliado a ninguna otra plataforma de juego.</p>
+</footer>
+
+<div class="dialogo" id="dialogo" hidden>
+  <div class="dialogo__caja" role="dialog" aria-modal="true">
+    <button class="dialogo__cerrar" id="dialogo-cerrar" aria-label="Cerrar">×</button>
+    <div id="dialogo-contenido"></div>
+  </div>
+</div>
+
+<div class="brindis" id="brindis" hidden></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
