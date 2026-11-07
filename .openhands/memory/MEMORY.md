@@ -67,6 +67,11 @@ Diseño: morado + dorado + verde, portada con el puente sobre el lago de Maracai
   `/api/sala/cerrar`, `/api/sala/entrar`. `/api/config` expone `modos`.
 - UI: selector de salas + sección "Tus salas" en `index.html`; pestaña **Ganancias** en
   `admin.html`. Herramientas de Glenis: `listar_salas`, `ganancias`.
+- **BUG RESUELTO (Glenis, 2026-11-07)**: los parámetros **opcionales** de las herramientas
+  deben declarar `type: ["string","null"]`. El modelo manda `null` en lo que no usa y Groq
+  valida estricto: con `type:"string"` tumba la llamada entera (error 400 "tool call
+  validation failed"). Lo arregla el helper `f()` en `esquemas()` automáticamente. No
+  volver a declarar opcionales con `type` simple.
 
 ## Glenis IA + depósitos (2026-11-07)
 - **Glenis IA** (`nucleo/glenis.py` + `nucleo/glenis_herramientas.py`): chat en el panel
