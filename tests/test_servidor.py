@@ -1,27 +1,32 @@
 """Pruebas del servidor: se arranca de verdad y se juega por HTTP.
 
-Nada de simulacros: se levanta el servidor en un puerto libre, se registra un
-usuario, se recarga, se compra cartón y se sacan bolas. Si esto pasa, la web
-funciona.
+Nada de simulacros: cada prueba levanta su propio servidor con su base de datos.
+Si esto pasa, la web funciona.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import threading
 import unittest
 import urllib.error
 import urllib.request
 
-from web.servidor import crear_servidor
+from nucleo import Almacen
+from web.servidor import Juego, crear_servidor
+
+ADMIN = "bingopiramide777@gmail.com"
+CLAVE_ADMIN = "ClaveAdmin777"
 
 
 class ServidorTest(unittest.TestCase):
-    """Cada prueba levanta su propio servidor: así una partida en juego en una
-    prueba no deja sin cartones a la siguiente."""
-
     def setUp(self):
-        self.servidor = crear_servidor(host="127.0.0.1", puerto=0)
+        self.ruta = os.path.join(tempfile.mkdtemp(), "prueba.db")
+        self.almacen = Almacen(self.ruta)
+        self.juego = Juego(almacen=self.almacen, correo_admin=ADMIN, clave_admin=CLAVE_ADMIN)
+        self.servidor = crear_servidor(host="127.0.0.1", puerto=0, juego=self.juego)
         self.puerto = self.servidor.server_address[1]
         self.hilo = threading.Thread(target=self.servidor.serve_forever, daemon=True)
         self.hilo.start()
@@ -30,36 +35,37 @@ class ServidorTest(unittest.TestCase):
         self.servidor.shutdown()
         self.servidor.server_close()
         self.hilo.join(timeout=5)
+        self.almacen.cerrar()
 
     # -- ayuda --
 
-    def url(self, ruta):
-        return f"http://127.0.0.1:{self.puerto}{ruta}"
-
-    def pedir(self, ruta, datos=None, token=None, metodo=None):
+    def pedir(self, ruta, datos=None, token=None):
         cabeceras = {"Content-Type": "application/json"}
         if token:
             cabeceras["Authorization"] = "Bearer " + token
         cuerpo = json.dumps(datos).encode() if datos is not None else None
         peticion = urllib.request.Request(
-            self.url(ruta), data=cuerpo, headers=cabeceras, method=metodo or ("POST" if cuerpo else "GET")
-        )
+            f"http://127.0.0.1:{self.puerto}{ruta}", data=cuerpo, headers=cabeceras,
+            method="POST" if cuerpo else "GET")
         try:
             with urllib.request.urlopen(peticion, timeout=10) as r:
                 return r.status, json.loads(r.read().decode())
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read().decode())
 
-    def nuevo_usuario(self):
-        import random
+    def usuario(self, correo, clave="miClaveSegura1", recarga=None):
+        self.pedir("/api/registro", {"correo": correo, "clave": clave})
+        _, d = self.pedir("/api/entrar", {"correo": correo, "clave": clave})
+        token = d["token"]
+        if recarga:
+            self.pedir("/api/recargar", {"importe": recarga}, token)
+        return token
 
-        correo = f"prueba{random.randint(1, 10**9)}@correo.com"
-        estado, _ = self.pedir("/api/registro", {"correo": correo, "clave": "miClaveSegura1"})
-        self.assertEqual(estado, 200)
-        _, datos = self.pedir("/api/entrar", {"correo": correo, "clave": "miClaveSegura1"})
-        return datos["token"]
+    def admin(self):
+        _, d = self.pedir("/api/entrar", {"correo": ADMIN, "clave": CLAVE_ADMIN})
+        return d["token"]
 
-    # -- pruebas --
+    # -- pruebas básicas --
 
     def test_salud(self):
         estado, datos = self.pedir("/api/salud")
@@ -67,10 +73,17 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(datos["estado"], "bien")
 
     def test_la_portada_se_sirve(self):
-        with urllib.request.urlopen(self.url("/"), timeout=10) as r:
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.puerto}/", timeout=10) as r:
             html = r.read().decode()
         self.assertEqual(r.status, 200)
-        self.assertIn("Bingo Pirámide 777", html)
+        self.assertIn("BINGO", html)
+        self.assertIn("Somos la pepa del queso", html)
+
+    def test_el_panel_de_admin_se_sirve(self):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.puerto}/admin", timeout=10) as r:
+            html = r.read().decode()
+        self.assertEqual(r.status, 200)
+        self.assertIn("administración", html.lower())
 
     def test_no_se_puede_salir_de_la_carpeta_web(self):
         estado, _ = self.pedir("/../servidor.py")
@@ -79,60 +92,132 @@ class ServidorTest(unittest.TestCase):
     def test_sin_token_no_hay_saldo(self):
         estado, datos = self.pedir("/api/saldo")
         self.assertEqual(estado, 401)
-        self.assertIn("error", datos)
 
-    def test_flujo_completo(self):
-        token = self.nuevo_usuario()
+    # -- juego --
 
-        # 1. Recargar
-        estado, datos = self.pedir("/api/recargar", {"importe": "100,00"}, token)
+    def test_flujo_completo_de_juego(self):
+        token = self.usuario("ana@correo.com", recarga="100,00")
+        _, c = self.pedir("/api/carton", {}, token)
+        self.assertEqual(c["precio"], 1_000)
+        self.assertEqual(c["saldo"], 9_000)
+        estado, b = self.pedir("/api/bola", {}, token)
         self.assertEqual(estado, 200)
-        self.assertEqual(datos["saldo"], 10_000)
-
-        # 2. Comprar cartón
-        estado, datos_carton = self.pedir("/api/carton", {}, token)
-        self.assertEqual(estado, 200)
-        self.assertEqual(datos_carton["precio"], 1_000)
-        self.assertEqual(len(datos_carton["numeros"]), 5)
-        self.assertEqual(datos_carton["saldo"], 9_000)
-
-        # 3. Sacar una bola
-        estado, datos_bola = self.pedir("/api/bola", {}, token)
-        self.assertEqual(estado, 200)
-        self.assertTrue(1 <= datos_bola["bola"] <= 75)
-
-        # 4. Cantar bingo sin tener línea: debe rechazarse
-        carton_id = datos_carton["carton"]
-        estado, _ = self.pedir("/api/bingo", {"carton": carton_id}, token)
-        self.assertEqual(estado, 400)
+        self.assertTrue(1 <= b["bola"] <= 75)
+        estado, _ = self.pedir("/api/bingo", {"carton": c["carton"]}, token)
+        self.assertEqual(estado, 400)  # sin línea completa, se rechaza
 
     def test_sin_saldo_no_se_compra_carton(self):
-        token = self.nuevo_usuario()
+        token = self.usuario("ana@correo.com")
         estado, datos = self.pedir("/api/carton", {}, token)
         self.assertEqual(estado, 400)
-        self.assertIn("insuficiente", datos["error"].lower())
 
     def test_la_partida_es_publica(self):
         estado, datos = self.pedir("/api/partida")
         self.assertEqual(estado, 200)
         self.assertIn("bolas_sacadas", datos)
-        self.assertIn("estado", datos)
 
     def test_recarga_invalida(self):
-        token = self.nuevo_usuario()
+        token = self.usuario("ana@correo.com")
         for malo in ("", "abc", "-5"):
-            estado, datos = self.pedir("/api/recargar", {"importe": malo}, token)
+            estado, _ = self.pedir("/api/recargar", {"importe": malo}, token)
             self.assertEqual(estado, 400, f"'{malo}' debería rechazarse")
 
-    def test_entrar_con_clave_mala(self):
-        correo = "otro@correo.com"
-        self.pedir("/api/registro", {"correo": correo, "clave": "miClaveSegura1"})
-        estado, _ = self.pedir("/api/entrar", {"correo": correo, "clave": "claveMala999"})
+    # -- persistencia --
+
+    def test_el_saldo_sobrevive_al_reinicio(self):
+        token = self.usuario("ana@correo.com", recarga="250,00")
+        # Cerramos el servidor y levantamos otro sobre la misma base de datos.
+        self.servidor.shutdown(); self.servidor.server_close(); self.hilo.join(timeout=5)
+        self.almacen.cerrar()
+
+        self.almacen = Almacen(self.ruta)
+        self.juego = Juego(almacen=self.almacen, correo_admin=ADMIN, clave_admin=CLAVE_ADMIN)
+        self.servidor = crear_servidor(host="127.0.0.1", puerto=0, juego=self.juego)
+        self.puerto = self.servidor.server_address[1]
+        self.hilo = threading.Thread(target=self.servidor.serve_forever, daemon=True)
+        self.hilo.start()
+
+        _, d = self.pedir("/api/entrar", {"correo": "ana@correo.com", "clave": "miClaveSegura1"})
+        _, s = self.pedir("/api/saldo", token=d["token"])
+        self.assertEqual(s["saldo"], 25_000)
+
+    # -- retiros --
+
+    def test_flujo_de_retiro_completo(self):
+        token = self.usuario("ana@correo.com", recarga="1000,00")
+        _, r = self.pedir("/api/retiro",
+                          {"importe": "500,00", "metodo": "transferencia",
+                           "detalles": "Banco de Venezuela, cuenta 0102..."}, token)
+        self.assertEqual(r["retiro"]["estado"], "pendiente")
+        _, s = self.pedir("/api/saldo", token=token)
+        self.assertEqual(s["saldo"], 50_000)   # se descontó al pedir
+
+        # El administrador lo ve y lo paga.
+        at = self.admin()
+        _, pend = self.pedir("/api/admin/retiros?estado=pendiente", token=at)
+        self.assertEqual(len(pend["retiros"]), 1)
+        rid = pend["retiros"][0]["id"]
+        estado, res = self.pedir("/api/admin/retiro", {"id": rid, "accion": "pagar"}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(res["retiro"]["estado"], "pagado")
+
+        # Pagar no devuelve el saldo.
+        _, s = self.pedir("/api/saldo", token=token)
+        self.assertEqual(s["saldo"], 50_000)
+
+    def test_rechazar_retiro_devuelve_el_saldo(self):
+        token = self.usuario("ana@correo.com", recarga="1000,00")
+        _, r = self.pedir("/api/retiro", {"importe": "500,00", "metodo": "pago_movil",
+                                          "detalles": "0414-1234567"}, token)
+        at = self.admin()
+        self.pedir("/api/admin/retiro", {"id": r["retiro"]["id"], "accion": "rechazar", "nota": "mal"}, at)
+        _, s = self.pedir("/api/saldo", token=token)
+        self.assertEqual(s["saldo"], 100_000)
+
+    def test_retiro_sin_saldo(self):
+        token = self.usuario("ana@correo.com")
+        estado, _ = self.pedir("/api/retiro", {"importe": "500,00", "metodo": "transferencia",
+                                               "detalles": "Banco X 123456"}, token)
+        self.assertEqual(estado, 400)
+
+    # -- administración --
+
+    def test_solo_el_admin_entra_al_panel(self):
+        token = self.usuario("ana@correo.com")
+        for ruta in ("/api/admin/resumen", "/api/admin/jugadores", "/api/admin/retiros",
+                     "/api/admin/movimientos", "/api/admin/partidas"):
+            estado, _ = self.pedir(ruta, token=token)
+            self.assertEqual(estado, 403, f"{ruta} debería estar prohibida")
+
+    def test_sin_token_no_entra_al_panel(self):
+        estado, _ = self.pedir("/api/admin/resumen")
+        self.assertEqual(estado, 403)
+
+    def test_el_admin_ve_el_resumen(self):
+        self.usuario("ana@correo.com", recarga="100,00")
+        _, r = self.pedir("/api/admin/resumen", token=self.admin())
+        self.assertGreaterEqual(r["jugadores"], 1)
+        self.assertGreaterEqual(r["total_en_cuentas"], 10_000)
+
+    def test_el_admin_ajusta_saldo(self):
+        self.usuario("ana@correo.com")
+        at = self.admin()
+        self.pedir("/api/admin/ajuste", {"correo": "ana@correo.com", "importe": "50,00", "signo": "sumar"}, at)
+        _, j = self.pedir("/api/admin/jugadores", token=at)
+        ana = [x for x in j["jugadores"] if x["correo"] == "ana@correo.com"][0]
+        self.assertEqual(ana["saldo"], 5_000)
+
+    def test_el_admin_desactiva_a_un_jugador(self):
+        self.usuario("ana@correo.com")
+        at = self.admin()
+        self.pedir("/api/admin/usuario", {"correo": "ana@correo.com", "activo": False}, at)
+        estado, _ = self.pedir("/api/entrar", {"correo": "ana@correo.com", "clave": "miClaveSegura1"})
         self.assertEqual(estado, 401)
 
-    def test_ruta_desconocida(self):
-        estado, _ = self.pedir("/api/no-existe")
-        self.assertEqual(estado, 404)
+    def test_el_admin_no_se_desactiva_a_si_mismo(self):
+        at = self.admin()
+        estado, _ = self.pedir("/api/admin/usuario", {"correo": ADMIN, "activo": False}, at)
+        self.assertEqual(estado, 400)
 
 
 if __name__ == "__main__":

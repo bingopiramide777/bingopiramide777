@@ -1,31 +1,46 @@
 # Proyecto: Bingo Pirámide 777
 
-Plataforma de **bingo de 75 bolas** ORIGINAL del usuario (repo
-`bingopiramide777/bingopiramide777`, rama `main`). Nace de la petición (rechazada)
-de clonar `juegoactivo.com`; se acordó hacer algo propio. **NO copiar** nada de
-Juegoactivo (ni diseño, ni textos, ni login de Facebook).
+Bingo de 75 bolas ORIGINAL del usuario. Repo `bingopiramide777/bingopiramide777`,
+rama `main`. **NO copiar** nada de Juegoactivo (ni diseño, ni textos, ni login Facebook).
+Diseño: morado + dorado + verde, portada con el puente sobre el lago de Maracaibo.
+
+## Cuenta de administración
+`bingopiramide777@gmail.com`. Se crea al primer arranque con `BINGO_ADMIN_CLAVE`
+(o aleatoria, se imprime una vez). Los jugadores se registran con su correo
+(nunca como admin: `registrar()` fuerza rol `jugador`).
 
 ## Arquitectura
-- `nucleo/` — común: `money.py` (céntimos enteros, formato `Bs 1.234,50`),
-  `monedero.py` (**solo acepta céntimos int**, convierte en el borde),
-  `usuarios.py` (PBKDF2-HMAC-SHA256 200k, bloqueo 5 intentos/15 min).
-- `bingo/` — `cartones.py` (cartón 5x5 B-I-N-G-O, bombo 75, `PATRONES`),
-  `sala.py` (partidas, venta, cantadas validadas contra bolas), `mesa.py`
-  (une sala+monedero; reparto del bote 80 %).
-- `web/servidor.py` — `http.server` puro. El estado vive en `servidor.juego`
-  (clase `Juego`), NO en una global: así las pruebas se aíslan con `crear_servidor(puerto=0)`.
-- `web/static/` — HTML/CSS/JS propios, sin librerías. Paleta morado+dorado+verde.
-- Tests: **62**, `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
+- `nucleo/almacen.py` — **SQLite**, un fichero (`BINGO_DB`, por defecto `bingo777.db`).
+  Cada movimiento de dinero va en una transacción; `CHECK (centimos >= 0)` +
+  `resolver_retiro` con `WHERE estado='pendiente'` dan idempotencia.
+- `nucleo/monedero.py` — **solo céntimos int**. Conversión en el borde con `a_centimos`.
+- `nucleo/usuarios.py` — PBKDF2 200k, roles `jugador`/`admin`, sesiones en la DB.
+- `nucleo/retiros.py` — el dinero se descuenta **al pedir**; pagar NO mueve saldo,
+  rechazar **devuelve**. Un retiro solo se resuelve una vez.
+- `web/servidor.py` — `http.server` puro. Estado en `servidor.juego` (clase `Juego`),
+  no en globales. `crear_servidor(puerto=0)` para aislar pruebas.
+- La partida abierta se rehidrata de la DB (`_rehidratar`), no se pierde al reiniciar.
+- `web/static/` — sin librerías. `app.js` (jugador), `admin.js` (panel en `/admin`).
 
-## Decisiones que importan
-- El monedero y el motor **no mueven dinero juntos**: la mesa cobra y paga, y si
-  el cobro falla se deshace la jugada/cartón. Nunca queda cartón vendido sin cobrar.
-- Resolver/cantar dos veces **falla** (idempotencia por estado), no paga doble.
-- El servidor no puede servir ficheros fuera de `static/` (se comprueba `..`).
+## Reglas que no hay que romper
+- El monedero NO convierte unidades: si le llega un float, **lanza error** a propósito.
+- Cobrar la apuesta y dar el cartón van juntos; si falla el cobro no queda cartón vendido.
+- `test_bingo.py` y `test_retiros.py` necesitan `Almacen(":memory:")` en `setUp` y
+  `almacen.cerrar()` en `tearDown` (si no, SQLite se queja al cerrar).
 
-## Pendiente antes de dinero real
-Saldos en memoria (se pierden al reiniciar) → falta base de datos; falta panel de
-administrador, límites de retiro, verificación de identidad y HTTPS.
+## Pruebas
+87 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
 
-## Aviso legal
-En Venezuela las apuestas están sujetas a autorización. El usuario fue avisado.
+## Móvil primero
+El usuario trabaja desde el teléfono. Botones ≥44 px, `font-size:16px` en inputs
+(evita el zoom de iPhone), tablas con scroll horizontal dentro de su caja,
+`.mesa` a una columna y cartón antes que el bombo por debajo de 900 px.
+
+## Despliegue
+`render.yaml` incluido (disco persistente en `/var/data` para la DB).
+Push con `$taktak`; **nunca** con `$GITHUB_TOKEN` (403).
+
+## Pendiente / avisos
+Falta pasarela de pago real, verificación de identidad en retiros, límite de
+recargas y HTTPS. En Venezuela las apuestas requieren autorización: el usuario
+fue avisado. "Pirámide" en un producto financiero tiene mala connotación.

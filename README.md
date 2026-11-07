@@ -21,7 +21,7 @@ propio, textos propios. Sin dependencias externas — solo Python estándar.
 ## Cómo se arranca
 
 ```bash
-python3 -m web.servidor
+BINGO_ADMIN_CLAVE="tu-clave-segura" python3 -m web.servidor
 ```
 
 Y abre `http://localhost:8000`. Para cambiar el puerto:
@@ -29,6 +29,20 @@ Y abre `http://localhost:8000`. Para cambiar el puerto:
 ```bash
 PORT=3000 python3 -m web.servidor
 ```
+
+La **primera vez** se crea la cuenta de administración
+(`bingopiramide777@gmail.com`) con la clave que pongas en `BINGO_ADMIN_CLAVE`.
+Si no pones ninguna, se genera una al azar y **se muestra una sola vez** por
+consola: guárdala. La base de datos es el fichero `bingo777.db`.
+
+### Variables de entorno
+
+| Variable | Para qué | Por defecto |
+|---|---|---|
+| `PORT` | Puerto del servidor | `8000` |
+| `BINGO_DB` | Ruta del fichero de base de datos | `bingo777.db` |
+| `BINGO_ADMIN_EMAIL` | Correo del administrador | `bingopiramide777@gmail.com` |
+| `BINGO_ADMIN_CLAVE` | Clave del administrador (solo al crearlo) | aleatoria |
 
 ## Cómo se corren las pruebas
 
@@ -39,19 +53,54 @@ python3 -m unittest discover -s tests -t .
 ## Estructura
 
 ```
-nucleo/          dinero exacto, monedero y usuarios (lo común)
+nucleo/          lo común a todo
   money.py       conversión a céntimos, formato en bolívares
+  almacen.py     base de datos SQLite (todo lo que sobrevive al reinicio)
   monedero.py    saldos y movimientos, siempre en céntimos
-  usuarios.py    registro, contraseñas y sesiones
+  usuarios.py    registro, contraseñas, roles y sesiones
+  retiros.py     pedir, pagar y rechazar retiros
 bingo/           el juego
   cartones.py    cartón, bombo y patrones de premio
   sala.py        partidas, venta de cartones y cantadas
   mesa.py        une la sala con el monedero (cobra y paga)
-web/             servidor y interfaz
+web/             servidor e interfaz
   servidor.py    http.server + API
-  static/        interfaz (HTML, CSS y JavaScript, sin librerías)
-tests/           pruebas
+  static/        interfaz del jugador y panel de administración
+tests/           pruebas (87)
 ```
+
+## Panel de administración
+
+Entra en `http://localhost:8000/admin` con la cuenta de administración. Desde ahí:
+
+- **Resumen**: jugadores, dinero en cuentas, retiros pendientes, apostado, pagado y margen.
+- **Retiros**: pagar o rechazar. Rechazar **devuelve el dinero** al jugador.
+- **Jugadores**: ver saldos, ajustar saldo a mano, activar o desactivar cuentas.
+- **Partidas**: cartones, bolas y premio de cada partida.
+- **Movimientos**: todos los movimientos de dinero, con su rastro.
+
+## Retiros
+
+El jugador pide un retiro y el dinero **se descuenta al pedirlo** (así no puede
+pedir dos veces el mismo saldo). El administrador lo paga o lo rechaza:
+
+- **Pagar**: solo marca el retiro como pagado. No vuelve a mover el saldo.
+- **Rechazar**: devuelve el dinero al saldo del jugador.
+
+Un retiro solo se puede resolver una vez. Si dos administradores pulsan a la vez,
+solo uno cobra.
+
+## Publicarlo en internet
+
+El proyecto incluye `render.yaml` para Render. Los pasos:
+
+1. Sube el código a GitHub (ya está en `bingopiramide777/bingopiramide777`).
+2. En Render, **New → Blueprint** y elige el repositorio.
+3. Cuando pregunte por `BINGO_ADMIN_CLAVE`, pon una clave tuya.
+4. Listo. La base de datos queda en un disco persistente (`/var/data`), así que
+   los saldos sobreviven a los reinicios.
+
+**Antes de aceptar dinero real, lee el aviso de abajo.**
 
 ## Cambiar las reglas
 
@@ -94,11 +143,13 @@ Aviso honesto, porque es importante:
 - **Comprueba la normativa de tu país.** En Venezuela las apuestas de lotería y
   los juegos de azar están sujetos a autorización. Opera solo donde puedas
   hacerlo legalmente y con las licencias que te correspondan.
-- **Los saldos viven en memoria.** Al reiniciar el servidor se pierden. Antes de
-  aceptar dinero real hay que guardar cuentas y movimientos en una base de datos.
-- **Falta control de acceso por administrador** para ver las partidas y los pagos.
-- **Falta límite de recargas y retiros**, y verificación de identidad.
-- **Añade HTTPS** antes de exponerlo en internet.
+- **Falta pasarela de pago real.** Las recargas son internas: nadie cobra de
+  verdad todavía. Conecta tu propio cobro antes de aceptar dinero.
+- **Falta verificación de identidad** para los retiros (hoy basta con escribir
+  unos datos de cobro).
+- **Falta límite de recargas** y protección contra el juego compulsivo.
+- **Pon HTTPS** antes de exponerlo en internet.
 
-El juego, el monedero y las cuentas funcionan y están probados. Lo que falta es
-la parte de dinero real, y eso hay que hacerlo con cuidado y con asesoría.
+El juego, el monedero, los retiros, las cuentas y la base de datos funcionan y
+están probados. Lo que falta es la pasarela de pago y el cumplimiento legal, y
+eso hay que hacerlo con cuidado y con asesoría.

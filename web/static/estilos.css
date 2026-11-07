@@ -267,3 +267,183 @@ input:focus { outline: 2px solid var(--dorado); outline-offset: 1px; }
   .nav { display: none; }
   .datos { gap: 1.2rem; }
 }
+
+/* ===== Portada con el puente sobre el lago de Maracaibo ===== */
+
+.portada {
+  position: relative;
+  min-height: clamp(340px, 46vh, 520px);
+  display: flex; align-items: flex-end; justify-content: center;
+  background-color: var(--morado-900);
+  background-image: url("/maracaibo.svg");
+  background-size: cover;
+  background-position: center 40%;
+  border-bottom: 3px solid rgba(247, 201, 72, .55);
+  overflow: hidden;
+}
+.portada::before {
+  content: ""; position: absolute; inset: 0;
+  background:
+    linear-gradient(180deg, rgba(23, 8, 46, .35) 0%, rgba(23, 8, 46, .55) 45%, rgba(13, 4, 32, .96) 100%);
+}
+.portada__contenido {
+  position: relative; z-index: 1; text-align: center;
+  padding: 2.5rem 1rem 2rem; width: 100%;
+}
+.portada__emblema {
+  width: clamp(88px, 15vw, 132px); height: clamp(88px, 15vw, 132px);
+  margin: 1.1rem auto 0; display: block;
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, .65));
+}
+.portada__nombre {
+  font-size: clamp(2.1rem, 6.5vw, 4.2rem); font-weight: 900;
+  letter-spacing: .02em; margin: 0;
+  color: #fff;
+  text-shadow: 0 3px 0 rgba(0, 0, 0, .55), 0 14px 34px rgba(0, 0, 0, .7);
+}
+.portada__nombre b { color: var(--dorado); }
+.portada__nombre em { font-style: normal; color: var(--verde); }
+.portada__slogan {
+  display: inline-block; margin-top: .9rem;
+  font-size: clamp(.95rem, 2.6vw, 1.5rem); font-weight: 700;
+  letter-spacing: .16em; text-transform: uppercase;
+  color: var(--dorado-claro);
+  background: rgba(23, 8, 46, .55);
+  border: 1px solid rgba(247, 201, 72, .45);
+  border-radius: 999px; padding: .5rem 1.4rem;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, .8);
+}
+.portada__credito {
+  position: absolute; right: .8rem; bottom: .5rem; z-index: 2;
+  font-size: .68rem; color: rgba(253, 246, 227, .55);
+}
+
+/* ===== Tablas (panel de administración) ===== */
+
+.tarjetas-resumen {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem; margin-top: 1.5rem;
+}
+.tarjeta-resumen {
+  background: linear-gradient(160deg, var(--morado-700), var(--morado-800));
+  border: 1px solid rgba(247, 201, 72, .25); border-radius: var(--radio);
+  padding: 1rem 1.1rem;
+}
+.tarjeta-resumen__titulo { margin: 0; font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--gris); }
+.tarjeta-resumen__valor { margin: .3rem 0 .1rem; font-size: 1.55rem; font-weight: 800; color: var(--dorado); }
+.tarjeta-resumen__pie { margin: 0; font-size: .78rem; color: var(--gris); }
+
+.tabla-envoltorio { overflow-x: auto; margin-top: 1.2rem; border-radius: var(--radio); border: 1px solid rgba(255, 255, 255, .08); }
+.tabla { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 640px; }
+.tabla th {
+  text-align: left; padding: .7rem .8rem; background: rgba(0, 0, 0, .3);
+  color: var(--dorado); font-size: .78rem; letter-spacing: .06em; text-transform: uppercase;
+  border-bottom: 1px solid rgba(247, 201, 72, .25); white-space: nowrap;
+}
+.tabla td { padding: .65rem .8rem; border-bottom: 1px solid rgba(255, 255, 255, .06); vertical-align: middle; }
+.tabla tr:last-child td { border-bottom: 0; }
+.tabla tr:hover td { background: rgba(255, 255, 255, .03); }
+.tabla .vacio { text-align: center; color: var(--gris); padding: 1.5rem; }
+.tabla .detalles { max-width: 220px; white-space: pre-wrap; word-break: break-word; font-size: .84rem; color: var(--gris); }
+.tabla .positivo { color: var(--verde); font-weight: 700; }
+.tabla .negativo { color: var(--rojo); font-weight: 700; }
+.tabla code { background: rgba(0, 0, 0, .35); padding: .1rem .4rem; border-radius: 6px; font-size: .8rem; }
+
+.acciones-celda { display: flex; gap: .4rem; flex-wrap: wrap; }
+.boton--mini { padding: .35rem .7rem; font-size: .8rem; }
+.boton--peligro { background: linear-gradient(135deg, var(--rojo), #a8323f); color: #fff; }
+
+.etiqueta-rol {
+  background: rgba(247, 201, 72, .2); color: var(--dorado);
+  border-radius: 999px; padding: .1rem .55rem; font-size: .78rem; font-weight: 700;
+}
+
+select {
+  font: inherit; padding: .6rem .8rem; border-radius: 10px;
+  border: 1px solid rgba(247, 201, 72, .3); background: rgba(0, 0, 0, .35); color: var(--crema);
+}
+
+/* ===== Retiros (página del jugador) ===== */
+
+.fila-campos { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.retiro-estado { font-size: .78rem; padding: .15rem .6rem; border-radius: 999px; font-weight: 700; }
+.retiro-estado--pendiente { background: rgba(247, 201, 72, .2); color: var(--dorado); }
+.retiro-estado--pagado { background: rgba(47, 191, 113, .2); color: var(--verde); }
+.retiro-estado--rechazado { background: rgba(224, 82, 99, .2); color: var(--rojo); }
+
+@media (max-width: 700px) {
+  .fila-campos { grid-template-columns: 1fr; }
+}
+
+
+/* ===== Ajustes para el teléfono (se usa el pulgar) ===== */
+
+html, body { overflow-x: hidden; }
+
+/* Botones y campos con altura cómoda para el dedo (mínimo 44 px). */
+.boton { min-height: 44px; }
+.boton--alto { min-height: 52px; font-size: 1rem; }
+input[type="text"], input[type="email"], input[type="password"], select {
+  min-height: 46px; font-size: 16px;  /* 16 px evita el zoom automático en iPhone */
+}
+
+.campo { display: grid; gap: .35rem; font-size: .85rem; color: var(--gris); margin-bottom: .7rem; }
+.ayuda { font-size: .82rem; color: var(--gris); margin: .2rem 0 .9rem; }
+.subtitulo { margin-top: 1.8rem; font-size: 1.05rem; }
+
+.lista-retiros { list-style: none; padding: 0; margin: .8rem 0 0; display: grid; gap: .6rem; }
+.lista-retiros li {
+  display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap;
+  background: rgba(255, 255, 255, .04); border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: 12px; padding: .7rem .9rem; font-size: .9rem;
+}
+.lista-retiros .vacio { justify-content: center; color: var(--gris); border: 0; background: none; }
+.lista-retiros .importe { font-weight: 800; color: var(--dorado); }
+
+/* La cabecera se reparte en dos filas en pantallas pequeñas. */
+@media (max-width: 720px) {
+  .cabecera { flex-wrap: wrap; gap: .6rem; padding: .7rem 1rem; }
+  .sesion { margin-left: auto; }
+  .nav {
+    order: 3; width: 100%; margin: 0; overflow-x: auto; gap: 1.1rem;
+    padding-bottom: .2rem; -webkit-overflow-scrolling: touch;
+  }
+  .nav::-webkit-scrollbar { display: none; }
+
+  .portada { min-height: 300px; }
+  .portada__slogan { letter-spacing: .1em; padding: .45rem 1rem; }
+  .portada__emblema { margin-top: .8rem; }
+  .portada__credito { font-size: .6rem; }
+
+  .hero { padding-top: 1.8rem; padding-bottom: 1.8rem; }
+  .datos { flex-wrap: wrap; gap: 1rem 1.6rem; }
+
+  .panel { padding-left: 1rem; padding-right: 1rem; }
+  .bola { width: 108px; height: 108px; font-size: 2.5rem; }
+  .saldo { font-size: 1.5rem; }
+  .recarga { width: 100%; }
+  .recarga input { flex: 1; }
+  .tarjeta--saldo { gap: .7rem; }
+
+  .acciones .boton { flex: 1 1 auto; }
+  .acciones--pegadas .boton { width: 100%; }
+  .acciones--pegadas { flex-direction: column; }
+
+  /* Las tablas se desplazan en horizontal, nunca rompen la página. */
+  .tabla-envoltorio { -webkit-overflow-scrolling: touch; }
+  .tabla { min-width: 560px; font-size: .84rem; }
+  .tabla th, .tabla td { padding: .55rem .6rem; }
+
+  .tarjetas-resumen { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: .7rem; }
+  .tarjeta-resumen__valor { font-size: 1.25rem; }
+
+  .dialogo__caja { padding: 1.5rem 1.2rem; }
+  .brindis { bottom: .8rem; font-size: .85rem; padding: .7rem 1.1rem; }
+}
+
+/* En el móvil, la mesa va en una sola columna y el cartón primero. */
+@media (max-width: 900px) {
+  .mesa { grid-template-columns: 1fr; }
+  .mesa__izq { order: 2; }
+  .mesa__der { order: 1; }
+}

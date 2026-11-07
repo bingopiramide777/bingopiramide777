@@ -75,16 +75,27 @@ function pintarSesion() {
     const correo = document.createElement("span");
     correo.textContent = localStorage.getItem("bp777_correo") || "";
     correo.style.color = "var(--gris)";
+    caja.append(correo);
+    if (localStorage.getItem("bp777_admin") === "1") {
+      const panel = document.createElement("a");
+      panel.className = "boton boton--fantasma";
+      panel.href = "/admin";
+      panel.style.padding = ".4rem 1rem";
+      panel.textContent = "Panel";
+      caja.appendChild(panel);
+    }
     const salir = document.createElement("button");
     salir.className = "boton boton--fantasma";
     salir.textContent = "Salir";
     salir.style.padding = ".4rem 1rem";
-    salir.onclick = () => {
+    salir.onclick = async () => {
+      try { await post("/api/salir"); } catch (e) { /* da igual */ }
       localStorage.removeItem(CLAVE_TOKEN);
       localStorage.removeItem("bp777_correo");
+      localStorage.removeItem("bp777_admin");
       location.reload();
     };
-    caja.append(correo, salir);
+    caja.append(salir);
   } else {
     const entrar = document.createElement("button");
     entrar.className = "boton boton--principal";
@@ -127,10 +138,12 @@ function abrirAcceso(modo) {
         token = res.token;
         localStorage.setItem(CLAVE_TOKEN, token);
         localStorage.setItem("bp777_correo", res.correo);
+        localStorage.setItem("bp777_admin", res.admin ? "1" : "0");
         $("#dialogo").hidden = true;
         avisar("Bienvenido de nuevo.", "bien");
         pintarSesion();
         refrescarTodo();
+        refrescarRetiros();
       } else {
         await post("/api/registro", datos);
         avisar("Cuenta creada. Ahora entra.", "bien");
@@ -215,6 +228,7 @@ function refrescarTodo() {
   refrescarPartida();
   refrescarSaldo();
   refrescarHistorial();
+  refrescarRetiros();
 }
 
 /* --- acciones --- */
@@ -257,6 +271,24 @@ function conectarBotones() {
     } catch (err) { avisar(err.message, "error"); }
   };
 
+  $("#btn-retirar").onclick = async () => {
+    if (!token) return abrirAcceso("entrar");
+    const importe = $("#retiro-importe").value.trim();
+    const metodo = $("#retiro-metodo").value;
+    const detalles = $("#retiro-detalles").value.trim();
+    if (!importe) return avisar("Escribe el importe a retirar.", "error");
+    if (detalles.length < 5) return avisar("Escribe los datos para el pago.", "error");
+    try {
+      const res = await post("/api/retiro", { importe, metodo, detalles });
+      avisar("Retiro pedido. Saldo: " + res.saldo_texto, "bien");
+      $("#retiro-importe").value = "";
+      $("#retiro-detalles").value = "";
+      refrescarSaldo();
+      refrescarHistorial();
+      refrescarRetiros();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+
   $("#btn-bingo").onclick = async () => {
     if (!carton) return;
     try {
@@ -282,10 +314,52 @@ function marcarEnCarton(bolas) {
   pintarCarton("#carton-jugador", numeros, marcados);
 }
 
+/* --- retiros --- */
+
+let configRetiro = null;
+
+async function cargarConfigRetiro() {
+  try {
+    configRetiro = await get("/api/config");
+    const sel = $("#retiro-metodo");
+    sel.innerHTML = "";
+    configRetiro.metodos.forEach((m) => {
+      const o = document.createElement("option");
+      o.value = m;
+      o.textContent = m.replace("_", " ");
+      sel.appendChild(o);
+    });
+    $("#retiro-ayuda").textContent =
+      "Mínimo " + configRetiro.retiro_minimo_texto +
+      " · Tope diario " + configRetiro.retiro_tope_texto;
+  } catch (err) { /* sin config no pasa nada */ }
+}
+
+async function refrescarRetiros() {
+  const lista = $("#lista-retiros");
+  if (!token) { lista.innerHTML = '<li class="vacio">Entra para ver tus retiros.</li>'; return; }
+  try {
+    const r = await get("/api/retiros");
+    if (!r.retiros.length) {
+      lista.innerHTML = '<li class="vacio">Todavía no has pedido ningún retiro.</li>';
+      return;
+    }
+    lista.innerHTML = "";
+    r.retiros.forEach((x) => {
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="importe">${x.importe_texto}</span>
+        <span>${x.metodo.replace("_", " ")}</span>
+        <span class="retiro-estado retiro-estado--${x.estado}">${x.estado}</span>`;
+      lista.appendChild(li);
+    });
+  } catch (err) { /* nada */ }
+}
+
 /* --- arranque --- */
 
 pintarCartonDemo();
 pintarSesion();
 conectarBotones();
+cargarConfigRetiro();
 refrescarTodo();
 setInterval(refrescarPartida, 5000);

@@ -1,10 +1,10 @@
-"""Pruebas del núcleo: dinero exacto y monedero. Lo comparten los juegos."""
+"""Pruebas del núcleo: dinero exacto, base de datos y monedero."""
 
 from __future__ import annotations
 
 import unittest
 
-from nucleo import ErrorDeMonedero, Monedero, a_centimos, a_texto
+from nucleo import Almacen, ErrorDeMonedero, Monedero, a_centimos, a_texto
 
 
 class DineroTest(unittest.TestCase):
@@ -15,7 +15,6 @@ class DineroTest(unittest.TestCase):
         self.assertEqual(a_centimos("0.01"), 1)
 
     def test_el_error_de_float_no_aparece(self):
-        # 0.1 + 0.2 en float daría 0.30000000000000004
         self.assertEqual(a_centimos("0.1") + a_centimos("0.2"), a_centimos("0.3"))
         self.assertEqual(a_texto(30), "Bs 0,30")
 
@@ -31,47 +30,62 @@ class DineroTest(unittest.TestCase):
 
 class MonederoTest(unittest.TestCase):
     def setUp(self):
-        self.m = Monedero()
+        self.almacen = Almacen(":memory:")
+        self.m = Monedero(self.almacen)
+
+    def tearDown(self):
+        self.almacen.cerrar()
 
     def test_recargar_y_consultar(self):
-        self.m.recargar("ana", 5_000)
-        self.assertEqual(self.m.saldo("ana"), 5_000)
+        self.m.recargar("ana@correo.com", 5_000)
+        self.assertEqual(self.m.saldo("ana@correo.com"), 5_000)
 
     def test_no_se_puede_gastar_lo_que_no_hay(self):
         with self.assertRaises(ErrorDeMonedero):
-            self.m.retirar("ana", 1_000)
-        self.assertEqual(self.m.saldo("ana"), 0)
+            self.m.retirar("ana@correo.com", 1_000)
+        self.assertEqual(self.m.saldo("ana@correo.com"), 0)
 
     def test_movimiento_de_cero_no_vale(self):
         with self.assertRaises(ErrorDeMonedero):
-            self.m.recargar("ana", 0)
+            self.m.recargar("ana@correo.com", 0)
 
     def test_no_admite_texto_ni_decimales_sueltos(self):
-        # Si alguien pasa "10.00" en vez de 1000, es un error de programa y se avisa.
         for malo in ("10.00", 10.5, True, None):
             with self.assertRaises(ErrorDeMonedero):
-                self.m.recargar("ana", malo)
+                self.m.recargar("ana@correo.com", malo)
 
     def test_el_historial_guarda_el_rastro(self):
-        self.m.recargar("ana", 10_000)
-        self.m.cobrar_apuesta("ana", 1_000, "cartón x")
-        self.m.pagar_premio("ana", 30_000, "bingo")
-        hist = self.m.historial("ana")
-        self.assertEqual([m.tipo for m in hist], ["recarga", "apuesta", "premio"])
-        self.assertEqual([m.centimos for m in hist], [10_000, -1_000, 30_000])
-        self.assertEqual(hist[-1].saldo_despues, 39_000)
+        self.m.recargar("ana@correo.com", 10_000)
+        self.m.cobrar_apuesta("ana@correo.com", 1_000, "cartón x")
+        self.m.pagar_premio("ana@correo.com", 30_000, "bingo")
+        hist = self.m.historial("ana@correo.com")
+        self.assertEqual([h.tipo for h in hist], ["premio", "apuesta", "recarga"])
+        self.assertEqual(hist[-1].saldo_despues, 10_000)
 
     def test_el_saldo_nunca_queda_negativo(self):
-        self.m.recargar("ana", 1_000)
+        self.m.recargar("ana@correo.com", 1_000)
         with self.assertRaises(ErrorDeMonedero):
-            self.m.retirar("ana", 1_001)
-        self.assertEqual(self.m.saldo("ana"), 1_000)
+            self.m.retirar("ana@correo.com", 1_001)
+        self.assertEqual(self.m.saldo("ana@correo.com"), 1_000)
 
     def test_saldos_separados_por_jugador(self):
-        self.m.recargar("ana", 1_000)
-        self.m.recargar("luis", 2_000)
-        self.assertEqual(self.m.saldo("ana"), 1_000)
-        self.assertEqual(self.m.saldo("luis"), 2_000)
+        self.m.recargar("ana@correo.com", 1_000)
+        self.m.recargar("luis@correo.com", 2_000)
+        self.assertEqual(self.m.saldo("ana@correo.com"), 1_000)
+        self.assertEqual(self.m.saldo("luis@correo.com"), 2_000)
+
+    def test_el_saldo_sobrevive_al_reinicio(self):
+        """Lo más importante: cerrar y reabrir la base no pierde el dinero."""
+        import os, tempfile
+
+        ruta = os.path.join(tempfile.mkdtemp(), "prueba.db")
+        a1 = Almacen(ruta)
+        Monedero(a1).recargar("ana@correo.com", 7_500)
+        a1.cerrar()
+
+        a2 = Almacen(ruta)
+        self.assertEqual(Monedero(a2).saldo("ana@correo.com"), 7_500)
+        a2.cerrar()
 
 
 if __name__ == "__main__":

@@ -1,20 +1,21 @@
-"""Monedero: saldo, recargas, retiros y pago de premios.
-
-Todo movimiento se registra con su motivo. El saldo nunca se toca directamente
-desde fuera: se entra por recargar/apostar/pagar/retirar, y cada una deja rastro.
-Un saldo negativo es un error del programa, no un estado válido.
+"""Monedero con base de datos: el saldo sobrevive al reinicio.
 
 El monedero trabaja SIEMPRE en céntimos enteros. La conversión desde texto
 ("10,50") se hace una sola vez, en el borde del sistema (la web), con
-`a_centimos`. Aquí dentro no se vuelve a convertir nada: así no hay forma de
-multiplicar por 100 dos veces por descuido.
+`a_centimos`. Aquí dentro no se vuelve a convertir nada.
+
+Cada movimiento se escribe en la base de datos en una transacción junto con el
+saldo. O se guardan los dos, o ninguno: nunca un saldo sin su movimiento.
 """
 
 from __future__ import annotations
 
 import secrets
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+
+from .almacen import Almacen
+
 
 class ErrorDeMonedero(ValueError):
     """Operación de dinero no permitida."""
@@ -24,34 +25,33 @@ class ErrorDeMonedero(ValueError):
 class Movimiento:
     id: str
     jugador: str
-    tipo: str          # recarga | apuesta | premio | retiro | ajuste
+    tipo: str          # recarga | apuesta | premio | retiro | ajuste | reembolso
     centimos: int      # positivo entra, negativo sale
     saldo_despues: int
     motivo: str = ""
-    cuando: float = field(default_factory=time.time)
-
-
-@dataclass
-class Cuenta:
-    jugador: str
-    centimos: int = 0
+    cuando: float = 0.0
 
 
 class Monedero:
-    def __init__(self) -> None:
-        self.cuentas: dict[str, Cuenta] = {}
-        self.movimientos: list[Movimiento] = []
+    def __init__(self, almacen: Almacen) -> None:
+        self.almacen = almacen
 
     # -- consulta --
 
-    def cuenta(self, jugador: str) -> Cuenta:
-        return self.cuentas.setdefault(jugador, Cuenta(jugador=jugador))
-
     def saldo(self, jugador: str) -> int:
-        return self.cuenta(jugador).centimos
+        return self.almacen.saldo(jugador)
 
-    def historial(self, jugador: str) -> list[Movimiento]:
-        return [m for m in self.movimientos if m.jugador == jugador]
+    def historial(self, jugador: str, limite: int = 200) -> list[Movimiento]:
+        return [
+            Movimiento(
+                id=f["id"], jugador=f["correo"], tipo=f["tipo"], centimos=f["centimos"],
+                saldo_despues=f["saldo_despues"], motivo=f["motivo"], cuando=f["cuando"],
+            )
+            for f in self.almacen.movimientos(jugador, limite)
+        ]
+
+    def total_en_cuentas(self) -> int:
+        return self.almacen.total_en_cuentas()
 
     # -- movimientos (todo en céntimos) --
 
@@ -73,6 +73,10 @@ class Monedero:
     def retirar(self, jugador: str, centimos: int, motivo: str = "") -> Movimiento:
         return self._mover(jugador, -self._entero(centimos), "retiro", motivo)
 
+    def devolver(self, jugador: str, centimos: int, motivo: str = "") -> Movimiento:
+        """Devuelve dinero de un retiro rechazado."""
+        return self._mover(jugador, self._entero(centimos), "reembolso", motivo)
+
     # -- interno --
 
     @staticmethod
@@ -91,20 +95,12 @@ class Monedero:
             raise ErrorDeMonedero("Hace falta un jugador.")
         if centimos == 0:
             raise ErrorDeMonedero("Un movimiento de cero no tiene sentido.")
-        cuenta = self.cuenta(jugador)
-        nuevo = cuenta.centimos + centimos
-        if nuevo < 0:
-            raise ErrorDeMonedero(
-                f"Saldo insuficiente: hay {cuenta.centimos} céntimos y se intentan mover {centimos}."
-            )
-        cuenta.centimos = nuevo
-        mov = Movimiento(
-            id=f"m-{secrets.token_hex(6)}",
-            jugador=jugador,
-            tipo=tipo,
-            centimos=centimos,
-            saldo_despues=nuevo,
-            motivo=motivo,
-        )
-        self.movimientos.append(mov)
-        return mov
+        mov_id = f"m-{secrets.token_hex(6)}"
+        cuando = time.time()
+        self.almacen.asegurar_cuenta(jugador)
+        try:
+            nuevo = self.almacen.aplicar_movimiento(jugador, tipo, centimos, motivo, cuando, mov_id)
+        except ValueError as exc:
+            raise ErrorDeMonedero(str(exc)) from None
+        return Movimiento(id=mov_id, jugador=jugador, tipo=tipo, centimos=centimos,
+                          saldo_despues=nuevo, motivo=motivo, cuando=cuando)

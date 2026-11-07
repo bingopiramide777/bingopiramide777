@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: bingopiramide777
+    runtime: python
+    plan: free
+    buildCommand: ""
+    startCommand: python3 -m web.servidor
+    envVars:
+      - key: BINGO_ADMIN_EMAIL
+        value: bingopiramide777@gmail.com
+      - key: BINGO_ADMIN_CLAVE
+        sync: false
+      - key: BINGO_DB
+        value: /var/data/bingo777.db
+    disk:
+      name: datos
+      mountPath: /var/data
+      sizeGB: 1

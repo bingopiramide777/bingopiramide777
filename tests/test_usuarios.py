@@ -1,11 +1,11 @@
-"""Pruebas de usuarios y sesiones: registro propio, sin Facebook."""
+"""Pruebas de usuarios: registro propio, roles y sesiones en la base de datos."""
 
 from __future__ import annotations
 
-import time
 import unittest
 
-from nucleo.usuarios import ErrorDeUsuario, Usuarios, hash_clave, verificar_clave
+from nucleo import Almacen, Usuarios, hash_clave, verificar_clave
+from nucleo.usuarios import ErrorDeUsuario
 
 
 class ClaveTest(unittest.TestCase):
@@ -26,7 +26,11 @@ class ClaveTest(unittest.TestCase):
 
 class RegistroTest(unittest.TestCase):
     def setUp(self):
-        self.u = Usuarios()
+        self.almacen = Almacen(":memory:")
+        self.u = Usuarios(self.almacen)
+
+    def tearDown(self):
+        self.almacen.cerrar()
 
     def test_registrar_y_entrar(self):
         self.u.registrar("ana@correo.com", "miClaveSegura1")
@@ -54,27 +58,44 @@ class RegistroTest(unittest.TestCase):
             with self.assertRaises(ErrorDeUsuario):
                 self.u.registrar("ana@correo.com", mala)
 
+    def test_quien_se_registra_es_jugador(self):
+        u = self.u.registrar("ana@correo.com", "miClaveSegura1")
+        self.assertEqual(u.rol, "jugador")
+        self.assertFalse(self.u.es_admin("ana@correo.com"))
+
+    def test_el_admin_se_crea_y_es_admin(self):
+        creado = self.u.asegurar_admin("bingopiramide777@gmail.com", "ClaveAdmin123")
+        self.assertTrue(creado)
+        self.assertTrue(self.u.es_admin("bingopiramide777@gmail.com"))
+        # La segunda vez no lo vuelve a crear ni cambia la clave.
+        self.assertFalse(self.u.asegurar_admin("bingopiramide777@gmail.com", "OtraClave456"))
+        self.u.entrar("bingopiramide777@gmail.com", "ClaveAdmin123")
+
     def test_clave_equivocada_no_entra(self):
         self.u.registrar("ana@correo.com", "miClaveSegura1")
         with self.assertRaises(ErrorDeUsuario):
             self.u.entrar("ana@correo.com", "otraClave999")
 
     def test_bloqueo_tras_varios_intentos(self):
-        self.u = Usuarios(max_intentos=3, minutos_bloqueo=15)
+        self.u = Usuarios(self.almacen, max_intentos=3, minutos_bloqueo=15)
         self.u.registrar("ana@correo.com", "miClaveSegura1")
         for _ in range(3):
             with self.assertRaises(ErrorDeUsuario):
                 self.u.entrar("ana@correo.com", "mal")
-        # Ahora ni con la buena: está bloqueado.
         with self.assertRaises(ErrorDeUsuario):
             self.u.entrar("ana@correo.com", "miClaveSegura1")
 
-    def test_la_sesion_caduca(self):
-        self.u = Usuarios(horas_sesion=0)
+    def test_la_sesion_sobrevive_al_reinicio(self):
         self.u.registrar("ana@correo.com", "miClaveSegura1")
         sesion = self.u.entrar("ana@correo.com", "miClaveSegura1")
-        sesion.caduca = time.time() - 1
-        self.assertIsNone(self.u.sesion(sesion.token))
+        otro = Usuarios(self.almacen)
+        self.assertIsNotNone(otro.sesion(sesion.token))
+
+    def test_desactivar_impide_entrar(self):
+        self.u.registrar("ana@correo.com", "miClaveSegura1")
+        self.u.activar("ana@correo.com", False)
+        with self.assertRaises(ErrorDeUsuario):
+            self.u.entrar("ana@correo.com", "miClaveSegura1")
 
     def test_salir_invalida_la_sesion(self):
         self.u.registrar("ana@correo.com", "miClaveSegura1")

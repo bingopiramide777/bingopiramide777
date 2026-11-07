@@ -1,13 +1,21 @@
-"""Núcleo común: dinero exacto y monedero. Lo comparten todos los juegos."""
+"""Núcleo común: dinero exacto, base de datos, monedero y usuarios."""
 
-from .monedero import Cuenta, ErrorDeMonedero, Monedero, Movimiento
+from .almacen import Almacen
+from .monedero import ErrorDeMonedero, Monedero, Movimiento
 from .money import ErrorDeDinero, a_centimos, a_texto, multiplicar
+from .usuarios import ErrorDeUsuario, Sesion, Usuario, Usuarios, hash_clave, verificar_clave
 
 __all__ = [
+    "Almacen",
     "Monedero",
     "Movimiento",
-    "Cuenta",
     "ErrorDeMonedero",
+    "Usuarios",
+    "Usuario",
+    "Sesion",
+    "ErrorDeUsuario",
+    "hash_clave",
+    "verificar_clave",
     "a_centimos",
     "a_texto",
     "multiplicar",

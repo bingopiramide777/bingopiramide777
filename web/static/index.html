@@ -2,26 +2,36 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Bingo Pirámide 777</title>
-<meta name="description" content="Bingo Pirámide 777 — sala de bingo en línea con cartones de 75 bolas.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#17082e">
+<title>Bingo Pirámide 777 — Bingo en línea</title>
+<meta name="description" content="Bingo Pirámide 777 — sala de bingo de 75 bolas. Compra tu cartón, sigue las bolas y canta bingo.">
 <link rel="stylesheet" href="/estilos.css">
-<link rel="icon" href="/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/emblema.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/emblema.svg">
 </head>
 <body>
 
+<!-- ===== Portada: puente sobre el lago de Maracaibo + emblema + eslogan ===== -->
+<section class="portada">
+  <div class="portada__contenido">
+    <h1 class="portada__nombre">BINGO<b>PIRÁMIDE</b><em>777</em></h1>
+    <p class="portada__slogan">Somos la pepa del queso</p>
+    <img class="portada__emblema" src="/emblema.svg" alt="Emblema de Bingo Pirámide 777" width="132" height="132">
+  </div>
+  <p class="portada__credito">Puente sobre el lago de Maracaibo</p>
+</section>
+
 <header class="cabecera">
   <a class="marca" href="/">
-    <svg class="marca__icono" viewBox="0 0 48 48" aria-hidden="true">
-      <path d="M24 4 43 14v20L24 44 5 34V14z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/>
-      <circle cx="24" cy="24" r="6" fill="currentColor"/>
-    </svg>
+    <img class="marca__icono" src="/emblema.svg" alt="" width="34" height="34">
     <span class="marca__texto">Bingo<b>Pirámide</b><em>777</em></span>
   </a>
   <nav class="nav">
     <a href="#jugar">Jugar</a>
     <a href="#como">Cómo se juega</a>
     <a href="#premios">Premios</a>
+    <a href="#retirar">Retirar</a>
   </nav>
   <div class="sesion" id="sesion"></div>
 </header>
@@ -31,7 +41,7 @@
   <section class="hero">
     <div class="hero__texto">
       <p class="etiqueta">Bingo de 75 bolas</p>
-      <h1>Tu cartón, tus números,<br><span class="brillo">tu premio en bolívares.</span></h1>
+      <h2 class="hero__titulo">Tu cartón, tus números,<br><span class="brillo">tu premio en bolívares.</span></h2>
       <p class="entrada">Compra un cartón, sigue las bolas y canta bingo cuando completes
         la línea. El bote se reparte al ganador en el momento.</p>
       <div class="acciones">
@@ -63,7 +73,7 @@
           <div class="bola" id="ultima-bola">—</div>
           <p class="bombo__pie" id="contador-bolas">0 bolas sacadas</p>
           <div class="bolas-sacadas" id="bolas-sacadas"></div>
-          <button class="boton boton--principal boton--ancho" id="btn-bola" disabled>
+          <button class="boton boton--principal boton--ancho boton--alto" id="btn-bola" disabled>
             Sacar bola
           </button>
         </div>
@@ -80,8 +90,8 @@
             <p class="vacio">Todavía no tienes cartón.</p>
           </div>
           <div class="acciones acciones--pegadas">
-            <button class="boton boton--principal" id="btn-carton">Comprar cartón</button>
-            <button class="boton boton--brillo" id="btn-bingo" disabled>Cantar BINGO</button>
+            <button class="boton boton--principal boton--alto" id="btn-carton">Comprar cartón</button>
+            <button class="boton boton--brillo boton--alto" id="btn-bingo" disabled>Cantar BINGO</button>
           </div>
         </div>
 
@@ -104,7 +114,31 @@
     </div>
   </section>
 
-  <section class="panel panel--suave" id="como">
+  <section class="panel panel--suave" id="retirar">
+    <h2>Retirar tu dinero</h2>
+    <p class="entrada">Pide un retiro y lo revisamos. Si se rechaza, el dinero vuelve a tu saldo.</p>
+
+    <div class="tarjeta">
+      <div class="fila-campos">
+        <label class="campo">Importe (Bs)
+          <input type="text" id="retiro-importe" inputmode="decimal" placeholder="100,00">
+        </label>
+        <label class="campo">Método
+          <select id="retiro-metodo"></select>
+        </label>
+      </div>
+      <label class="campo">Datos para el pago
+        <input type="text" id="retiro-detalles" placeholder="Banco, cuenta o teléfono">
+      </label>
+      <p class="ayuda" id="retiro-ayuda">—</p>
+      <button class="boton boton--principal boton--alto" id="btn-retirar">Pedir retiro</button>
+    </div>
+
+    <h3 class="subtitulo">Tus retiros</h3>
+    <ul class="lista-retiros" id="lista-retiros"><li class="vacio">Todavía no has pedido ningún retiro.</li></ul>
+  </section>
+
+  <section class="panel" id="como">
     <h2>Cómo se juega</h2>
     <div class="pasos">
       <article><span class="numero">1</span><h3>Entra</h3><p>Crea tu cuenta con correo y contraseña. Sin redes sociales de por medio.</p></article>
@@ -114,7 +148,7 @@
     </div>
   </section>
 
-  <section class="panel" id="premios">
+  <section class="panel panel--suave" id="premios">
     <h2>Premios y reglas</h2>
     <div class="rejilla-info">
       <div><h3>El bote</h3><p>Todo lo recaudado con los cartones de la partida. El <strong>80 %</strong> va al ganador y el 20 % queda para la casa.</p></div>
@@ -127,7 +161,7 @@
 </main>
 
 <footer class="pie">
-  <p><strong>Bingo Pirámide 777</strong> — plataforma de bingo en línea.</p>
+  <p><strong>Bingo Pirámide 777</strong> — Somos la pepa del queso.</p>
   <p class="aviso">Juega con responsabilidad. Prohibido para menores de edad.
      Este sitio no está afiliado a ninguna otra plataforma de juego.</p>
 </footer>

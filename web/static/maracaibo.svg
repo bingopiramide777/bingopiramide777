@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="cielo" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2b1a5c"/>
+      <stop offset="42%" stop-color="#7b3f6e"/>
+      <stop offset="68%" stop-color="#e2764f"/>
+      <stop offset="86%" stop-color="#f7c948"/>
+      <stop offset="100%" stop-color="#ffe08a"/>
+    </linearGradient>
+    <linearGradient id="agua" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f7c948" stop-opacity=".85"/>
+      <stop offset="18%" stop-color="#c96a4e"/>
+      <stop offset="55%" stop-color="#4a2a80"/>
+      <stop offset="100%" stop-color="#17082e"/>
+    </linearGradient>
+    <radialGradient id="sol" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fff6d8"/>
+      <stop offset="45%" stop-color="#ffe08a" stop-opacity=".9"/>
+      <stop offset="100%" stop-color="#f7c948" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="torre" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#17082e"/>
+      <stop offset="50%" stop-color="#331a5c"/>
+      <stop offset="100%" stop-color="#17082e"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#cielo)"/>
+  <circle cx="800" cy="620" r="360" fill="url(#sol)"/>
+  <circle cx="800" cy="620" r="118" fill="#fff6d8" opacity=".92"/>
+
+  <!-- nubes largas -->
+  <g fill="#17082e" opacity=".22">
+    <ellipse cx="330" cy="250" rx="260" ry="26"/>
+    <ellipse cx="1180" cy="200" rx="300" ry="22"/>
+    <ellipse cx="820" cy="330" rx="380" ry="30"/>
+  </g>
+
+  <!-- agua -->
+  <rect y="620" width="1600" height="280" fill="url(#agua)"/>
+  <g stroke="#ffe08a" stroke-width="3" opacity=".4">
+    <line x1="640" y1="690" x2="960" y2="690"/>
+    <line x1="600" y1="730" x2="1000" y2="730"/>
+    <line x1="680" y1="770" x2="920" y2="770"/>
+    <line x1="560" y1="812" x2="1040" y2="812"/>
+    <line x1="700" y1="852" x2="900" y2="852"/>
+  </g>
+
+  <!-- tablero del puente -->
+  <rect x="0" y="596" width="1600" height="20" fill="url(#torre)"/>
+  <rect x="0" y="588" width="1600" height="8" fill="#241041"/>
+
+  <!-- torres (puente atirantado) -->
+  <g fill="url(#torre)">
+    <path d="M470 588 V250 h34 v338 z"/>
+    <path d="M1096 588 V250 h34 v338 z"/>
+  </g>
+  <g fill="#331a5c">
+    <rect x="452" y="244" width="70" height="16" rx="4"/>
+    <rect x="1078" y="244" width="70" height="16" rx="4"/>
+  </g>
+
+  <!-- tirantes -->
+  <g stroke="#241041" stroke-width="5" opacity=".9" fill="none">
+    <path d="M487 300 L180 592"/><path d="M487 300 L330 592"/>
+    <path d="M487 300 L470 592"/><path d="M487 300 L640 592"/>
+    <path d="M487 300 L800 592"/>
+    <path d="M1113 300 L800 592"/><path d="M1113 300 L960 592"/>
+    <path d="M1113 300 L1130 592"/><path d="M1113 300 L1270 592"/>
+    <path d="M1113 300 L1420 592"/>
+  </g>
+  <g stroke="#17082e" stroke-width="3" opacity=".7" fill="none">
+    <path d="M487 380 L300 592"/><path d="M487 380 L560 592"/>
+    <path d="M1113 380 L1040 592"/><path d="M1113 380 L1300 592"/>
+  </g>
+
+  <!-- luces del puente -->
+  <g fill="#ffe08a">
+    <circle cx="487" cy="252" r="7"/><circle cx="1113" cy="252" r="7"/>
+    <circle cx="180" cy="596" r="4"/><circle cx="330" cy="596" r="4"/>
+    <circle cx="640" cy="596" r="4"/><circle cx="800" cy="596" r="4"/>
+    <circle cx="960" cy="596" r="4"/><circle cx="1270" cy="596" r="4"/>
+    <circle cx="1420" cy="596" r="4"/>
+  </g>
+
+  <!-- reflejos de las torres -->
+  <g fill="#241041" opacity=".28">
+    <path d="M470 620 h34 v190 l-34 -22 z"/>
+    <path d="M1096 620 h34 v190 l-34 -22 z"/>
+  </g>
+
+  <!-- silueta de la ciudad al fondo -->
+  <g fill="#17082e" opacity=".55">
+    <rect x="40" y="556" width="60" height="40"/><rect x="120" y="540" width="44" height="56"/>
+    <rect x="180" y="566" width="70" height="30"/><rect x="1420" y="548" width="54" height="48"/>
+    <rect x="1490" y="566" width="80" height="30"/>
+  </g>
+</svg>

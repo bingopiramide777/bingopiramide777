@@ -18,7 +18,7 @@ from bingo import (
 )
 from bingo.mesa import ErrorDeMesaBingo
 from bingo.sala import ErrorDeSala
-from nucleo.monedero import ErrorDeMonedero, Monedero
+from nucleo import Almacen, Monedero
 
 
 class AzarFijo:
@@ -137,17 +137,17 @@ class SalaTest(unittest.TestCase):
     def test_abrir_partida_y_vender_cartones(self):
         p = self.sala.abrir_partida("10.00")
         self.assertTrue(p.abierta)
-        carton, precio = self.sala.comprar_carton(p.id, "ana")
+        carton, precio = self.sala.comprar_carton(p.id, "ana@correo.com")
         self.assertEqual(precio, 1_000)
         self.assertIn(carton.id, p.cartones)
-        self.assertEqual(p.dueno[carton.id], "ana")
+        self.assertEqual(p.dueno[carton.id], "ana@correo.com")
 
     def test_no_se_venden_cartones_con_la_partida_empezada(self):
         p = self.sala.abrir_partida("10.00")
-        self.sala.comprar_carton(p.id, "ana")
+        self.sala.comprar_carton(p.id, "ana@correo.com")
         self.sala.empezar(p.id)
         with self.assertRaises(ErrorDeSala):
-            self.sala.comprar_carton(p.id, "luis")
+            self.sala.comprar_carton(p.id, "luis@correo.com")
 
     def test_no_empieza_sin_cartones(self):
         p = self.sala.abrir_partida("10.00")
@@ -164,7 +164,7 @@ class SalaTest(unittest.TestCase):
 
     def test_sacar_bola_marca_los_cartones(self):
         p = self.sala.abrir_partida("10.00")
-        carton, _ = self.sala.comprar_carton(p.id, "ana")
+        carton, _ = self.sala.comprar_carton(p.id, "ana@correo.com")
         self.sala.empezar(p.id)
         bola = self.sala.sacar_bola(p.id)
         # La bola sacada, si está en el cartón, queda marcada.
@@ -174,88 +174,92 @@ class SalaTest(unittest.TestCase):
 
     def test_cantar_en_falso_no_vale(self):
         p = self.sala.abrir_partida("10.00")
-        carton, _ = self.sala.comprar_carton(p.id, "ana")
+        carton, _ = self.sala.comprar_carton(p.id, "ana@correo.com")
         self.sala.empezar(p.id)
         self.sala.sacar_bola(p.id)
         with self.assertRaises(ErrorDeSala):
-            self.sala.cantar(p.id, "ana", carton.id)
+            self.sala.cantar(p.id, "ana@correo.com", carton.id)
 
     def test_no_se_canta_con_carton_de_otro(self):
         p = self.sala.abrir_partida("10.00")
-        carton, _ = self.sala.comprar_carton(p.id, "ana")
+        carton, _ = self.sala.comprar_carton(p.id, "ana@correo.com")
         self.sala.empezar(p.id)
         with self.assertRaises(ErrorDeSala):
-            self.sala.cantar(p.id, "luis", carton.id)
+            self.sala.cantar(p.id, "luis@correo.com", carton.id)
 
     def test_cantada_valida_termina_la_partida(self):
         p = self.sala.abrir_partida("10.00", patron="linea_h1")
-        carton, _ = self.sala.comprar_carton(p.id, "ana")
+        carton, _ = self.sala.comprar_carton(p.id, "ana@correo.com")
         # Marcamos a mano la fila 1 completa, como si hubieran salido las bolas.
         for col in range(5):
             carton.marcar(carton.numeros[0][col])
         self.sala.empezar(p.id)
-        res = self.sala.cantar(p.id, "ana", carton.id)
-        self.assertEqual(res["ganador"], "ana")
+        res = self.sala.cantar(p.id, "ana@correo.com", carton.id)
+        self.assertEqual(res["ganador"], "ana@correo.com")
         self.assertEqual(p.estado, "terminada")
 
     def test_bote_es_el_precio_por_los_cartones(self):
         p = self.sala.abrir_partida("10.00")
         for _ in range(3):
-            self.sala.comprar_carton(p.id, "ana")
+            self.sala.comprar_carton(p.id, "ana@correo.com")
         self.assertEqual(self.sala.bote(p.id), 3_000)
 
 
 class MesaBingoTest(unittest.TestCase):
     def setUp(self):
-        self.mesa = MesaBingo(sala=Sala(), monedero=Monedero(), reparto=Decimal("0.80"))
+        self.almacen = Almacen(":memory:")
+        self.mesa = MesaBingo(sala=Sala(), monedero=Monedero(self.almacen), reparto=Decimal("0.80"))
         self.partida = self.mesa.sala.abrir_partida("10.00", patron="linea_h1")
 
+    def tearDown(self):
+        self.almacen.cerrar()
+
     def test_comprar_carton_cobra(self):
-        self.mesa.monedero.recargar("ana", 10_000)
-        self.mesa.comprar_carton(self.partida.id, "ana")
-        self.assertEqual(self.mesa.monedero.saldo("ana"), 9_000)
+        self.mesa.monedero.recargar("ana@correo.com", 10_000)
+        self.mesa.comprar_carton(self.partida.id, "ana@correo.com")
+        self.assertEqual(self.mesa.monedero.saldo("ana@correo.com"), 9_000)
 
     def test_sin_saldo_no_hay_carton_ni_cobro(self):
         with self.assertRaises(ErrorDeMesaBingo):
-            self.mesa.comprar_carton(self.partida.id, "ana")
-        self.assertEqual(self.mesa.monedero.saldo("ana"), 0)
+            self.mesa.comprar_carton(self.partida.id, "ana@correo.com")
+        self.assertEqual(self.mesa.monedero.saldo("ana@correo.com"), 0)
         self.assertEqual(len(self.partida.cartones), 0)   # no quedó colgado
 
     def test_el_premio_es_el_reparto_del_bote(self):
-        self.mesa.monedero.recargar("ana", 100_000)
+        self.mesa.monedero.recargar("ana@correo.com", 100_000)
         for _ in range(5):
-            self.mesa.comprar_carton(self.partida.id, "ana")
+            self.mesa.comprar_carton(self.partida.id, "ana@correo.com")
         self.assertEqual(self.mesa.sala.bote(self.partida.id), 5_000)
         self.assertEqual(self.mesa.premio_de(self.partida.id), 4_000)  # 80 %
 
     def test_cantada_valida_paga_el_premio(self):
-        self.mesa.monedero.recargar("ana", 100_000)
-        carton_id, _ = self.mesa.comprar_carton(self.partida.id, "ana")
+        self.mesa.monedero.recargar("ana@correo.com", 100_000)
+        carton_id, _ = self.mesa.comprar_carton(self.partida.id, "ana@correo.com")
         carton = self.partida.cartones[carton_id]
         for col in range(5):
             carton.marcar(carton.numeros[0][col])
         self.mesa.sala.empezar(self.partida.id)
-        antes = self.mesa.monedero.saldo("ana")
-        res = self.mesa.resolver_cantada(self.partida.id, "ana", carton_id)
+        antes = self.mesa.monedero.saldo("ana@correo.com")
+        res = self.mesa.resolver_cantada(self.partida.id, "ana@correo.com", carton_id)
         self.assertEqual(res["premio"], 800)   # bote 1000 * 0,80
-        self.assertEqual(self.mesa.monedero.saldo("ana"), antes + 800)
+        self.assertEqual(self.mesa.monedero.saldo("ana@correo.com"), antes + 800)
 
     def test_no_se_paga_dos_veces(self):
-        self.mesa.monedero.recargar("ana", 100_000)
-        carton_id, _ = self.mesa.comprar_carton(self.partida.id, "ana")
+        self.mesa.monedero.recargar("ana@correo.com", 100_000)
+        carton_id, _ = self.mesa.comprar_carton(self.partida.id, "ana@correo.com")
         carton = self.partida.cartones[carton_id]
         for col in range(5):
             carton.marcar(carton.numeros[0][col])
         self.mesa.sala.empezar(self.partida.id)
-        self.mesa.resolver_cantada(self.partida.id, "ana", carton_id)
-        saldo = self.mesa.monedero.saldo("ana")
+        self.mesa.resolver_cantada(self.partida.id, "ana@correo.com", carton_id)
+        saldo = self.mesa.monedero.saldo("ana@correo.com")
         with self.assertRaises(ErrorDeSala):
-            self.mesa.resolver_cantada(self.partida.id, "ana", carton_id)
-        self.assertEqual(self.mesa.monedero.saldo("ana"), saldo)
+            self.mesa.resolver_cantada(self.partida.id, "ana@correo.com", carton_id)
+        self.assertEqual(self.mesa.monedero.saldo("ana@correo.com"), saldo)
 
     def test_vista_publica_no_expone_datos_privados(self):
-        self.mesa.monedero.recargar("ana", 10_000)
-        self.mesa.comprar_carton(self.partida.id, "ana")
+        self.mesa.monedero.recargar("ana@correo.com", 10_000)
+        self.mesa.comprar_carton(self.partida.id, "ana@correo.com")
         vista = self.mesa.partida_publica(self.partida.id)
         self.assertEqual(set(vista), {"id", "patron", "estado", "precio_carton",
                                       "cartones", "bolas_sacadas", "ganador"})
