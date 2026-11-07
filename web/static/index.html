@@ -66,6 +66,10 @@
       <div class="pastilla" id="estado-partida">Cargando…</div>
     </div>
 
+    <div class="salas" id="lista-salas">
+      <p class="vacio">Cargando salas…</p>
+    </div>
+
     <div class="mesa">
       <div class="mesa__izq">
         <div class="bombo">
@@ -112,6 +116,43 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <section class="panel" id="mis-salas">
+    <div class="panel__cabecera">
+      <h2>Tus salas</h2>
+      <div class="pastilla" id="ganancias-pastilla">—</div>
+    </div>
+    <p class="entrada">
+      Crea tu propia sala, ponle el precio al cartón y elige el modo de juego.
+      Tú decides si es pública o privada. <strong>Cobras el 10% de todos los botes
+      de tu sala</strong>: cada vez que alguien canta bingo ahí, te entra tu parte.
+    </p>
+
+    <form class="formulario formulario--linea" id="form-sala">
+      <label>Nombre de la sala
+        <input type="text" name="nombre" maxlength="30" placeholder="La de mi barrio" required>
+      </label>
+      <label>Modo de juego
+        <select name="modo" id="select-modo">
+          <option value="normal">Normal (línea, columna o diagonal)</option>
+          <option value="carton_lleno">Cartón lleno (los 25 números)</option>
+          <option value="competencia">Competencia (también 4 esquinas)</option>
+        </select>
+      </label>
+      <label>Precio del cartón (Bs)
+        <input type="text" name="precio" inputmode="decimal" placeholder="Bs 10,00" required>
+      </label>
+      <label>¿Quién puede entrar?
+        <select name="publica">
+          <option value="si">Pública (cualquiera)</option>
+          <option value="no">Privada (solo con el enlace)</option>
+        </select>
+      </label>
+      <button class="boton boton--brillo boton--alto" type="submit">Crear mi sala</button>
+    </form>
+
+    <div id="tabla-mis-salas"></div>
   </section>
 
   <section class="panel panel--suave" id="retirar">

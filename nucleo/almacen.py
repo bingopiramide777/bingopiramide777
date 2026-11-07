@@ -64,6 +64,7 @@ CREATE INDEX IF NOT EXISTS idx_retiros_estado ON retiros(estado, pedido);
 
 CREATE TABLE IF NOT EXISTS partidas (
     id             TEXT PRIMARY KEY,
+    sala           TEXT NOT NULL DEFAULT '',
     patron         TEXT NOT NULL,
     precio_carton  INTEGER NOT NULL,
     estado         TEXT NOT NULL,
@@ -113,6 +114,18 @@ CREATE TABLE IF NOT EXISTS codigos (
 );
 CREATE INDEX IF NOT EXISTS idx_codigos_correo ON codigos(correo, usado, creado);
 
+CREATE TABLE IF NOT EXISTS salas (
+    id             TEXT PRIMARY KEY,
+    nombre         TEXT NOT NULL,
+    modo           TEXT NOT NULL,
+    precio_carton  INTEGER NOT NULL,
+    dueno          TEXT NOT NULL DEFAULT '',
+    publica        INTEGER NOT NULL DEFAULT 1,
+    activa         INTEGER NOT NULL DEFAULT 1,
+    creada         REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_salas_dueno ON salas(dueno);
+
 CREATE TABLE IF NOT EXISTS cartones (
     id       TEXT PRIMARY KEY,
     partida  TEXT NOT NULL,
@@ -150,6 +163,12 @@ class Almacen:
             if nombre not in columnas:
                 with self.transaccion() as c:
                     c.execute(f"ALTER TABLE usuarios ADD COLUMN {nombre} {definicion}")
+
+        # La partida aprendió a decir a qué sala pertenece.
+        columnas_p = {f["name"] for f in self._todos("PRAGMA table_info(partidas)")}
+        if "sala" not in columnas_p:
+            with self.transaccion() as c:
+                c.execute("ALTER TABLE partidas ADD COLUMN sala TEXT NOT NULL DEFAULT ''")
 
     @contextmanager
     def transaccion(self) -> Iterator[sqlite3.Connection]:
@@ -456,16 +475,16 @@ class Almacen:
     def guardar_partida(self, p: dict) -> None:
         with self.transaccion() as c:
             c.execute(
-                "INSERT INTO partidas (id, patron, precio_carton, estado, bolas, ganador,"
+                "INSERT INTO partidas (id, sala, patron, precio_carton, estado, bolas, ganador,"
                 " carton_ganador, premio, empezada, terminada)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?)"
-                " ON CONFLICT(id) DO UPDATE SET patron=excluded.patron,"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(id) DO UPDATE SET sala=excluded.sala, patron=excluded.patron,"
                 " precio_carton=excluded.precio_carton, estado=excluded.estado, bolas=excluded.bolas,"
                 " ganador=excluded.ganador, carton_ganador=excluded.carton_ganador,"
                 " premio=excluded.premio, empezada=excluded.empezada, terminada=excluded.terminada",
-                (p["id"], p["patron"], p["precio_carton"], p["estado"], p.get("bolas", ""),
-                 p.get("ganador"), p.get("carton_ganador"), p.get("premio", 0),
-                 p.get("empezada"), p.get("terminada")),
+                (p["id"], p.get("sala", ""), p["patron"], p["precio_carton"], p["estado"],
+                 p.get("bolas", ""), p.get("ganador"), p.get("carton_ganador"),
+                 p.get("premio", 0), p.get("empezada"), p.get("terminada")),
             )
 
     def partida(self, id_: str) -> sqlite3.Row | None:
@@ -476,8 +495,43 @@ class Almacen:
             "SELECT * FROM partidas WHERE estado != 'terminada' ORDER BY rowid DESC LIMIT 1"
         )
 
-    def partidas(self, limite: int = 100) -> list[sqlite3.Row]:
-        return self._todos("SELECT * FROM partidas ORDER BY rowid DESC LIMIT ?", (limite,))
+    def partida_abierta_de(self, sala: str) -> sqlite3.Row | None:
+        """La partida sin terminar de una sala concreta."""
+        return self._uno(
+            "SELECT * FROM partidas WHERE estado != 'terminada' AND sala = ?"
+            " ORDER BY rowid DESC LIMIT 1", (sala,))
+
+    def partidas(self, limite: int = 100, sala: str | None = None) -> list[sqlite3.Row]:
+        if sala is None:
+            return self._todos("SELECT * FROM partidas ORDER BY rowid DESC LIMIT ?", (limite,))
+        return self._todos(
+            "SELECT * FROM partidas WHERE sala = ? ORDER BY rowid DESC LIMIT ?", (sala, limite))
+
+    # -- salas --
+
+    def guardar_sala(self, s: dict) -> None:
+        with self.transaccion() as c:
+            c.execute(
+                "INSERT INTO salas (id, nombre, modo, precio_carton, dueno, publica, activa, creada)"
+                " VALUES (?,?,?,?,?,?,?,?)"
+                " ON CONFLICT(id) DO UPDATE SET nombre=excluded.nombre, modo=excluded.modo,"
+                " precio_carton=excluded.precio_carton, publica=excluded.publica,"
+                " activa=excluded.activa",
+                (s["id"], s["nombre"], s["modo"], s["precio_carton"], s.get("dueno", ""),
+                 s.get("publica", 1), s.get("activa", 1), s["creada"]),
+            )
+
+    def sala(self, id_: str) -> sqlite3.Row | None:
+        return self._uno("SELECT * FROM salas WHERE id = ?", (id_,))
+
+    def salas(self, incluir_inactivas: bool = False) -> list[sqlite3.Row]:
+        if incluir_inactivas:
+            return self._todos("SELECT * FROM salas ORDER BY rowid ASC")
+        return self._todos("SELECT * FROM salas WHERE activa = 1 ORDER BY rowid ASC")
+
+    def activar_sala(self, id_: str, activa: bool) -> None:
+        with self.transaccion() as c:
+            c.execute("UPDATE salas SET activa = ? WHERE id = ?", (int(activa), id_))
 
     def guardar_carton(self, id_: str, partida: str, correo: str, numeros: str) -> None:
         with self.transaccion() as c:

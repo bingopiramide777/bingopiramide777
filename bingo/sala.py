@@ -25,6 +25,7 @@ class Partida:
     id: str
     patron: str
     precio_carton: int          # en céntimos
+    sala: str = ""
     estado: str = "vendiendo"   # vendiendo | jugando | terminada
     cartones: dict[str, Carton] = field(default_factory=dict)   # id_carton -> carton
     dueno: dict[str, str] = field(default_factory=dict)         # id_carton -> jugador
@@ -53,7 +54,8 @@ class Sala:
     # -- partidas --
 
     def abrir_partida(
-        self, precio_carton: object, patron: str | None = None, id_: str | None = None
+        self, precio_carton: object, patron: str | None = None, id_: str | None = None,
+        sala: str = "",
     ) -> Partida:
         patron = patron or self.patron_por_defecto
         if patron not in PATRONES:
@@ -64,7 +66,7 @@ class Sala:
         pid = id_ or f"p-{secrets.token_hex(4)}"
         if pid in self.partidas:
             raise ErrorDeSala(f"La partida {pid} ya existe.")
-        partida = Partida(id=pid, patron=patron, precio_carton=precio)
+        partida = Partida(id=pid, patron=patron, precio_carton=precio, sala=sala)
         self.partidas[pid] = partida
         return partida
 

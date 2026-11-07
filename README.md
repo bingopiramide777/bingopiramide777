@@ -60,6 +60,7 @@ nucleo/          lo común a todo
   usuarios.py    registro, contraseñas, roles, sesiones y recuperación
   correo.py      envío de correos (contraseña de aplicación de Gmail)
   depositos.py   pagos declarados por el jugador (Pago Móvil y transferencia)
+  salas.py       salas de bingo y reparto del bote (premio, anfitrión y app)
   glenis.py      el motor de Glenis IA (habla con el modelo)
   glenis_herramientas.py  lo que Glenis puede consultar y hacer
   retiros.py     pedir, pagar y rechazar retiros
@@ -70,8 +71,66 @@ bingo/           el juego
 web/             servidor e interfaz
   servidor.py    http.server + API
   static/        interfaz del jugador y panel de administración
-tests/           pruebas (161)
+tests/           pruebas (196)
 ```
+
+## Cuánto cuesta un cartón y en qué se convierte
+
+El modelo está calcado del de Juegoactivo, que tiene tres salas con precio propio y deja
+crear salas a los jugadores con un 10 % de comisión para el anfitrión.
+
+**Salas de la casa** (precio del cartón y modo):
+
+| Sala | Modo | Cartón | Premio al ganador | Se queda la app |
+|---|---|---|---|---|
+| Dubai | Normal | Bs 5,00 | 80 % del bote | 20 % del bote |
+| Roma | Competencia | Bs 10,00 | 80 % del bote | 20 % del bote |
+| Estelar | Cartón lleno | Bs 20,00 | 80 % del bote | 20 % del bote |
+
+**Salas de un jugador** (las crea cualquiera, con su nombre y su precio, entre Bs 1 y Bs 500):
+
+| Quién | Cuánto |
+|---|---|
+| Ganador | 80 % del bote |
+| Anfitrión (quien creó la sala) | 10 % del bote |
+| Se queda la app | 10 % del bote |
+
+El ganador **cobra lo mismo** juegue donde juegue. El 10 % del anfitrión sale del margen de
+la app, no del bolsillo del ganador. Así el anfitrión trae jugadores y la app nunca pierde.
+
+### La cuenta, con un ejemplo
+
+Dos jugadores compran un cartón de Bs 10 en la sala de un particular. El bote son Bs 20:
+
+```
+bote                      Bs 20,00
+premio al ganador         Bs 16,00   (80 %)
+comisión del anfitrión    Bs  2,00   (10 %)
+se queda la app           Bs  2,00   (10 %)
+                          ────────
+suma                      Bs 20,00   cuadra al céntimo
+```
+
+Esa comprobación está en las pruebas: `test_el_reparto_nunca_pierde_un_centimo` recorre
+20.000 botes distintos, con céntimos raros incluidos, y exige que las tres partes sumen
+exactamente el bote. Si algún día alguien toca los porcentajes y descuadra un céntimo,
+la prueba lo caza.
+
+## Salas creadas por los jugadores
+
+Cualquiera con cuenta puede crear hasta **3 salas**, con:
+
+- **Nombre** (máximo 30 letras; los nombres de la casa están reservados).
+- **Modo**: Normal, Cartón lleno o Competencia.
+- **Precio del cartón**: entre Bs 1,00 y Bs 500,00.
+- **Pública o privada**.
+
+El anfitrión cobra su 10 % **en el momento** de cada bingo, directo a su monedero: no tiene
+que reclamarlo ni esperar. En su pantalla ve un panel con sus salas, los botes que han
+movido y lo que lleva ganado.
+
+**Lo que NO puede hacer un anfitrión:** tocar el saldo de nadie, acreditar depósitos ni
+pagar premios. Solo cobra su comisión, que la calcula el motor. Ni él ni Glenis firman pagos.
 
 ## Glenis IA (asistente de administración)
 

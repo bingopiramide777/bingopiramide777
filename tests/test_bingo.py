@@ -261,7 +261,7 @@ class MesaBingoTest(unittest.TestCase):
         self.mesa.monedero.recargar("ana@correo.com", 10_000)
         self.mesa.comprar_carton(self.partida.id, "ana@correo.com")
         vista = self.mesa.partida_publica(self.partida.id)
-        self.assertEqual(set(vista), {"id", "patron", "estado", "precio_carton",
+        self.assertEqual(set(vista), {"id", "sala", "patron", "estado", "precio_carton",
                                       "cartones", "bolas_sacadas", "ganador"})
 
 

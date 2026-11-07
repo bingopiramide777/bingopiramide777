@@ -98,7 +98,8 @@ class ServidorTest(unittest.TestCase):
 
     def test_flujo_completo_de_juego(self):
         token = self.usuario("ana@correo.com", recarga="100,00")
-        _, c = self.pedir("/api/carton", {}, token)
+        # Se juega en la sala Roma (Bs 10 el cartón), que es la de precio medio.
+        _, c = self.pedir("/api/carton", {"sala": "sala-roma"}, token)
         self.assertEqual(c["precio"], 1_000)
         self.assertEqual(c["saldo"], 9_000)
         estado, b = self.pedir("/api/bola", {}, token)
@@ -237,6 +238,74 @@ class ServidorTest(unittest.TestCase):
         token = self.usuario("ana@correo.com")
         estado, _ = self.pedir("/api/admin/restablecer", {"correo": "ana@correo.com"}, token)
         self.assertEqual(estado, 403)
+
+    # -- salas --
+
+    def test_vienen_las_tres_salas_de_la_casa(self):
+        estado, r = self.pedir("/api/salas")
+        self.assertEqual(estado, 200)
+        self.assertEqual([s["nombre"] for s in r["salas"]], ["Dubai", "Roma", "Estelar"])
+
+    def test_un_jugador_crea_su_sala(self):
+        token = self.usuario("ana@correo.com")
+        estado, r = self.pedir("/api/sala/crear", {
+            "nombre": "La de Ana", "modo": "normal", "precio": "25,00", "publica": True}, token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["sala"]["precio_texto"], "Bs 25,00")
+        self.assertEqual(r["sala"]["dueno"], "ana@correo.com")
+        self.assertIn("10%", r["mensaje"])
+
+    def test_crear_sala_necesita_entrar(self):
+        estado, _ = self.pedir("/api/sala/crear",
+                               {"nombre": "X", "modo": "normal", "precio": "10,00"})
+        self.assertEqual(estado, 401)
+
+    def test_la_sala_aparece_en_la_lista_publica(self):
+        token = self.usuario("ana@correo.com")
+        self.pedir("/api/sala/crear",
+                   {"nombre": "La de Ana", "modo": "normal", "precio": "10,00"}, token)
+        _, r = self.pedir("/api/salas")
+        self.assertIn("La de Ana", [s["nombre"] for s in r["salas"]])
+
+    def test_mis_salas_trae_las_ganancias(self):
+        token = self.usuario("ana@correo.com")
+        self.pedir("/api/sala/crear",
+                   {"nombre": "La de Ana", "modo": "normal", "precio": "10,00"}, token)
+        estado, r = self.pedir("/api/mis-salas", token=token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(len(r["salas"]), 1)
+        self.assertEqual(r["ganancias"]["anfitrion"], 0)
+        self.assertEqual(r["ganancias"]["anfitrion_texto"], "Bs 0,00")
+
+    def test_el_jugador_juega_en_la_sala_que_elige(self):
+        token = self.usuario("ana@correo.com", recarga="100,00")
+        _, r = self.pedir("/api/carton", {"sala": "sala-dubai"}, token)
+        self.assertEqual(r["precio"], 500)   # Dubai: Bs 5
+
+    def test_entrar_a_una_sala_da_su_modo_y_reparto(self):
+        token = self.usuario("ana@correo.com")
+        estado, r = self.pedir("/api/sala/entrar", {"sala": "sala-estelar"}, token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["partida"]["modo"], "carton_lleno")
+        self.assertEqual(r["partida"]["sala_nombre"], "Estelar")
+
+    def test_solo_el_admin_ve_las_salas_del_panel(self):
+        token = self.usuario("ana@correo.com")
+        self.assertEqual(self.pedir("/api/admin/salas", token=token)[0], 403)
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/salas", token=at)
+        self.assertEqual(estado, 200)
+        self.assertIn("economia", r)
+
+    def test_el_admin_cierra_una_sala_de_jugador(self):
+        token = self.usuario("ana@correo.com")
+        _, s = self.pedir("/api/sala/crear",
+                          {"nombre": "La de Ana", "modo": "normal", "precio": "10,00"}, token)
+        at = self.admin()
+        self.assertEqual(self.pedir("/api/sala/cerrar", {"sala": s["sala"]["id"]}, at)[0], 200)
+        _, r = self.pedir("/api/admin/salas", token=at)
+        cerrada = [x for x in r["salas"] if x["id"] == s["sala"]["id"]][0]
+        self.assertFalse(cerrada["activa"])
 
     # -- depósitos y Glenis --
 

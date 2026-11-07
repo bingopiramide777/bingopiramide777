@@ -303,6 +303,93 @@ async function refrescarDepositos() {
   } catch (err) { /* sin sesión: no se muestra nada */ }
 }
 
+/* --- salas --- */
+
+let salaActual = "";
+let salasDisponibles = [];
+
+async function cargarSalas() {
+  const caja = $("#lista-salas");
+  if (!caja) return;
+  try {
+    const res = await get("/api/salas");
+    salasDisponibles = res.salas;
+    caja.innerHTML = salasDisponibles.map((s) => `
+      <button class="sala-tarjeta ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
+              data-sala="${s.id}">
+        <div class="sala-tarjeta__nombre">${s.nombre}</div>
+        <div class="sala-tarjeta__modo">${nombreModo(s.modo)}</div>
+        <div class="sala-tarjeta__precio">Cartón ${s.precio_texto}</div>
+        ${s.es_de_jugador ? `<div class="sala-tarjeta__dueno">Sala de ${s.dueno}</div>`
+                          : '<div class="sala-tarjeta__dueno">Sala de la casa</div>'}
+      </button>`).join("");
+    caja.querySelectorAll("[data-sala]").forEach((b) =>
+      (b.onclick = () => entrarASala(b.dataset.sala)));
+    if (!salaActual && salasDisponibles.length) {
+      await entrarASala(salasDisponibles[0].id);
+    }
+  } catch (err) { /* sin salas aún */ }
+}
+
+function nombreModo(modo) {
+  return { normal: "Normal", carton_lleno: "Cartón lleno", competencia: "Competencia" }[modo]
+    || modo;
+}
+
+async function entrarASala(id) {
+  try {
+    const res = await post("/api/sala/entrar", { sala: id });
+    salaActual = id;
+    document.querySelectorAll("[data-sala]").forEach((b) =>
+      b.classList.toggle("sala-tarjeta--activa", b.dataset.sala === id));
+    carton = null;
+    const caja = $("#carton-jugador");
+    if (caja) caja.innerHTML = '<p class="vacio">Todavía no tienes cartón.</p>';
+    const botonBingo = $("#btn-bingo");
+    if (botonBingo) botonBingo.disabled = true;
+    refrescarPartida();
+  } catch (err) { avisar(err.message, "error"); }
+}
+
+async function cargarMisSalas() {
+  const caja = $("#tabla-mis-salas");
+  if (!caja) return;
+  if (!token) { caja.innerHTML = '<p class="ayuda">Entra para crear tus salas.</p>'; return; }
+  try {
+    const res = await get("/api/mis-salas");
+    const g = res.ganancias;
+    const p = $("#ganancias-pastilla");
+    if (p) p.textContent = "Ganas " + g.anfitrion_texto;
+    if (!res.salas.length) {
+      caja.innerHTML = '<p class="ayuda">Todavía no tienes salas. Crea la primera arriba.</p>';
+      return;
+    }
+    caja.innerHTML = `
+      <div class="tabla-scroll"><table class="tabla">
+        <thead><tr><th>Sala</th><th>Modo</th><th>Cartón</th><th>Partidas</th>
+          <th>Botes</th><th>Has ganado</th><th></th></tr></thead>
+        <tbody>${res.salas.map((s) => `
+          <tr><td><strong>${s.nombre}</strong></td><td>${nombreModo(s.modo)}</td>
+          <td>${s.precio_texto}</td><td>${g.partidas}</td><td>${g.botes_texto}</td>
+          <td><strong>${g.anfitrion_texto}</strong></td>
+          <td><button class="boton boton--fantasma boton--mini"
+                data-cerrar="${s.id}">Cerrar</button></td></tr>`).join("")}
+        </tbody></table></div>
+      <p class="ayuda">Ganas el 10% del bote de cada partida de tus salas.
+         Hasta ahora: <strong>${g.anfitrion_texto}</strong> de ${g.botes_texto} en botes.</p>`;
+    caja.querySelectorAll("[data-cerrar]").forEach((b) =>
+      (b.onclick = async () => {
+        if (!confirm("¿Cerrar esta sala? No se podrá jugar más en ella.")) return;
+        try {
+          await post("/api/sala/cerrar", { sala: b.dataset.cerrar });
+          avisar("Sala cerrada.", "bien");
+          cargarMisSalas();
+          cargarSalas();
+        } catch (err) { avisar(err.message, "error"); }
+      }));
+  } catch (err) { /* sin sesión */ }
+}
+
 /* --- juego --- */
 
 async function refrescarPartida() {
@@ -378,6 +465,7 @@ function refrescarTodo() {
   refrescarHistorial();
   refrescarRetiros();
   refrescarDepositos();
+  cargarMisSalas();
 }
 
 /* --- acciones --- */
@@ -399,7 +487,7 @@ function conectarBotones() {
   $("#btn-carton").onclick = async () => {
     if (!token) return abrirAcceso("entrar");
     try {
-      const res = await post("/api/carton");
+      const res = await post("/api/carton", { sala: salaActual });
       carton = res;
       pintarCarton("#carton-jugador", res.numeros, []);
       $("#btn-bingo").disabled = false;
@@ -412,7 +500,7 @@ function conectarBotones() {
 
   $("#btn-bola").onclick = async () => {
     try {
-      const res = await post("/api/bola");
+      const res = await post("/api/bola", { sala: salaActual });
       pintarBolas(res.bolas);
       $("#contador-bolas").textContent = res.bolas.length + " bolas sacadas";
       if (carton) marcarEnCarton(res.bolas);
@@ -512,5 +600,23 @@ pintarCartonDemo();
 pintarSesion();
 conectarBotones();
 cargarConfigRetiro();
+cargarSalas();
+const formSala = $("#form-sala");
+if (formSala) {
+  formSala.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!token) return abrirAcceso("entrar");
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      const res = await post("/api/sala/crear", {
+        nombre: d.nombre, modo: d.modo, precio: d.precio, publica: d.publica === "si",
+      });
+      avisar(res.mensaje, "bien");
+      formSala.reset();
+      cargarSalas();
+      cargarMisSalas();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+}
 refrescarTodo();
 setInterval(refrescarPartida, 5000);

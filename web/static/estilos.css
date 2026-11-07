@@ -522,3 +522,19 @@ input[type="text"], input[type="email"], input[type="password"], select {
   border: 1px solid rgba(247, 201, 72, .55); float: left;
   margin: .1rem .5rem .2rem 0;
 }
+
+/* --- Salas --- */
+.salas { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin-bottom: 1.2rem; }
+.sala-tarjeta {
+  text-align: left; cursor: pointer; font: inherit; color: var(--crema);
+  background: rgba(0, 0, 0, .3); border: 1px solid var(--borde);
+  border-radius: 14px; padding: .8rem .95rem; transition: border-color .15s, transform .15s;
+}
+.sala-tarjeta:hover { border-color: var(--dorado); transform: translateY(-2px); }
+.sala-tarjeta--activa { border-color: var(--dorado); background: rgba(247, 201, 72, .12); }
+.sala-tarjeta__nombre { font-weight: 800; font-size: 1.05rem; }
+.sala-tarjeta__modo { font-size: .78rem; color: var(--gris); text-transform: uppercase; letter-spacing: .06em; }
+.sala-tarjeta__precio { color: var(--dorado); font-weight: 700; margin-top: .3rem; }
+.sala-tarjeta__dueno { font-size: .76rem; color: var(--verde); margin-top: .15rem; }
+.formulario--linea { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); align-items: end; margin-bottom: 1.1rem; }
+.formulario--linea button { align-self: end; }

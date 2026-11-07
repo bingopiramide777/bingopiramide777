@@ -24,6 +24,7 @@
     <a href="#retiros">Retiros</a>
     <a href="#jugadores">Jugadores</a>
     <a href="#partidas">Partidas</a>
+    <a href="#ganancias">Ganancias</a>
   </nav>
   <div class="sesion" id="sesion"></div>
 </header>
@@ -110,6 +111,21 @@
       <table class="tabla" id="tabla-partidas">
         <thead><tr><th>Partida</th><th>Patrón</th><th>Estado</th><th>Cartones</th><th>Bolas</th><th>Apostado</th><th>Ganador</th><th>Premio</th></tr></thead>
         <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel panel--suave" id="ganancias">
+    <h2>Ganancias del bingo</h2>
+    <p class="entrada">Cuánto mueve el bingo y cuánto queda para la app.
+       El ganador siempre cobra el 80% del bote; en las salas de jugadores,
+       el anfitrión se lleva un 10% y la app el otro 10%.</p>
+    <div id="tarjetas-ganancias" class="tarjetas-resumen"></div>
+    <div class="tabla-scroll">
+      <table class="tabla">
+        <thead><tr><th>Sala</th><th>Dueño</th><th>Modo</th><th>Cartón</th>
+          <th>Estado</th><th></th></tr></thead>
+        <tbody id="cuerpo-salas"></tbody>
       </table>
     </div>
   </section>

@@ -49,6 +49,12 @@ class Herramientas:
               {"estado": {"type": "string", "enum": ["pendiente", "pagado", "rechazado"],
                           "description": "Filtra por estado. Si se omite, los pendientes."}}),
             f("listar_partidas", "Últimas partidas: cartones, bolas, ganador y premio."),
+            f("listar_salas", "Las salas de bingo: nombre, modo, precio del cartón y de quién "
+                              "son. Las salas de jugadores pagan un 10% al anfitrión."),
+            f("ganancias", "Cuánto dinero ha dejado el bingo: botes, premios pagados, comisiones "
+                           "de anfitriones y lo que queda a la app.",
+              {"correo": {"type": "string", "description": "Opcional: el correo de un anfitrión, "
+                           "para ver solo sus ganancias"}}),
             f("acreditar_deposito", "Da por bueno un depósito y SUMA el dinero al saldo del jugador. "
                                     "Úsalo solo cuando el administrador lo confirme.",
               {"id": {"type": "string", "description": "El id del depósito, que empieza por 'd-'"},
@@ -108,6 +114,40 @@ class Herramientas:
             "depositos_por_acreditar": a_texto(r["depositos_pendiente_centimos"]),
             "partidas": r["partidas"], "apostado": a_texto(r["apostado"]),
             "pagado_en_premios": a_texto(r["pagado"]), "margen": a_texto(r["margen"]),
+        }
+
+    def _h_listar_salas(self) -> dict:
+        with self.juego.candado:
+            salas = self.juego.salas.todas()
+            cuentas = []
+            for s in salas:
+                d = s.a_dict()
+                d["precio"] = a_texto(s.precio_carton)
+                cuentas.append(d)
+        return {
+            "salas": cuentas,
+            "de_la_casa": sum(1 for s in salas if not s.es_de_jugador),
+            "de_jugadores": sum(1 for s in salas if s.es_de_jugador),
+            "aviso": ("El ganador siempre cobra el 80% del bote. En las salas de un jugador, "
+                      "el anfitrión se lleva un 10% y la app el otro 10%."),
+        }
+
+    def _h_ganancias(self, correo: str = "") -> dict:
+        with self.juego.candado:
+            if (correo or "").strip():
+                g = self.juego.salas.ganancias(correo.strip().lower())
+                return {"anfitrion": g["correo"], "salas": g["salas"], "partidas": g["partidas"],
+                        "botes": g["botes_texto"], "comision_anfitrion": g["anfitrion_texto"],
+                        "queda_a_la_app": g["app_texto"]}
+            e = self.juego.salas.economia()
+        return {
+            "partidas_terminadas": e["partidas"],
+            "botes_totales": e["botes_texto"],
+            "premios_pagados": e["premios_texto"],
+            "comisiones_a_anfitriones": e["comisiones_texto"],
+            "ganancia_de_la_app": e["app_texto"],
+            "reparto": "El ganador cobra el 80% del bote; la app se queda el 20% (10% de ese "
+                       "20% es para el anfitrión si la sala es de un jugador).",
         }
 
     def _h_buscar_jugador(self, correo: str) -> dict:

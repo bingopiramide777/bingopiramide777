@@ -86,6 +86,30 @@ PATRONES: dict[str, set[tuple[int, int]]] = {
 # El centro libre cuenta para cualquier patrón que lo incluya.
 CENTRO = LIBRE
 
+# Modos de juego, como en Juegoactivo: Normal, Cartón Lleno y Competencia.
+# Cada modo admite unos patrones. Cuantos más patrones, antes se canta bingo.
+MODOS: dict[str, tuple[str, ...]] = {
+    # Normal: una línea, columna o diagonal. El bingo de siempre.
+    "normal": ("linea_h1", "linea_h2", "linea_h3", "linea_h4", "linea_h5",
+               "linea_v1", "linea_v2", "linea_v3", "linea_v4", "linea_v5",
+               "diagonal", "diagonal_inv"),
+    # Cartón lleno: hay que completar los 25 números. La partida más larga.
+    "carton_lleno": ("carton_lleno",),
+    # Competencia: además de líneas y diagonales valen las esquinas, así que
+    # salta antes. Partidas rápidas.
+    "competencia": ("linea_h1", "linea_h2", "linea_h3", "linea_h4", "linea_h5",
+                    "linea_v1", "linea_v2", "linea_v3", "linea_v4", "linea_v5",
+                    "diagonal", "diagonal_inv", "esquinas"),
+}
+
+
+def patrones_del_modo(modo: str) -> tuple[str, ...]:
+    """Patrones que valen en un modo de juego."""
+    try:
+        return MODOS[modo]
+    except KeyError:
+        raise ErrorDeBingo(f"No existe el modo de juego {modo!r}.") from None
+
 
 def patron_cumplido(carton: Carton, nombre: str) -> bool:
     """¿Tiene el cartón el patrón completo (con las bolas ya marcadas)?"""

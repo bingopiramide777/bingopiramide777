@@ -29,7 +29,28 @@ Diseño: morado + dorado + verde, portada con el puente sobre el lago de Maracai
   `almacen.cerrar()` en `tearDown` (si no, SQLite se queja al cerrar).
 
 ## Pruebas
-161 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
+196 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
+
+## Salas y economía del bingo (2026-11-07)
+- **Modelo copiado de Juegoactivo** (verificado en su web): 3 salas de la casa (Dubai/Roma/
+  Estelar) con precio propio, 3 modos (Normal/Cartón lleno/Competencia) y **salas
+  personalizadas de jugadores con 10% de comisión para el anfitrión**. Pago Móvil y
+  transferencia; ganancias acreditadas "tras las verificaciones"; retiros a los 4 días.
+- **Reparto** (`nucleo/salas.py`, `reparto_del_bote`): ganador **80%** siempre; el 20%
+  restante es de la app, y en sala de jugador la mitad (10% del bote) va al anfitrión.
+  El 10% sale del margen de la app, NO del premio: el ganador cobra igual en cualquier sala.
+  `app = bote - premio - anfitrion` (por construcción cuadra; el resto del redondeo es del
+  ganador). Probado con 20.000 botes en `test_salas.py`.
+- Salas: máx **3 por jugador**, cartón entre Bs 1 y Bs 500, nombres de la casa reservados.
+  El anfitrión cobra su comisión **en el momento** vía `resolver_cantada`.
+- `MesaBingo(repartidor=...)`: el reparto se inyecta; el reparto devuelve `anfitrion_correo`
+  (no un atributo aparte en la mesa — ese diseño falló y se cambió).
+- La partida es **por sala**: `partida(sala_id)`, `almacen.partida_abierta_de(sala)`,
+  columna `sala` en `partidas` (con migración). Salas de fábrica en `SALAS_INICIALES`.
+- Rutas: `GET /api/salas`, `/api/mis-salas`, `/api/admin/salas`; `POST /api/sala/crear`,
+  `/api/sala/cerrar`, `/api/sala/entrar`. `/api/config` expone `modos`.
+- UI: selector de salas + sección "Tus salas" en `index.html`; pestaña **Ganancias** en
+  `admin.html`. Herramientas de Glenis: `listar_salas`, `ganancias`.
 
 ## Glenis IA + depósitos (2026-11-07)
 - **Glenis IA** (`nucleo/glenis.py` + `nucleo/glenis_herramientas.py`): chat en el panel

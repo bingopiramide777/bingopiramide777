@@ -392,6 +392,61 @@ async function hablarConGlenis(texto) {
   }
 }
 
+/* --- ganancias y salas --- */
+
+async function cargarGanancias() {
+  const caja = $("#tarjetas-ganancias");
+  const cuerpo = $("#cuerpo-salas");
+  if (!caja) return;
+  try {
+    const r = await get("/api/admin/resumen");
+    const e = r.economia || {};
+    const tarjetas = [
+      ["Partidas terminadas", e.partidas || 0, "jugadas"],
+      ["Botes totales", e.botes_texto, "apostado en cartones"],
+      ["Premios pagados", e.premios_texto, "a los ganadores (80%)"],
+      ["Comisiones a anfitriones", e.comisiones_texto, "salas de jugadores (10%)"],
+      ["Ganancia de la app", e.app_texto, "lo que queda a la casa"],
+    ];
+    caja.innerHTML = tarjetas.map(([t, v, p]) => `
+      <div class="tarjeta-resumen">
+        <p class="tarjeta-resumen__titulo">${t}</p>
+        <p class="tarjeta-resumen__valor">${v}</p>
+        <p class="tarjeta-resumen__pie">${p}</p>
+      </div>`).join("");
+  } catch (err) { avisar(err.message, "error"); }
+
+  if (!cuerpo) return;
+  try {
+    const res = await get("/api/admin/salas");
+    if (!res.salas.length) {
+      cuerpo.innerHTML = '<tr><td colspan="6" class="vacio">No hay salas.</td></tr>';
+      return;
+    }
+    cuerpo.innerHTML = res.salas.map((s) => `
+      <tr>
+        <td><strong>${s.nombre}</strong></td>
+        <td>${s.dueno || "La casa"}</td>
+        <td>${s.modo}</td>
+        <td>${s.precio_texto}</td>
+        <td><span class="etiqueta etiqueta--${s.activa ? "acreditado" : "rechazado"}">${
+          s.activa ? "abierta" : "cerrada"}</span></td>
+        <td>${s.activa && s.dueno
+          ? `<button class="boton boton--fantasma boton--mini" data-cerrar-sala="${s.id}">Cerrar</button>`
+          : ""}</td>
+      </tr>`).join("");
+    cuerpo.querySelectorAll("[data-cerrar-sala]").forEach((b) =>
+      (b.onclick = async () => {
+        if (!confirm("¿Cerrar esta sala de jugador?")) return;
+        try {
+          await post("/api/sala/cerrar", { sala: b.dataset.cerrarSala });
+          avisar("Sala cerrada.", "bien");
+          cargarGanancias();
+        } catch (err) { avisar(err.message, "error"); }
+      }));
+  } catch (err) { /* nada */ }
+}
+
 /* --- partidas y movimientos --- */
 
 async function cargarPartidas() {
@@ -440,7 +495,7 @@ async function cargarTodo() {
     if (!s.admin) throw new Error("Esa cuenta no es de administración.");
     pintarSesion(localStorage.getItem("bp777_correo"));
     await Promise.all([cargarResumen(), cargarDepositos(), cargarRetiros(), cargarJugadores(),
-                       cargarPartidas(), cargarMovimientos(), cargarGlenis()]);
+                       cargarPartidas(), cargarMovimientos(), cargarGlenis(), cargarGanancias()]);
   } catch (err) {
     avisar(err.message, "error");
     localStorage.removeItem(CLAVE_TOKEN);
