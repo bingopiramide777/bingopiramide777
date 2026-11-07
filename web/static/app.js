@@ -108,32 +108,122 @@ function pintarSesion() {
 
 /* --- diálogo de acceso --- */
 
+let preguntas = [];
+
 function abrirAcceso(modo) {
-  const esEntrar = modo === "entrar";
+  const cabeceras = {
+    entrar: ["Entrar", "Tu correo y tu contraseña. Nada de redes sociales."],
+    registrar: ["Crear cuenta", "Regístrate con tu correo. La contraseña, mínimo 8 caracteres."],
+    recuperar: ["Recuperar la cuenta", "Te mandamos un código al correo para poner una contraseña nueva."],
+  };
+  const [titulo, ayuda] = cabeceras[modo] || cabeceras.entrar;
+
+  const campos = {
+    entrar: `
+      <label>Correo<input type="email" name="correo" required placeholder="tu@correo.com" autocomplete="email"></label>
+      <label>Contraseña<input type="password" name="clave" required placeholder="••••••••" autocomplete="current-password"></label>`,
+    registrar: `
+      <label>Nombre<input type="text" name="nombre" placeholder="Cómo te llamas"></label>
+      <label>Correo<input type="email" name="correo" required placeholder="tu@correo.com" autocomplete="email"></label>
+      <label>Contraseña<input type="password" name="clave" required minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
+      <label>Pregunta secreta (para recuperar la cuenta)
+        <select name="pregunta"><option value="">— Sin pregunta —</option></select>
+      </label>
+      <label>Tu respuesta<input type="text" name="respuesta" placeholder="Solo la sabes tú"></label>`,
+    recuperar: `
+      <label>Correo<input type="email" name="correo" required placeholder="tu@correo.com" autocomplete="email"></label>
+      <button class="boton boton--principal" type="submit" id="btn-enviar-codigo">Enviar código</button>
+      <div id="paso-codigo" hidden>
+        <label>Código de 6 cifras<input type="text" name="codigo" inputmode="numeric" maxlength="6" placeholder="000000"></label>
+        <label>Contraseña nueva<input type="password" name="clave" minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
+        <button class="boton boton--principal" type="submit" id="btn-cambiar-codigo">Cambiar contraseña</button>
+      </div>
+      <p class="ayuda">¿Prefieres tu pregunta secreta?
+        <button type="button" class="enlace" id="usar-pregunta">Usar la pregunta</button></p>
+      <div id="paso-pregunta" hidden>
+        <label>Pregunta<input type="text" name="pregunta_mostrada" readonly></label>
+        <label>Tu respuesta<input type="text" name="respuesta" placeholder="Tu respuesta"></label>
+        <label>Contraseña nueva<input type="password" name="clave2" minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
+        <button class="boton boton--principal" type="submit" id="btn-cambiar-pregunta">Cambiar contraseña</button>
+      </div>`,
+  };
+
   $("#dialogo-contenido").innerHTML = `
-    <h2>${esEntrar ? "Entrar" : "Crear cuenta"}</h2>
-    <p style="color:var(--gris);font-size:.9rem">
-      ${esEntrar ? "Tu correo y tu contraseña. Nada de redes sociales."
-                 : "Regístrate con tu correo. La contraseña, mínimo 8 caracteres."}
-    </p>
-    <form id="form-acceso">
-      ${esEntrar ? "" : '<label>Nombre<input type="text" name="nombre" placeholder="Cómo te llamas"></label>'}
-      <label>Correo<input type="email" name="correo" required placeholder="tu@correo.com"></label>
-      <label>Contraseña<input type="password" name="clave" required minlength="8" placeholder="••••••••"></label>
-      <button class="boton boton--principal" type="submit">${esEntrar ? "Entrar" : "Crear cuenta"}</button>
-    </form>
+    <h2>${titulo}</h2>
+    <p style="color:var(--gris);font-size:.9rem">${ayuda}</p>
+    <form id="form-acceso">${campos[modo]}</form>
     <p class="dialogo__cambio">
-      ${esEntrar ? "¿No tienes cuenta?" : "¿Ya tienes cuenta?"}
-      <button id="cambiar-modo">${esEntrar ? "Créala" : "Entra"}</button>
+      ${modo === "entrar" ? '¿No tienes cuenta? <button id="ir-registrar">Créala</button> · <button id="ir-recuperar">Olvidé mi contraseña</button>'
+        : '<button id="ir-entrar">Volver a entrar</button>'}
     </p>`;
   $("#dialogo").hidden = false;
   $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
-  $("#cambiar-modo").onclick = () => abrirAcceso(esEntrar ? "registrar" : "entrar");
+  const ir = (sel, m) => { const b = $(sel); if (b) b.onclick = () => abrirAcceso(m); };
+  ir("#ir-registrar", "registrar");
+  ir("#ir-entrar", "entrar");
+  ir("#ir-recuperar", "recuperar");
+
+  if (modo === "registrar") {
+    const sel = $("#form-acceso select[name=pregunta]");
+    preguntas.forEach((p) => {
+      const o = document.createElement("option");
+      o.value = p; o.textContent = p;
+      sel.appendChild(o);
+    });
+  }
+
+  if (modo === "recuperar") {
+    const form = $("#form-acceso");
+    const correoDe = () => form.querySelector("[name=correo]").value.trim();
+    $("#btn-enviar-codigo").onclick = async (e) => {
+      e.preventDefault();
+      if (!correoDe()) return avisar("Escribe tu correo.", "error");
+      try {
+        const res = await post("/api/recuperar/codigo", { correo: correoDe() });
+        $("#paso-codigo").hidden = false;
+        avisar(res.mensaje, res.enviado ? "bien" : "");
+      } catch (err) { avisar(err.message, "error"); }
+    };
+    $("#btn-cambiar-codigo").onclick = async (e) => {
+      e.preventDefault();
+      const codigo = form.querySelector("[name=codigo]").value.trim();
+      const clave = form.querySelector("#paso-codigo [name=clave]").value;
+      try {
+        const res = await post("/api/recuperar/codigo/cambiar", { correo: correoDe(), codigo, clave });
+        $("#dialogo").hidden = true;
+        avisar(res.mensaje, "bien");
+        abrirAcceso("entrar");
+      } catch (err) { avisar(err.message, "error"); }
+    };
+    $("#usar-pregunta").onclick = async (e) => {
+      e.preventDefault();
+      if (!correoDe()) return avisar("Escribe tu correo primero.", "error");
+      try {
+        const res = await post("/api/recuperar/pregunta", { correo: correoDe() });
+        form.querySelector("[name=pregunta_mostrada]").value = res.pregunta;
+        $("#paso-pregunta").hidden = false;
+      } catch (err) { avisar(err.message, "error"); }
+    };
+    $("#btn-cambiar-pregunta").onclick = async (e) => {
+      e.preventDefault();
+      const respuesta = form.querySelector("#paso-pregunta [name=respuesta]").value;
+      const clave = form.querySelector("#paso-pregunta [name=clave2]").value;
+      try {
+        const res = await post("/api/recuperar/pregunta/cambiar",
+                               { correo: correoDe(), respuesta, clave });
+        $("#dialogo").hidden = true;
+        avisar(res.mensaje, "bien");
+        abrirAcceso("entrar");
+      } catch (err) { avisar(err.message, "error"); }
+    };
+    return;
+  }
+
   $("#form-acceso").onsubmit = async (e) => {
     e.preventDefault();
     const datos = Object.fromEntries(new FormData(e.target));
     try {
-      if (esEntrar) {
+      if (modo === "entrar") {
         const res = await post("/api/entrar", datos);
         token = res.token;
         localStorage.setItem(CLAVE_TOKEN, token);
@@ -321,6 +411,7 @@ let configRetiro = null;
 async function cargarConfigRetiro() {
   try {
     configRetiro = await get("/api/config");
+    preguntas = configRetiro.preguntas || [];
     const sel = $("#retiro-metodo");
     sel.innerHTML = "";
     configRetiro.metodos.forEach((m) => {

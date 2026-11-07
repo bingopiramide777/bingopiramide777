@@ -447,3 +447,21 @@ input[type="text"], input[type="email"], input[type="password"], select {
   .mesa__izq { order: 2; }
   .mesa__der { order: 1; }
 }
+
+/* Botón que parece un enlace de texto */
+.enlace {
+  background: none; border: 0; padding: 0; font: inherit;
+  color: var(--dorado); text-decoration: underline; cursor: pointer;
+}
+.enlace:hover { color: var(--dorado-claro); }
+.dialogo__cambio .enlace { font-weight: 700; }
+
+/* Clave temporal que el admin pasa al jugador */
+.clave-temporal {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 1.35rem; font-weight: 800; letter-spacing: .06em;
+  color: var(--verde); background: rgba(0, 0, 0, .4);
+  border: 1px dashed rgba(47, 191, 113, .5); border-radius: 10px;
+  padding: .8rem 1rem; margin: .8rem 0; text-align: center;
+  user-select: all; -webkit-user-select: all;
+}

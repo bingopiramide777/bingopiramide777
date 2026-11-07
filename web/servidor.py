@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 from bingo import MesaBingo, Sala
 from nucleo import Almacen, ErrorDeDinero, ErrorDeMonedero, Monedero, Usuarios, a_centimos, a_texto
+from nucleo.correo import Correo, ErrorDeCorreo
 from nucleo.retiros import ErrorDeRetiro, Retiros
 
 RAIZ_WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -36,6 +37,7 @@ class Juego:
         self.usuarios = Usuarios(self.almacen)
         self.monedero = Monedero(self.almacen)
         self.retiros = Retiros(self.almacen, self.monedero)
+        self.correo = Correo()
         self.mesa = MesaBingo(sala=Sala(), monedero=self.monedero)
         self._partida = None
         self.correo_admin = (correo_admin or os.environ.get("BINGO_ADMIN_EMAIL")
@@ -226,7 +228,9 @@ class Manejador(BaseHTTPRequestHandler):
             return
 
         if ruta == "/api/config":
+            from nucleo.usuarios import PREGUNTAS
             self._json({
+                "preguntas": list(PREGUNTAS),
                 "retiro_minimo": self.juego.retiros.config.minimo,
                 "retiro_minimo_texto": a_texto(self.juego.retiros.config.minimo),
                 "retiro_tope_texto": a_texto(self.juego.retiros.config.tope_diario),
@@ -284,6 +288,7 @@ class Manejador(BaseHTTPRequestHandler):
             with self.juego.candado:
                 lista = [{"correo": u.correo, "nombre": u.nombre, "rol": u.rol,
                           "activo": u.activo, "creado": u.creado,
+                          "pregunta": bool(self.juego.usuarios.pregunta_de(u.correo)),
                           "saldo": self.juego.monedero.saldo(u.correo),
                           "saldo_texto": a_texto(self.juego.monedero.saldo(u.correo))}
                          for u in self.juego.usuarios.usuarios()]
@@ -353,7 +358,8 @@ class Manejador(BaseHTTPRequestHandler):
             try:
                 with self.juego.candado:
                     self.juego.usuarios.registrar(datos.get("correo", ""), datos.get("clave", ""),
-                                                  datos.get("nombre", ""))
+                                                  datos.get("nombre", ""), "jugador",
+                                                  datos.get("pregunta", ""), datos.get("respuesta", ""))
                 self._json({"ok": True, "mensaje": "Cuenta creada. Ya puedes entrar."})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
@@ -466,6 +472,51 @@ class Manejador(BaseHTTPRequestHandler):
                 self._error(str(exc))
             return
 
+        if ruta == "/api/recuperar/pregunta":
+            pregunta = self.juego.usuarios.pregunta_de(datos.get("correo", ""))
+            # Si no hay pregunta, se responde igual y el paso siguiente fallará.
+            # Así nadie usa esta pantalla para averiguar qué correos existen.
+            self._json({"ok": True, "pregunta": pregunta or "Escribe tu correo y pide un código."})
+            return
+
+        if ruta == "/api/recuperar/pregunta/cambiar":
+            try:
+                with self.juego.candado:
+                    self.juego.usuarios.cambiar_con_respuesta(
+                        datos.get("correo", ""), datos.get("respuesta", ""), datos.get("clave", ""))
+                self._json({"ok": True, "mensaje": "Contraseña cambiada. Ya puedes entrar."})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/recuperar/codigo":
+            try:
+                with self.juego.candado:
+                    codigo = self.juego.usuarios.pedir_codigo(datos.get("correo", ""))
+                    enviado = False
+                    if codigo:
+                        try:
+                            enviado = self.juego.correo.enviar_codigo(
+                                datos.get("correo", "").strip().lower(), codigo, 15)
+                        except ErrorDeCorreo:
+                            enviado = False
+                # Respuesta siempre igual: no se revela si el correo existe.
+                self._json({"ok": True, "enviado": enviado,
+                            "mensaje": "Si ese correo tiene cuenta, te hemos enviado un código."})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/recuperar/codigo/cambiar":
+            try:
+                with self.juego.candado:
+                    self.juego.usuarios.cambiar_con_codigo(
+                        datos.get("correo", ""), datos.get("codigo", ""), datos.get("clave", ""))
+                self._json({"ok": True, "mensaje": "Contraseña cambiada. Ya puedes entrar."})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
         # --- administración ---
 
         if ruta == "/api/admin/retiro":
@@ -505,6 +556,27 @@ class Manejador(BaseHTTPRequestHandler):
                     self.juego.monedero.ajustar(correo, centimos, f"ajuste de {admin}")
                     saldo = self.juego.monedero.saldo(correo)
                 self._json({"ok": True, "saldo": saldo, "saldo_texto": a_texto(saldo)})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/restablecer":
+            admin = self._admin()
+            if not admin:
+                self._error("Solo para administración.", 403)
+                return
+            try:
+                correo = (datos.get("correo") or "").strip().lower()
+                if not self.juego.usuarios.usuario(correo):
+                    raise ErrorDeRetiro("Ese usuario no existe.")
+                clave = (datos.get("clave") or "").strip()
+                if not clave:
+                    # Clave temporal legible, para pasársela al jugador.
+                    clave = "Pepa-" + secrets.token_hex(3)
+                with self.juego.candado:
+                    self.juego.usuarios.restablecer_por_admin(correo, clave)
+                self._json({"ok": True, "clave": clave,
+                            "mensaje": "Contraseña cambiada y sesiones cerradas. Pásasela al jugador."})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
             return

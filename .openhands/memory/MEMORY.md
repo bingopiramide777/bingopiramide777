@@ -29,7 +29,19 @@ Diseño: morado + dorado + verde, portada con el puente sobre el lago de Maracai
   `almacen.cerrar()` en `tearDown` (si no, SQLite se queja al cerrar).
 
 ## Pruebas
-87 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
+114 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
+
+## Recuperación de cuenta (2026-11-07)
+Tres vías: **código por correo** (6 cifras, 15 min, 1 uso, 5 intentos, tope 3/hora),
+**pregunta secreta** (lista cerrada `PREGUNTAS` en `usuarios.py`; respuesta normalizada
+sin tildes/mayúsculas) y **restablecer desde el panel** (`/api/admin/restablecer`,
+genera `Pepa-xxxxxx`). En las tres, `cambiar_clave()` llama a
+`almacen.borrar_sesiones_de()`: **cierra TODAS las sesiones de la cuenta**.
+- Correo: `nucleo/correo.py` lee `GMAIL_USER` + `GMAIL_APP_PASSWORD` (contraseña de
+  **aplicación**, no la normal). Sin configurar **no miente**: devuelve False, imprime
+  el código por consola. Necesita `PYTHONUNBUFFERED=1` para verlo en los logs.
+- Anti-enumeración: pedir código de un correo inexistente devuelve lo mismo.
+- Las rutas `/api/recuperar/*` van en **do_POST**, no en do_GET.
 
 ## Móvil primero
 El usuario trabaja desde el teléfono. Botones ≥44 px, `font-size:16px` en inputs

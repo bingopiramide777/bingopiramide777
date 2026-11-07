@@ -75,6 +75,17 @@ CREATE TABLE IF NOT EXISTS partidas (
     terminada      REAL
 );
 
+CREATE TABLE IF NOT EXISTS codigos (
+    id       TEXT PRIMARY KEY,
+    correo   TEXT NOT NULL,
+    huella   TEXT NOT NULL,
+    intentos INTEGER NOT NULL DEFAULT 0,
+    usado    INTEGER NOT NULL DEFAULT 0,
+    creado   REAL NOT NULL,
+    caduca   REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_codigos_correo ON codigos(correo, usado, creado);
+
 CREATE TABLE IF NOT EXISTS cartones (
     id       TEXT PRIMARY KEY,
     partida  TEXT NOT NULL,
@@ -97,6 +108,21 @@ class Almacen:
         self._con.execute("PRAGMA foreign_keys=ON")
         self._con.executescript(ESQUEMA)
         self._con.commit()
+        self._migrar()
+
+    def _migrar(self) -> None:
+        """Añade columnas a bases de datos creadas antes de que existieran.
+
+        Sin esto, actualizar el programa rompería la base de datos de quien ya
+        lo tenía funcionando, y perdería las cuentas.
+        """
+        columnas = {f["name"] for f in self._todos("PRAGMA table_info(usuarios)")}
+        nuevas = (("pregunta", "TEXT NOT NULL DEFAULT ''"),
+                  ("respuesta_huella", "TEXT NOT NULL DEFAULT ''"))
+        for nombre, definicion in nuevas:
+            if nombre not in columnas:
+                with self.transaccion() as c:
+                    c.execute(f"ALTER TABLE usuarios ADD COLUMN {nombre} {definicion}")
 
     @contextmanager
     def transaccion(self) -> Iterator[sqlite3.Connection]:
@@ -129,13 +155,20 @@ class Almacen:
         with self.transaccion() as c:
             c.execute("INSERT OR IGNORE INTO cuentas (correo, centimos) VALUES (?, 0)", (correo,))
 
-    def crear_usuario(self, correo: str, huella: str, nombre: str, rol: str, creado: float) -> None:
+    def crear_usuario(self, correo: str, huella: str, nombre: str, rol: str, creado: float,
+                      pregunta: str = "", respuesta_huella: str = "") -> None:
         with self.transaccion() as c:
             c.execute(
-                "INSERT INTO usuarios (correo, huella, nombre, rol, creado) VALUES (?,?,?,?,?)",
-                (correo, huella, nombre, rol, creado),
+                "INSERT INTO usuarios (correo, huella, nombre, rol, creado, pregunta, respuesta_huella)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (correo, huella, nombre, rol, creado, pregunta, respuesta_huella),
             )
             c.execute("INSERT INTO cuentas (correo, centimos) VALUES (?, 0)", (correo,))
+
+    def guardar_pregunta(self, correo: str, pregunta: str, respuesta_huella: str) -> None:
+        with self.transaccion() as c:
+            c.execute("UPDATE usuarios SET pregunta = ?, respuesta_huella = ? WHERE correo = ?",
+                      (pregunta, respuesta_huella, correo))
 
     def usuario(self, correo: str) -> sqlite3.Row | None:
         return self._uno("SELECT * FROM usuarios WHERE correo = ?", (correo,))
@@ -217,6 +250,16 @@ class Almacen:
         with self.transaccion() as c:
             c.execute("DELETE FROM sesiones WHERE token = ?", (token,))
 
+    def borrar_sesiones_de(self, correo: str) -> int:
+        """Cierra todas las sesiones de una cuenta.
+
+        Se usa al cambiar la contraseña: si alguien te había robado la cuenta,
+        con esto se queda fuera aunque tú cambies la clave.
+        """
+        with self.transaccion() as c:
+            cur = c.execute("DELETE FROM sesiones WHERE correo = ?", (correo,))
+            return cur.rowcount
+
     def limpiar_sesiones_caducadas(self, ahora: float) -> int:
         with self.transaccion() as c:
             cur = c.execute("DELETE FROM sesiones WHERE caduca < ?", (ahora,))
@@ -276,6 +319,40 @@ class Almacen:
             (correo, desde),
         )
         return int(fila["t"]) if fila else 0
+
+    # -- códigos de recuperación --
+
+    def guardar_codigo(self, id_: str, correo: str, huella: str, creado: float, caduca: float) -> None:
+        with self.transaccion() as c:
+            # Un código nuevo anula los anteriores: solo vale el último.
+            c.execute("UPDATE codigos SET usado = 1 WHERE correo = ? AND usado = 0", (correo,))
+            c.execute("INSERT INTO codigos (id, correo, huella, creado, caduca) VALUES (?,?,?,?,?)",
+                      (id_, correo, huella, creado, caduca))
+
+    def codigo_pendiente(self, correo: str) -> sqlite3.Row | None:
+        return self._uno(
+            "SELECT * FROM codigos WHERE correo = ? AND usado = 0 ORDER BY creado DESC LIMIT 1",
+            (correo,),
+        )
+
+    def codigos_recientes(self, correo: str, desde: float) -> int:
+        fila = self._uno("SELECT COUNT(*) AS n FROM codigos WHERE correo = ? AND creado >= ?",
+                         (correo, desde))
+        return int(fila["n"]) if fila else 0
+
+    def usar_codigo(self, id_: str) -> None:
+        with self.transaccion() as c:
+            c.execute("UPDATE codigos SET usado = 1 WHERE id = ?", (id_,))
+
+    def fallar_codigo(self, id_: str) -> int:
+        """Suma un intento fallido y devuelve el total. Si se pasa, se anula."""
+        with self.transaccion() as c:
+            c.execute("UPDATE codigos SET intentos = intentos + 1 WHERE id = ?", (id_,))
+            fila = c.execute("SELECT intentos FROM codigos WHERE id = ?", (id_,)).fetchone()
+            intentos = int(fila["intentos"]) if fila else 0
+            if intentos >= 5:
+                c.execute("UPDATE codigos SET usado = 1 WHERE id = ?", (id_,))
+            return intentos
 
     # -- partidas --
 

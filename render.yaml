@@ -10,6 +10,10 @@ services:
         value: bingopiramide777@gmail.com
       - key: BINGO_ADMIN_CLAVE
         sync: false
+      - key: GMAIL_USER
+        value: bingopiramide777@gmail.com
+      - key: GMAIL_APP_PASSWORD
+        sync: false
       - key: BINGO_DB
         value: /var/data/bingo777.db
     disk:

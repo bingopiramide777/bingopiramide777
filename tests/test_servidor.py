@@ -180,6 +180,63 @@ class ServidorTest(unittest.TestCase):
                                                "detalles": "Banco X 123456"}, token)
         self.assertEqual(estado, 400)
 
+    # -- recuperación de cuenta --
+
+    def test_recuperacion_con_pregunta_secreta(self):
+        from nucleo.usuarios import PREGUNTAS
+        self.pedir("/api/registro", {"correo": "ana@correo.com", "clave": "miClaveSegura1",
+                                     "pregunta": PREGUNTAS[0], "respuesta": "Firulais"})
+        _, p = self.pedir("/api/recuperar/pregunta", {"correo": "ana@correo.com"})
+        self.assertEqual(p["pregunta"], PREGUNTAS[0])
+        estado, _ = self.pedir("/api/recuperar/pregunta/cambiar",
+                               {"correo": "ana@correo.com", "respuesta": "firulais",
+                                "clave": "ClaveNueva123"})
+        self.assertEqual(estado, 200)
+        estado, _ = self.pedir("/api/entrar", {"correo": "ana@correo.com", "clave": "ClaveNueva123"})
+        self.assertEqual(estado, 200)
+
+    def test_recuperacion_con_codigo(self):
+        self.usuario("ana@correo.com")
+        estado, res = self.pedir("/api/recuperar/codigo", {"correo": "ana@correo.com"})
+        self.assertEqual(estado, 200)
+        # Sin correo configurado, no se envía, pero tampoco se miente.
+        self.assertFalse(res["enviado"])
+        self.assertIn("Si ese correo", res["mensaje"])
+        # El código sí se ha generado en la base: se puede usar.
+        codigo = self.juego.almacen.codigo_pendiente("ana@correo.com")
+        self.assertIsNotNone(codigo)
+
+    def test_pedir_codigo_de_correo_inexistente_responde_igual(self):
+        _, a = self.pedir("/api/recuperar/codigo", {"correo": "nadie@correo.com"})
+        _, b = self.pedir("/api/recuperar/codigo", {"correo": "ana@correo.com"})
+        self.assertEqual(a["mensaje"], b["mensaje"])
+        self.assertEqual(a["enviado"], b["enviado"])
+
+    def test_cambiar_la_clave_cierra_las_sesiones(self):
+        token = self.usuario("ana@correo.com")
+        self.pedir("/api/registro", {"correo": "ana@correo.com", "clave": "x"})  # ya existe
+        # La sesión abierta funciona.
+        self.assertEqual(self.pedir("/api/saldo", token=token)[0], 200)
+        with self.juego.candado:
+            self.juego.usuarios.restablecer_por_admin("ana@correo.com", "ClaveNueva123")
+        # Y ahora queda cerrada.
+        self.assertEqual(self.pedir("/api/saldo", token=token)[0], 401)
+
+    def test_el_admin_restablece_la_clave_de_un_jugador(self):
+        self.usuario("ana@correo.com")
+        at = self.admin()
+        estado, res = self.pedir("/api/admin/restablecer", {"correo": "ana@correo.com"}, at)
+        self.assertEqual(estado, 200)
+        self.assertTrue(res["clave"])
+        # La clave temporal funciona.
+        estado, _ = self.pedir("/api/entrar", {"correo": "ana@correo.com", "clave": res["clave"]})
+        self.assertEqual(estado, 200)
+
+    def test_solo_el_admin_restablece_claves(self):
+        token = self.usuario("ana@correo.com")
+        estado, _ = self.pedir("/api/admin/restablecer", {"correo": "ana@correo.com"}, token)
+        self.assertEqual(estado, 403)
+
     # -- administración --
 
     def test_solo_el_admin_entra_al_panel(self):

@@ -189,15 +189,17 @@ function pintarJugadores() {
       <td>${j.rol === "admin" ? '<span class="etiqueta-rol">admin</span>' : "jugador"}</td>
       <td><strong>${j.saldo_texto}</strong></td>
       <td>${fecha(j.creado)}</td>
-      <td>${j.activo ? "activo" : "desactivado"}</td>
+      <td>${j.activo ? "activo" : "desactivado"}${j.pregunta ? ' · <span class="etiqueta-rol">con pregunta</span>' : ""}</td>
       <td class="acciones-celda">
         <button class="boton boton--fantasma boton--mini" data-ajuste="${j.correo}">Ajustar saldo</button>
+        <button class="boton boton--fantasma boton--mini" data-clave="${j.correo}">Restablecer clave</button>
         <button class="boton boton--fantasma boton--mini" data-estado="${j.correo}" data-activo="${j.activo}">
           ${j.activo ? "Desactivar" : "Activar"}
         </button>
       </td>
     </tr>`).join("");
   cuerpo.querySelectorAll("[data-ajuste]").forEach((b) => (b.onclick = () => ajustarSaldo(b.dataset.ajuste)));
+  cuerpo.querySelectorAll("[data-clave]").forEach((b) => (b.onclick = () => restablecerClave(b.dataset.clave)));
   cuerpo.querySelectorAll("[data-estado]").forEach((b) => {
     b.onclick = async () => {
       try {
@@ -233,6 +235,40 @@ function ajustarSaldo(correo) {
       $("#dialogo").hidden = true;
       avisar("Saldo actualizado: " + res.saldo_texto, "bien");
       cargarTodo();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+}
+
+function restablecerClave(correo) {
+  $("#dialogo-contenido").innerHTML = `
+    <h2>Restablecer contraseña</h2>
+    <p style="color:var(--gris);font-size:.9rem">${correo}</p>
+    <p style="font-size:.9rem">Se pondrá una contraseña nueva y se cerrarán <strong>todas</strong>
+       sus sesiones abiertas. Pásasela al jugador por WhatsApp.</p>
+    <form id="form-clave">
+      <label>Contraseña nueva (déjalo vacío para generar una)
+        <input type="text" name="clave" placeholder="Automática">
+      </label>
+      <button class="boton boton--principal" type="submit">Restablecer</button>
+    </form>`;
+  $("#dialogo").hidden = false;
+  $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
+  $("#form-clave").onsubmit = async (e) => {
+    e.preventDefault();
+    const clave = new FormData(e.target).get("clave") || "";
+    try {
+      const res = await post("/api/admin/restablecer", { correo, clave });
+      $("#dialogo-contenido").innerHTML = `
+        <h2>Contraseña restablecida</h2>
+        <p style="color:var(--gris);font-size:.9rem">${correo}</p>
+        <p>Pásale esta contraseña al jugador. No se vuelve a mostrar.</p>
+        <p class="clave-temporal">${res.clave}</p>
+        <button class="boton boton--brillo boton--alto" id="copiar-clave">Copiar</button>
+        <p class="ayuda">Sus sesiones abiertas quedaron cerradas.</p>`;
+      $("#copiar-clave").onclick = async () => {
+        try { await navigator.clipboard.writeText(res.clave); avisar("Copiada.", "bien"); }
+        catch (err) { avisar("Cópiala a mano.", "error"); }
+      };
     } catch (err) { avisar(err.message, "error"); }
   };
 }

@@ -57,7 +57,8 @@ nucleo/          lo común a todo
   money.py       conversión a céntimos, formato en bolívares
   almacen.py     base de datos SQLite (todo lo que sobrevive al reinicio)
   monedero.py    saldos y movimientos, siempre en céntimos
-  usuarios.py    registro, contraseñas, roles y sesiones
+  usuarios.py    registro, contraseñas, roles, sesiones y recuperación
+  correo.py      envío de correos (contraseña de aplicación de Gmail)
   retiros.py     pedir, pagar y rechazar retiros
 bingo/           el juego
   cartones.py    cartón, bombo y patrones de premio
@@ -66,8 +67,41 @@ bingo/           el juego
 web/             servidor e interfaz
   servidor.py    http.server + API
   static/        interfaz del jugador y panel de administración
-tests/           pruebas (87)
+tests/           pruebas (114)
 ```
+
+## Recuperación de cuenta
+
+Si un jugador olvida la contraseña, tiene **tres caminos**:
+
+1. **Código por correo.** Escribe su correo, le llega un código de 6 cifras y pone
+   una contraseña nueva. El código caduca en 15 minutos, solo sirve una vez y
+   aguanta 5 intentos fallidos.
+2. **Pregunta secreta.** Si la eligió al registrarse, responde y pone una nueva.
+   La respuesta se compara sin mayúsculas, sin tildes y sin espacios de sobra.
+3. **El administrador.** En el panel, botón *Restablecer clave*: genera una
+   contraseña temporal y se la pasas al jugador.
+
+**En los tres casos se cierran todas las sesiones abiertas de esa cuenta.** Es lo
+importante: si alguien te había robado la cuenta, cambiar la contraseña sin cerrar
+sesiones no lo echa. Con esto, sí.
+
+### Configurar el correo
+
+El código por correo necesita una **contraseña de aplicación** de Gmail (no tu
+contraseña normal). Se genera en `myaccount.google.com/apppasswords` (hace falta
+tener activada la verificación en dos pasos).
+
+En Render, añade estas variables de entorno:
+
+| Variable | Valor |
+|---|---|
+| `GMAIL_USER` | `bingopiramide777@gmail.com` |
+| `GMAIL_APP_PASSWORD` | las 16 letras que te da Google |
+
+**Sin esas variables la aplicación no miente**: el correo no se envía, el código
+se imprime por consola y la pantalla avisa. Las otras dos formas de recuperar
+siguen funcionando igual.
 
 ## Panel de administración
 
