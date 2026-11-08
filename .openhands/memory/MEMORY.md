@@ -142,9 +142,17 @@ El usuario trabaja desde el teléfono. Botones ≥44 px, `font-size:16px` en inp
   ("Imagina saber cuántas fichas les faltan a tus oponentes") confirma las ventanitas.
   Derechos: Clickker C.A. — NO copiar diseño ni textos.
 
-## Despliegue
-`render.yaml` incluido (disco persistente en `/var/data` para la DB).
-Push con `$taktak`; **nunca** con `$GITHUB_TOKEN` (403).
+## Despliegue (2026-11-08)
+- Servicio Render `bingopiramide777` = `srv-dbnn2upsrm7s739tio40`, rama `main`, autoDeploy.
+  URL https://bingopiramide777.onrender.com. Plan **free** y **sin disco** → la BD se borra
+  en cada deploy (subir a plan de pago + disco `/var/data` para conservarla).
+- El servicio **NO se creó desde `render.yaml`** (no es Blueprint): solo tiene 5 env vars.
+  Las claves del `render.yaml` (BINGO_PAGO_*, BINGO_ADMIN_CUENTA_*, BINGO_REFERIDO_PCT,
+  BINGO_DB) **hay que añadirlas a mano** en Render o recrear el servicio como Blueprint.
+- Push: hace falta un **PAT de la cuenta `bingopiramide777`** (admin/push). `$taktak` y
+  `$GITHUB_TOKEN` son de `taktakmessenger` y **solo leen** este repo (403 al empujar).
+  Empujar con `https://x-access-token:<PAT>@github.com/bingopiramide777/bingopiramide777.git`.
+- `main` en GitHub al 2026-11-08: `9e246f3` (multi-país, referidos, Wise, i18n, Postgres).
 
 ## Pendiente / avisos
 Falta pasarela de pago real, verificación de identidad en retiros, límite de
