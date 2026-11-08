@@ -346,6 +346,11 @@ class Almacen:
     def usuario(self, correo: str) -> sqlite3.Row | None:
         return self._uno("SELECT * FROM usuarios WHERE correo = ?", (correo,))
 
+    def fijar_codigo_amigo(self, correo: str, codigo: str) -> None:
+        """Asigna el código de amigo de una cuenta que aún no lo tenía."""
+        with self.transaccion() as c:
+            c.execute("UPDATE usuarios SET codigo_amigo = ? WHERE correo = ?", (codigo, correo))
+
     def usuarios(self) -> list[sqlite3.Row]:
         return self._todos("SELECT * FROM usuarios ORDER BY creado")
 

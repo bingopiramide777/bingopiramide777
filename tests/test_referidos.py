@@ -37,6 +37,26 @@ class ReferidosTest(unittest.TestCase):
         self.usuarios.registrar("pepe2@x.com", "clave12345", "Pepe")
         self.assertNotEqual(self.ref.codigo_de("pepe@x.com"), self.ref.codigo_de("pepe2@x.com"))
 
+    def test_una_cuenta_vieja_recibe_codigo_al_pedirlo(self):
+        # Cuentas creadas antes de los referidos no traen código. Al pedirlo se
+        # les genera uno, y no cambia si se vuelve a pedir.
+        self.almacen.crear_usuario("vieja@x.com", "huella", "Vieja", "jugador", 1.0)
+        self.assertEqual(self.ref.codigo_de("vieja@x.com"), "")
+        codigo = self.usuarios.asegurar_codigo_amigo("vieja@x.com")
+        self.assertTrue(codigo)
+        self.assertEqual(self.ref.codigo_de("vieja@x.com"), codigo)
+        self.assertEqual(self.usuarios.asegurar_codigo_amigo("vieja@x.com"), codigo)
+
+    def test_la_cuenta_de_admin_tiene_codigo(self):
+        # La de administración se crea por otro camino: también necesita código.
+        self.usuarios.asegurar_admin("jefe@x.com", "ClaveAdmin123")
+        codigo = self.usuarios.asegurar_codigo_amigo("jefe@x.com")
+        self.assertTrue(codigo)
+        self.assertEqual(self.almacen.usuario_por_codigo(codigo)["correo"], "jefe@x.com")
+
+    def test_una_cuenta_que_no_existe_no_da_codigo(self):
+        self.assertEqual(self.usuarios.asegurar_codigo_amigo("nadie@x.com"), "")
+
     def test_un_codigo_que_no_existe_falla(self):
         with self.assertRaises(ErrorDeUsuario):
             self.usuarios.registrar("tarde@x.com", "clave12345", "Tarde",

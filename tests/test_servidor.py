@@ -856,6 +856,18 @@ class ServidorTest(unittest.TestCase):
         estado, _ = self.pedir("/api/admin/referidos", token=token)
         self.assertEqual(estado, 403)
 
+    def test_una_cuenta_sin_codigo_recibe_uno_al_pedir_sus_referidos(self):
+        # El caso real: una cuenta creada antes de los referidos (o la de
+        # administración) no trae código. Al pedir sus referidos se le genera.
+        token = self.usuario("antigua@correo.com")
+        self.almacen.fijar_codigo_amigo("antigua@correo.com", "")
+        estado, d = self.pedir("/api/referidos", token=token)
+        self.assertEqual(estado, 200)
+        self.assertTrue(d["codigo"], "la cuenta se quedó sin código de amigo")
+        # Y queda guardado: la segunda vez es el mismo.
+        _, d2 = self.pedir("/api/referidos", token=token)
+        self.assertEqual(d2["codigo"], d["codigo"])
+
     def _marcar_patron(self, sala_id, carton_id, patron):
         """Marca en el cartón el patrón de la partida, para poder cantar bingo.
 

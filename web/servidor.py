@@ -198,6 +198,9 @@ class Juego:
         consola. Es mejor una clave aleatoria que una por defecto que todos saben.
         """
         if self.usuarios.usuario(self.correo_admin):
+            # Ya existe: puede ser de antes de los referidos, así que se asegura
+            # que tenga código de amigo.
+            self.usuarios.asegurar_codigo_amigo(self.correo_admin)
             return
         clave = self.clave_admin
         generada = False
@@ -205,6 +208,9 @@ class Juego:
             clave = secrets.token_urlsafe(12)
             generada = True
         self.usuarios.asegurar_admin(self.correo_admin, clave)
+        # La cuenta de administración también participa en los referidos: se le
+        # da su código para que su pantalla no salga vacía.
+        self.usuarios.asegurar_codigo_amigo(self.correo_admin)
         if generada:
             print(f"\n  CUENTA DE ADMINISTRACIÓN CREADA\n"
                   f"  Correo: {self.correo_admin}\n"
@@ -553,6 +559,8 @@ class Manejador(BaseHTTPRequestHandler):
                 self._error("Hace falta entrar.", 401)
                 return
             with self.juego.candado:
+                # Cuentas de antes de los referidos: se les da código al vuelo.
+                self.juego.usuarios.asegurar_codigo_amigo(jugador)
                 resumen = self.juego.referidos.resumen(jugador)
             self._json({"ok": True, **resumen})
             return

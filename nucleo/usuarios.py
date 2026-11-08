@@ -166,6 +166,25 @@ class Usuarios:
                 return codigo
         return f"BINGO{secrets.token_hex(3).upper()}"
 
+    def asegurar_codigo_amigo(self, correo: str) -> str:
+        """Devuelve el código de amigo de una cuenta, generándolo si le falta.
+
+        Hace falta para las cuentas creadas antes de que existieran los referidos
+        (y para la de administración, que se crea por otro camino): sin esto su
+        pantalla de referidos saldría en blanco.
+        """
+        correo = (correo or "").strip().lower()
+        fila = self.almacen.usuario(correo)
+        if fila is None:
+            return ""
+        claves = fila.keys()
+        actual = (fila["codigo_amigo"] if "codigo_amigo" in claves else "") or ""
+        if actual:
+            return actual
+        codigo = self._codigo_libre(correo)
+        self.almacen.fijar_codigo_amigo(correo, codigo)
+        return codigo
+
     def asegurar_admin(self, correo: str, clave: str) -> bool:
         """Crea la cuenta de administración si no existe. Devuelve si la creó."""
         correo = (correo or "").strip().lower()
