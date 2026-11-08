@@ -17,10 +17,16 @@ from urllib.parse import urlparse
 
 from bingo import MesaBingo, Sala
 from nucleo import Almacen, ErrorDeDinero, ErrorDeMonedero, Monedero, Usuarios, a_centimos, a_texto
+from nucleo.almacen_pg import abrir_almacen
 from nucleo.correo import Correo, ErrorDeCorreo
+from nucleo.datos_cobro import CAMPOS as _CAMPOS_COBRO
+from nucleo.datos_cobro import METODOS as _METODOS_COBRO
 from nucleo.depositos import BANCOS, ErrorDeDeposito, Depositos
+from nucleo.fichas import ErrorDeFicha, FichasCobro
 from nucleo.glenis import ErrorDeGlenis, Glenis
 from nucleo.glenis_herramientas import Herramientas
+from nucleo.idiomas import IDIOMAS
+from nucleo.referidos import Referidos
 from nucleo.retiros import ErrorDeRetiro, Retiros
 from nucleo.salas import ErrorDeSalas, Salas
 
@@ -39,11 +45,15 @@ class Juego:
     def __init__(self, almacen: Almacen | None = None, correo_admin: str | None = None,
                  clave_admin: str | None = None) -> None:
         self.candado = threading.RLock()
-        self.almacen = almacen or Almacen(os.environ.get("BINGO_DB", "bingo777.db"))
+        # Con DATABASE_URL se usa Postgres (los datos sobreviven a los reinicios);
+        # sin ella, el fichero SQLite de siempre.
+        self.almacen = almacen or abrir_almacen()
         self.usuarios = Usuarios(self.almacen)
         self.monedero = Monedero(self.almacen)
         self.retiros = Retiros(self.almacen, self.monedero)
         self.depositos = Depositos(self.almacen, self.monedero)
+        self.referidos = Referidos(self.almacen)
+        self.fichas = FichasCobro(self.almacen)
         self.salas = Salas(self.almacen, usuarios=self.usuarios)
         self.herramientas = Herramientas(self)
         self.glenis = Glenis(self.herramientas.esquemas(), self.herramientas.ejecutar)
@@ -119,6 +129,28 @@ class Juego:
             from nucleo.salas import ErrorDeSalas
             raise ErrorDeSalas(f"Se agotaron los {cupo} cartones de esta sala.")
 
+    def comprobar_max_cartones(self, partida, jugador: str, cuantos: int) -> None:
+        """Comprueba que el jugador no pasa del tope de cartones de la sala.
+
+        Es un tope por jugador, no por sala: en la sala de jugar desde casa
+        nadie puede acaparar el bote con más de 6 cartones. 0 = sin tope.
+        """
+        sala_id = getattr(partida, "sala", "")
+        fila = self.almacen.sala(sala_id) if sala_id else None
+        if not fila or "max_cartones" not in fila.keys():
+            return
+        tope = int(fila["max_cartones"] or 0)
+        if tope <= 0:
+            return
+        ya = len(partida.cartones_de(jugador))
+        if ya + cuantos > tope:
+            from nucleo.salas import ErrorDeSalas
+            if ya >= tope:
+                raise ErrorDeSalas(f"Ya tienes el máximo de {tope} cartones en esta sala.")
+            raise ErrorDeSalas(
+                f"En esta sala se pueden comprar {tope} cartones como máximo por jugador "
+                f"(ya tienes {ya}).")
+
     def info_evento(self) -> dict:
         """Todo lo que la web necesita del evento: aforo, ocupación y premios."""
         sala = self.salas.evento()
@@ -153,6 +185,10 @@ class Juego:
             "ganadores": list(partida.ganadores),
             "plazas": partida.plazas,
             "estado": partida.estado,
+            "tipo_juego": sala.tipo_juego,
+            "cupo_cartones": sala.cupo_cartones,
+            "max_cartones": sala.max_cartones,
+            "fecha_partida": sala.fecha_partida,
         }
 
     def _crear_admin(self) -> None:
@@ -384,6 +420,30 @@ class Manejador(BaseHTTPRequestHandler):
         sesion = self.juego.usuarios.sesion(self._token())
         return sesion.correo if sesion else None
 
+    def _fijar_pais(self, datos: dict | None = None) -> str:
+        """Averigua el país de la petición: cuerpo > cabecera > idioma > por defecto.
+
+        El frontend manda el país elegido (o el detectado por IP) para que la app
+        muestre la moneda y el método de cobro correctos. Si no llega ninguno,
+        vale Venezuela.
+        """
+        from nucleo import paises
+
+        candidato = ""
+        if isinstance(datos, dict) and datos.get("pais"):
+            candidato = str(datos["pais"])
+        if not candidato:
+            candidato = self.headers.get("X-Pais") or self.headers.get("X-Country") or ""
+        if not candidato:
+            idioma = (self.headers.get("Accept-Language") or "").lower()
+            if idioma.startswith("es-co"):
+                candidato = "CO"
+            elif idioma.startswith("es-cl"):
+                candidato = "CL"
+            # Cualquier otro idioma cae en Venezuela: es el país por defecto y no
+            # conviene adivinar dólares solo porque el navegador esté en inglés.
+        return paises.usar_pais(candidato)
+
     def _admin(self) -> str | None:
         jugador = self._jugador()
         return jugador if jugador and self.juego.usuarios.es_admin(jugador) else None
@@ -418,7 +478,8 @@ class Manejador(BaseHTTPRequestHandler):
                 "importe_texto": a_texto(d.centimos), "metodo": d.metodo,
                 "referencia": d.referencia, "banco": d.banco, "dia": d.dia,
                 "estado": d.estado, "nota": d.nota, "pedido": d.pedido,
-                "revisado": d.revisado, "revisado_por": d.revisado_por}
+                "revisado": d.revisado, "revisado_por": d.revisado_por,
+                "pais": getattr(d, "pais", "VE")}
 
     def _sala_json(self, s) -> dict:
         d = s.a_dict()
@@ -435,6 +496,7 @@ class Manejador(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         ruta = urlparse(self.path).path
+        self._fijar_pais()
 
         if ruta == "/api/salud":
             self._json({"estado": "bien", "servicio": "Bingo Pirámide 777"})
@@ -463,7 +525,9 @@ class Manejador(BaseHTTPRequestHandler):
 
         if ruta == "/api/salas":
             with self.juego.candado:
-                salas = self.juego.salas.todas()
+                # Solo las públicas: las privadas se comparten con su enlace, que
+                # lleva el id. Así una sala privada no se cuela en el listado.
+                salas = [s for s in self.juego.salas.publicas() if s.activa]
             self._json({"salas": [self._sala_json(s) for s in salas]})
             return
 
@@ -483,9 +547,22 @@ class Manejador(BaseHTTPRequestHandler):
             self._json({"salas": [self._sala_json(s) for s in salas], "ganancias": ganancias})
             return
 
+        if ruta == "/api/referidos":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            with self.juego.candado:
+                resumen = self.juego.referidos.resumen(jugador)
+            self._json({"ok": True, **resumen})
+            return
+
         if ruta == "/api/config":
             from nucleo.usuarios import PREGUNTAS
+            from nucleo import paises as _paises
             from bingo.cartones import MODOS, TIPOS_JUEGO
+            pais = _paises.pais_actual()
+            metodo = _paises.metodo_de_pais(pais)
             self._json({
                 "preguntas": list(PREGUNTAS),
                 "modos": list(MODOS),
@@ -499,7 +576,42 @@ class Manejador(BaseHTTPRequestHandler):
                 "retiro_minimo_texto": a_texto(self.juego.retiros.config.minimo),
                 "retiro_tope_texto": a_texto(self.juego.retiros.config.tope_diario),
                 "metodos": list(self.juego.retiros.config.metodos),
+                # Multi-país: el país activo, la moneda y el método de cobro.
+                "pais": pais,
+                "moneda": _paises.moneda_de(pais),
+                "simbolo": _paises.simbolo_de(pais),
+                "metodo_pago": metodo.a_dict() if metodo else None,
+                "metodos_pago": [m.a_dict() for m in _paises.metodos_de_pais(pais)],
+                "catalogo_paises": _paises.catalogo(),
+                "cuentas_admin": [c.a_dict() for c in _paises.cuentas_admin()],
+                "pais_base": _paises.PAIS_BASE,
+                "tasas": _paises.tasas(),
             })
+            return
+
+        if ruta == "/api/paises":
+            from nucleo import paises as _paises
+            self._json(_paises.catalogo())
+            return
+
+        if ruta == "/api/idiomas":
+            from nucleo import idiomas as _idiomas
+            # El idioma se detecta igual que el país: lo elegido manda; si no,
+            # lo que pide el navegador en Accept-Language.
+            elegido = _idiomas.detectar(self.headers.get("Accept-Language"))
+            self._json({**_idiomas.catalogo(), "idioma_actual": elegido})
+            return
+
+        if ruta == "/api/datos-cobro":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            with self.juego.candado:
+                ficha = self.juego.fichas.de(jugador)
+            self._json({"ficha": ficha.a_dict(), "metodos": list(_METODOS_COBRO),
+                        "campos": {m: [{"key": k, "label": v} for k, v in cs]
+                                   for m, cs in _CAMPOS_COBRO.items()}})
             return
 
         if ruta == "/api/saldo":
@@ -533,6 +645,39 @@ class Manejador(BaseHTTPRequestHandler):
             with self.juego.candado:
                 lista = [self._deposito_json(d) for d in self.juego.depositos.listar(correo=jugador)]
             self._json({"depositos": lista})
+            return
+
+        if ruta == "/api/estadisticas":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            with self.juego.candado:
+                r = self.juego.almacen.resumen_jugador(jugador)
+                ranking = self.juego.almacen.ranking(20)
+                # El puesto del jugador en el ranking, si aparece.
+                puesto = next((i + 1 for i, f in enumerate(ranking)
+                               if f["correo"] == jugador), None)
+            self._json({
+                "jugador": {
+                    "correo": jugador,
+                    "cartones": r["cartones"],
+                    "partidas": r["partidas"],
+                    "premios_ganados": r["premios_ganados"],
+                    "total_apostado": r["total_apostado"],
+                    "total_apostado_texto": a_texto(r["total_apostado"]),
+                    "total_ganado": r["total_ganado"],
+                    "total_ganado_texto": a_texto(r["total_ganado"]),
+                    "neto": r["total_ganado"] - r["total_apostado"],
+                    "neto_texto": a_texto(r["total_ganado"] - r["total_apostado"]),
+                    "puesto": puesto,
+                },
+                "ranking": [
+                    {"puesto": i + 1, "correo": f["correo"], "ganado": f["ganado"],
+                     "ganado_texto": a_texto(f["ganado"]), "premios": f["premios"]}
+                    for i, f in enumerate(ranking)
+                ],
+            })
             return
 
         if ruta == "/api/retiros":
@@ -590,6 +735,7 @@ class Manejador(BaseHTTPRequestHandler):
             with self.juego.candado:
                 lista = [{"correo": u.correo, "nombre": u.nombre, "rol": u.rol,
                           "activo": u.activo, "creado": u.creado,
+                          "verificado": u.verificado,
                           "pregunta": bool(self.juego.usuarios.pregunta_de(u.correo)),
                           "comision_pct": u.comision_pct,
                           "comision_texto": (f"{u.comision_pct} %" if u.comision_pct >= 0
@@ -683,14 +829,63 @@ class Manejador(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         ruta = urlparse(self.path).path
         datos = self._leer_json()
+        self._fijar_pais(datos)
 
         if ruta == "/api/registro":
             try:
+                # Si hay correo configurado, la cuenta nace sin verificar y se le
+                # manda un código. Sin correo configurado no se puede verificar a
+                # nadie, así que la cuenta se crea lista para entrar (y se avisa).
+                exige_verificacion = self.juego.correo.configurado
                 with self.juego.candado:
-                    self.juego.usuarios.registrar(datos.get("correo", ""), datos.get("clave", ""),
-                                                  datos.get("nombre", ""), "jugador",
-                                                  datos.get("pregunta", ""), datos.get("respuesta", ""))
-                self._json({"ok": True, "mensaje": "Cuenta creada. Ya puedes entrar."})
+                    self.juego.usuarios.registrar(
+                        datos.get("correo", ""), datos.get("clave", ""),
+                        datos.get("nombre", ""), "jugador",
+                        datos.get("pregunta", ""), datos.get("respuesta", ""),
+                        verificado=not exige_verificacion,
+                        codigo_amigo=datos.get("codigo_amigo", ""))
+                    enviado = False
+                    if exige_verificacion:
+                        codigo = self.juego.usuarios.pedir_codigo_verificacion(
+                            datos.get("correo", ""))
+                        if codigo:
+                            try:
+                                enviado = self.juego.correo.enviar_verificacion(
+                                    datos.get("correo", "").strip().lower(), codigo, 15)
+                            except ErrorDeCorreo:
+                                enviado = False
+                self._json({"ok": True, "verificacion_requerida": exige_verificacion,
+                            "codigo_enviado": enviado,
+                            "mensaje": ("Cuenta creada. Te hemos enviado un código al correo "
+                                        "para confirmarla." if exige_verificacion
+                                        else "Cuenta creada. Ya puedes entrar.")})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/verificar":
+            try:
+                with self.juego.candado:
+                    self.juego.usuarios.confirmar_correo(datos.get("correo", ""),
+                                                         datos.get("codigo", ""))
+                self._json({"ok": True, "mensaje": "Correo confirmado. Ya puedes entrar."})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/verificar/reenviar":
+            try:
+                with self.juego.candado:
+                    codigo = self.juego.usuarios.pedir_codigo_verificacion(datos.get("correo", ""))
+                    enviado = False
+                    if codigo:
+                        try:
+                            enviado = self.juego.correo.enviar_verificacion(
+                                datos.get("correo", "").strip().lower(), codigo, 15)
+                        except ErrorDeCorreo:
+                            enviado = False
+                self._json({"ok": True, "enviado": enviado,
+                            "mensaje": "Te hemos enviado un código nuevo."})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
             return
@@ -780,6 +975,7 @@ class Manejador(BaseHTTPRequestHandler):
                     vista["sala_nombre"] = sala.nombre
                     vista["modo"] = sala.modo
                     vista["es_evento"] = sala.es_evento
+                    vista["max_cartones"] = sala.max_cartones
                     vista["reparto"] = sala.reparto(
                         partida.precio_carton * len(partida.cartones),
                         comision_pct=self.juego.salas.comision_de(sala.dueno) if sala.dueno else None)
@@ -807,6 +1003,9 @@ class Manejador(BaseHTTPRequestHandler):
                     partida = self.juego.partida(datos.get("sala") or None)
                     # Aforo: cuántos jugadores distintos caben. Cupo: cuántos cartones.
                     self.juego.comprobar_aforo(partida, jugador)
+                    # Tope por jugador: se comprueba antes de comprar nada, para no
+                    # dejar media compra hecha si se pasa del máximo.
+                    self.juego.comprobar_max_cartones(partida, jugador, cuantos)
                     comprados = []
                     for _ in range(cuantos):
                         self.juego.comprobar_cupo(partida)
@@ -859,6 +1058,11 @@ class Manejador(BaseHTTPRequestHandler):
                     res = self.juego.mesa.resolver_cantada(partida.id, jugador, datos.get("carton", ""))
                     # El premio de la partida es la suma de todos los puestos.
                     partida.premio = sum(res.get("premios") or [res["premio"]])
+                    # Los padrinos de los ganadores cobran su parte de la app.
+                    # Se liquida puesto a puesto: la parte de la app ya está
+                    # calculada en el reparto, así que no se toca el 80/10/10.
+                    self.juego.referidos.liquidar(
+                        partida.id, list(partida.ganadores), res, self.juego.monedero)
                     self.juego._guardar(partida)
                     res["premio_texto"] = a_texto(res["premio"])
                     res["nombre_puesto"] = NOMBRES_PUESTO[res["puesto"] - 1] \
@@ -879,7 +1083,8 @@ class Manejador(BaseHTTPRequestHandler):
                     d = self.juego.depositos.declarar(
                         jugador, datos.get("importe", ""), datos.get("referencia", ""),
                         datos.get("banco", ""), datos.get("dia", ""),
-                        datos.get("metodo", "pago_movil"), datos.get("nota", ""))
+                        datos.get("metodo", "pago_movil"), datos.get("nota", ""),
+                        datos.get("pais", ""))
                 self._json({"ok": True, "deposito": self._deposito_json(d),
                             "mensaje": "Depósito declarado. Lo revisamos y te lo acreditamos."})
             except Exception as exc:  # noqa: BLE001
@@ -898,6 +1103,20 @@ class Manejador(BaseHTTPRequestHandler):
                     saldo = self.juego.monedero.saldo(jugador)
                 self._json({"ok": True, "retiro": self._retiro_json(retiro),
                             "saldo": saldo, "saldo_texto": a_texto(saldo)})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/datos-cobro":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            try:
+                with self.juego.candado:
+                    ficha = self.juego.fichas.guardar(
+                        jugador, datos.get("metodo", ""), datos.get("campos", {}))
+                self._json({"ok": True, "ficha": ficha.a_dict()})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
             return
@@ -1075,6 +1294,7 @@ class Manejador(BaseHTTPRequestHandler):
                         activa=datos.get("activa"),
                         tipo_juego=datos.get("tipo_juego"),
                         cupo_cartones=datos.get("cupo_cartones"),
+                        max_cartones=datos.get("max_cartones"),
                         fecha_partida=datos.get("fecha_partida"),
                     )
                 self._json({"ok": True, "sala": self._sala_json(sala),
@@ -1097,12 +1317,54 @@ class Manejador(BaseHTTPRequestHandler):
                         nombre=datos.get("nombre"),
                         tipo_juego=datos.get("tipo_juego"),
                         cupo_cartones=datos.get("cupo_cartones"),
+                        max_cartones=datos.get("max_cartones"),
                         fecha_partida=datos.get("fecha_partida"),
                     )
                     info = self.juego.info_evento()
                 self._json({"ok": True, "evento": info, "sala": self._sala_json(sala)})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/datos-cobro":
+            admin = self._admin()
+            if not admin:
+                self._error("Solo para administración.", 403)
+                return
+            from urllib.parse import parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            correo = (qs.get("correo") or [""])[0].strip().lower()
+            if not correo:
+                self._error("Falta el correo del jugador.")
+                return
+            try:
+                with self.juego.candado:
+                    ficha = self.juego.fichas.de(correo)
+                    u = self.juego.usuarios.usuario(correo)
+                self._json({"ficha": ficha.a_dict(),
+                            "jugador": {"correo": correo,
+                                        "nombre": (u.nombre if u else ""),
+                                        "saldo": a_texto(self.juego.monedero.saldo(correo))}})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/referidos":
+            admin = self._admin()
+            if not admin:
+                self._error("Solo para administración.", 403)
+                return
+            with self.juego.candado:
+                filas = self.juego.almacen.referidos(500)
+                total = sum(int(f["centimos"]) for f in filas)
+                self._json({"referidos": [
+                    {"partida": f["partida"], "referido": f["referido"],
+                     "padrino": f["padrino"], "centimos": f["centimos"],
+                     "texto": a_texto(f["centimos"]), "cuando": f["cuando"]}
+                    for f in filas],
+                    "total": total, "total_texto": a_texto(total),
+                    "pct": self.juego.referidos.porcentaje(),
+                    "economia_pais": self.juego.salas.economia_por_pais()})
             return
 
         if ruta == "/api/admin/usuario":

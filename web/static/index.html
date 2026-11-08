@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" id="html-raiz">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -20,22 +20,22 @@
   <div class="portada__contenido">
     <img class="portada__emblema" src="/emblema.svg" alt="Emblema de Bingo Pirámide 777" width="132" height="132">
     <h1 class="portada__nombre">BINGO<b>PIRÁMIDE</b><em>777</em></h1>
-    <p class="portada__slogan">Somos la pepa del queso</p>
+    <p class="portada__slogan" data-i18n="app.eslogan">Somos la pepa del queso</p>
 
     <!-- Acceso tipo app: dos botones grandes, cómodos para el pulgar -->
     <div class="portada__acceso" id="portada-acceso">
-      <button class="boton boton--principal boton--alto" id="portada-entrar">Iniciar sesión</button>
-      <button class="boton boton--fantasma boton--alto" id="portada-crear">Crear cuenta</button>
+      <button class="boton boton--principal boton--alto" id="portada-entrar" data-i18n="sesion.iniciar">Iniciar sesión</button>
+      <button class="boton boton--fantasma boton--alto" id="portada-crear" data-i18n="sesion.crear">Crear cuenta</button>
     </div>
 
     <!-- Si ya hay sesión, en su lugar se ofrece entrar a jugar -->
     <div class="portada__acceso" id="portada-jugar" hidden>
-      <button class="boton boton--brillo boton--alto" id="portada-seguir">Entrar a jugar</button>
+      <button class="boton boton--brillo boton--alto" id="portada-seguir" data-i18n="sesion.seguir">Entrar a jugar</button>
     </div>
 
-    <p class="portada__nota" id="portada-nota">Bingo de 75 bolas · Premios en bolívares</p>
+    <p class="portada__nota" id="portada-nota"></p>
   </div>
-  <p class="portada__credito">Puente sobre el lago de Maracaibo</p>
+  <p class="portada__credito" data-i18n="app.credito_portada">Puente sobre el lago de Maracaibo</p>
 </section>
 
 <header class="cabecera">
@@ -44,11 +44,15 @@
     <span class="marca__texto">Bingo<b>Pirámide</b><em>777</em></span>
   </a>
   <nav class="nav">
-    <a href="#jugar">Jugar</a>
-    <a href="#como">Cómo se juega</a>
-    <a href="#premios">Premios</a>
-    <a href="#retirar">Retirar</a>
+    <a href="#jugar" data-i18n="nav.jugar">Jugar</a>
+    <a href="#torneos" data-i18n="nav.torneos">Torneos</a>
+    <a href="#estadisticas" data-i18n="nav.estadisticas">Estadísticas</a>
+    <a href="#como" data-i18n="nav.como">Cómo se juega</a>
+    <a href="#premios" data-i18n="nav.premios">Premios</a>
+    <a href="#retirar" data-i18n="nav.retirar">Retirar</a>
   </nav>
+  <div class="pais-selector" id="pais-selector" title="País y moneda"></div>
+  <div class="idioma-selector" id="idioma-selector" title="Idioma"></div>
   <div class="sesion" id="sesion"></div>
 </header>
 
@@ -56,18 +60,17 @@
 
   <section class="hero">
     <div class="hero__texto">
-      <p class="etiqueta">Bingo de 75 bolas</p>
-      <h2 class="hero__titulo">Tu cartón, tus números,<br><span class="brillo">tu premio en bolívares.</span></h2>
-      <p class="entrada">Compra un cartón, sigue las bolas y canta bingo cuando completes
-        la línea. El bote se reparte al ganador en el momento.</p>
+      <p class="etiqueta" data-i18n="hero.etiqueta">Bingo de 75 bolas</p>
+      <h2 class="hero__titulo"><span data-i18n="hero.titulo">Tu cartón, tus números,</span><br><span class="brillo" id="hero-titulo2"></span></h2>
+      <p class="entrada" data-i18n="hero.entrada">Compra un cartón, sigue las bolas y canta bingo cuando completes la línea. El bote se reparte al ganador en el momento.</p>
       <div class="acciones">
-        <a class="boton boton--principal" href="#jugar">Jugar ahora</a>
-        <a class="boton boton--fantasma" href="#como">Cómo se juega</a>
+        <a class="boton boton--principal" href="#jugar" data-i18n="hero.jugar_ahora">Jugar ahora</a>
+        <a class="boton boton--fantasma" href="#como" data-i18n="hero.como">Cómo se juega</a>
       </div>
       <ul class="datos">
-        <li><strong>75</strong><span>bolas por partida</span></li>
-        <li><strong>80 %</strong><span>del bote al ganador</span></li>
-        <li><strong>5×5</strong><span>cartón con centro libre</span></li>
+        <li><strong>75</strong><span data-i18n="hero.dato1">bolas por partida</span></li>
+        <li><strong>80 %</strong><span data-i18n="hero.dato2">del bote al ganador</span></li>
+        <li><strong>5×5</strong><span data-i18n="hero.dato3">cartón con centro libre</span></li>
       </ul>
     </div>
     <div class="hero__carton" aria-hidden="true">
@@ -78,13 +81,13 @@
 
   <section class="panel" id="jugar">
     <div class="panel__cabecera">
-      <h2>La mesa</h2>
-      <div class="pastilla" id="estado-partida">Cargando…</div>
-      <span class="cuenta-atras" id="cuenta-atras" hidden>Empieza en —</span>
+      <h2 data-i18n="mesa.titulo">La mesa</h2>
+      <div class="pastilla" id="estado-partida" data-i18n="mesa.cargando">Cargando…</div>
+      <span class="cuenta-atras" id="cuenta-atras" hidden data-i18n="mesa.empieza_en">Empieza en —</span>
     </div>
 
     <div class="salas" id="lista-salas">
-      <p class="vacio">Cargando salas…</p>
+      <p class="vacio" data-i18n="mesa.cargando_salas">Cargando salas…</p>
     </div>
 
     <div id="evento-info"></div>
@@ -92,22 +95,22 @@
     <div class="mesa">
       <div class="mesa__izq">
         <div class="bombo">
-          <p class="bombo__etiqueta">Última bola</p>
+          <p class="bombo__etiqueta" data-i18n="mesa.ultima_bola">Última bola</p>
           <div class="bola" id="ultima-bola">—</div>
-          <p class="bombo__pie" id="contador-bolas">0 bolas sacadas</p>
+          <p class="bombo__pie" id="contador-bolas"></p>
           <div class="bolas-sacadas" id="bolas-sacadas"></div>
-          <button class="boton boton--principal boton--ancho boton--alto" id="btn-bola" disabled>
+          <button class="boton boton--principal boton--ancho boton--alto" id="btn-bola" disabled data-i18n="mesa.sacar_bola">
             Sacar bola
           </button>
         </div>
 
         <div class="tarjeta">
           <div class="tarjeta__cabecera">
-            <h3>A cuánto están</h3>
-            <span class="pastilla pastilla--suave">En vivo</span>
+            <h3 data-i18n="mesa.a_cuanto">A cuánto están</h3>
+            <span class="pastilla pastilla--suave" data-i18n="mesa.en_vivo">En vivo</span>
           </div>
           <div class="oponentes" id="oponentes">
-            <p class="vacio">Todavía no hay jugadores.</p>
+            <p class="vacio" data-i18n="mesa.sin_jugadores">Todavía no hay jugadores.</p>
           </div>
         </div>
       </div>
@@ -115,45 +118,46 @@
       <div class="mesa__der">
         <div class="tarjeta">
           <div class="tarjeta__cabecera">
-            <h3>Tu cartón</h3>
+            <h3 data-i18n="mesa.tu_carton">Tu cartón</h3>
             <span class="pastilla pastilla--suave" id="precio-carton">—</span>
           </div>
           <div class="letras letras--pequenas"><span>B</span><span>I</span><span>N</span><span>G</span><span>O</span></div>
           <div class="rejilla" id="carton-jugador">
-            <p class="vacio">Todavía no tienes cartón.</p>
+            <p class="vacio" data-i18n="mesa.sin_carton">Todavía no tienes cartón.</p>
           </div>
           <label class="automarcar">
-            <input type="checkbox" id="automarcar"> Automarcar las bolas que salgan
+            <input type="checkbox" id="automarcar"> <span data-i18n="mesa.automarcar">Automarcar las bolas que salgan</span>
           </label>
           <div class="acciones acciones--pegadas">
             <label class="pastilla pastilla--suave" style="display:inline-flex;align-items:center;gap:.4rem">
-              Cartones
+              <span data-i18n="mesa.cartones">Cartones</span>
               <select id="cuantos-cartones" style="background:transparent;border:0;color:inherit;font:inherit">
                 <option value="1">1</option>
                 <option value="2">2</option>
                 <option value="3">3</option>
                 <option value="5">5</option>
+                <option value="6">6</option>
                 <option value="10">10</option>
               </select>
             </label>
-            <button class="boton boton--principal boton--alto" id="btn-carton">Comprar cartón</button>
-            <button class="boton boton--brillo boton--alto" id="btn-bingo" disabled>Cantar BINGO</button>
+            <button class="boton boton--principal boton--alto" id="btn-carton" data-i18n="mesa.comprar_carton">Comprar cartón</button>
+            <button class="boton boton--brillo boton--alto" id="btn-bingo" disabled data-i18n="mesa.cantar_bingo">Cantar BINGO</button>
           </div>
         </div>
 
         <div class="tarjeta tarjeta--saldo">
           <div>
-            <p class="tarjeta__etiqueta">Tu saldo</p>
+            <p class="tarjeta__etiqueta" data-i18n="mesa.tu_saldo">Tu saldo</p>
             <p class="saldo" id="saldo">Bs 0,00</p>
           </div>
           <div class="recarga">
-            <button class="boton boton--principal boton--alto" id="btn-recargar">Recargar saldo</button>
+            <button class="boton boton--principal boton--alto" id="btn-recargar" data-i18n="mesa.recargar">Recargar saldo</button>
           </div>
         </div>
 
         <div class="tarjeta">
-          <h3>Movimientos</h3>
-          <ul class="historial" id="historial"><li class="vacio">Sin movimientos.</li></ul>
+          <h3 data-i18n="mesa.movimientos">Movimientos</h3>
+          <ul class="historial" id="historial"><li class="vacio" data-i18n="mesa.sin_movimientos">Sin movimientos.</li></ul>
         </div>
       </div>
     </div>
@@ -161,91 +165,125 @@
 
   <section class="panel" id="mis-salas">
     <div class="panel__cabecera">
-      <h2>Tus salas</h2>
+      <h2 data-i18n="salas.tus_salas">Tus salas</h2>
       <div class="pastilla" id="ganancias-pastilla">—</div>
     </div>
-    <p class="entrada">
-      Crea tu propia sala, ponle el precio al cartón y elige el modo de juego.
-      Tú decides si es pública o privada. <strong>Cobras el 10% de todos los botes
-      de tu sala</strong>: cada vez que alguien canta bingo ahí, te entra tu parte.
-    </p>
+    <p class="entrada" id="salas-entrada"></p>
 
     <form class="formulario formulario--linea" id="form-sala">
-      <label>Nombre de la sala
-        <input type="text" name="nombre" maxlength="30" placeholder="La de mi barrio" required>
+      <label><span data-i18n="salas.nombre">Nombre de la sala</span>
+        <input type="text" name="nombre" maxlength="30" data-i18n-ph="salas.nombre_ph" placeholder="La de mi barrio" required>
       </label>
-      <label>Modo de juego
+      <label><span data-i18n="salas.modo">Modo de juego</span>
         <select name="modo" id="select-modo">
-          <option value="normal">Normal (línea, columna o diagonal)</option>
-          <option value="carton_lleno">Cartón lleno (los 25 números)</option>
-          <option value="competencia">Competencia (también 4 esquinas)</option>
+          <option value="normal" data-i18n="modo.normal_largo">Normal (línea, columna o diagonal)</option>
+          <option value="carton_lleno" data-i18n="modo.carton_lleno_largo">Cartón lleno (los 25 números)</option>
+          <option value="competencia" data-i18n="modo.competencia_largo">Competencia (también 4 esquinas)</option>
         </select>
       </label>
-      <label>Precio del cartón (Bs)
-        <input type="text" name="precio" inputmode="decimal" placeholder="Bs 10,00" required>
+      <label><span id="etiqueta-precio">Precio del cartón (Bs)</span>
+        <input type="text" name="precio" inputmode="decimal" placeholder="Bs 10,00" required data-moneda-placeholder>
       </label>
-      <label>¿Quién puede entrar?
+      <label><span data-i18n="salas.quien_entra">¿Quién puede entrar?</span>
         <select name="publica">
-          <option value="si">Pública (cualquiera)</option>
-          <option value="no">Privada (solo con el enlace)</option>
+          <option value="si" data-i18n="salas.publica">Pública (cualquiera)</option>
+          <option value="no" data-i18n="salas.privada">Privada (solo con el enlace)</option>
         </select>
       </label>
-      <button class="boton boton--brillo boton--alto" type="submit">Crear mi sala</button>
+      <button class="boton boton--brillo boton--alto" type="submit" data-i18n="salas.crear">Crear mi sala</button>
     </form>
 
     <div id="tabla-mis-salas"></div>
   </section>
 
+  <section class="panel panel--suave" id="referidos">
+    <div class="panel__cabecera">
+      <h2 data-i18n="referidos.titulo">Invita y gana</h2>
+      <div class="pastilla" id="referidos-pastilla">—</div>
+    </div>
+    <p class="entrada" data-i18n="referidos.entrada">Pasa tu código de amigo a quien quieras. Cuando esa persona se registre con él y gane un bingo, tú cobras una comisión.</p>
+    <div class="ficha-cobro">
+      <div class="ficha-cobro__dato">
+        <span class="ficha-cobro__etiqueta" data-i18n="referidos.tu_codigo">Tu código de amigo</span>
+        <strong id="referidos-codigo">—</strong>
+        <button class="boton boton--fantasma boton--mini" id="btn-copiar-codigo" data-i18n="referidos.copiar">Copiar</button>
+      </div>
+      <p class="ayuda" id="referidos-pie"></p>
+    </div>
+    <div id="tabla-referidos"></div>
+  </section>
+
   <section class="panel panel--suave" id="retirar">
-    <h2>Retirar tu dinero</h2>
-    <p class="entrada">Pide un retiro y lo revisamos. Si se rechaza, el dinero vuelve a tu saldo.</p>
+    <h2 data-i18n="retirar.titulo">Retirar tu dinero</h2>
+    <p class="entrada" data-i18n="retirar.entrada">Pide un retiro y lo revisamos. Si se rechaza, el dinero vuelve a tu saldo.</p>
 
     <div class="tarjeta">
       <div class="fila-campos">
-        <label class="campo">Importe (Bs)
+        <label class="campo"><span id="etiqueta-retiro-importe">Importe (Bs)</span>
           <input type="text" id="retiro-importe" inputmode="decimal" placeholder="100,00">
         </label>
-        <label class="campo">Método
+        <label class="campo"><span data-i18n="retirar.metodo">Método</span>
           <select id="retiro-metodo"></select>
         </label>
       </div>
-      <label class="campo">Datos para el pago
-        <input type="text" id="retiro-detalles" placeholder="Banco, cuenta o teléfono">
+      <label class="campo"><span data-i18n="retirar.datos">Datos para el pago</span>
+        <input type="text" id="retiro-detalles" data-i18n-ph="retirar.datos_ph" placeholder="Banco, cuenta o teléfono">
       </label>
       <p class="ayuda" id="retiro-ayuda">—</p>
-      <button class="boton boton--principal boton--alto" id="btn-retirar">Pedir retiro</button>
+      <button class="boton boton--principal boton--alto" id="btn-retirar" data-i18n="retirar.pedir">Pedir retiro</button>
     </div>
 
-    <h3 class="subtitulo">Tus retiros</h3>
-    <ul class="lista-retiros" id="lista-retiros"><li class="vacio">Todavía no has pedido ningún retiro.</li></ul>
+    <h3 class="subtitulo" data-i18n="retirar.tus_retiros">Tus retiros</h3>
+    <ul class="lista-retiros" id="lista-retiros"><li class="vacio" data-i18n="retirar.sin_retiros">Todavía no has pedido ningún retiro.</li></ul>
+  </section>
+
+  <section class="panel panel--suave" id="torneos">
+    <div class="panel__cabecera">
+      <h2 data-i18n="torneo.titulo">Torneo del día</h2>
+      <div class="pastilla" id="torneo-pastilla">—</div>
+    </div>
+    <p class="entrada" data-i18n="torneo.entrada">El torneo reparte el bote entre el 1º, el 2º y el 3º que canten bingo. Entra cuando quieras: mientras haya plazas libres, puedes comprar tu cartón.</p>
+    <div id="torneo-info"><p class="vacio" data-i18n="torneo.cargando">Cargando el torneo…</p></div>
+  </section>
+
+  <section class="panel" id="estadisticas">
+    <div class="panel__cabecera">
+      <h2 data-i18n="stats.titulo">Tus estadísticas</h2>
+      <div class="pastilla" id="estadisticas-pastilla">—</div>
+    </div>
+    <p class="entrada" data-i18n="stats.entrada">Tu historial de juego: cartones, partidas, premios y lo que llevas ganado. Aquí también ves el ranking de la casa.</p>
+    <div class="rejilla-stats" id="mis-stats">
+      <p class="vacio" data-i18n="stats.entra_ver">Entra para ver tus números.</p>
+    </div>
+    <h3 class="subtitulo" data-i18n="stats.ranking">Ranking de ganadores</h3>
+    <div id="tabla-ranking"><p class="vacio" data-i18n="stats.sin_ganadores">Todavía no hay ganadores.</p></div>
   </section>
 
   <section class="panel" id="como">
-    <h2>Cómo se juega</h2>
+    <h2 data-i18n="como.titulo">Cómo se juega</h2>
     <div class="pasos">
-      <article><span class="numero">1</span><h3>Entra</h3><p>Crea tu cuenta con correo y contraseña. Sin redes sociales de por medio.</p></article>
-      <article><span class="numero">2</span><h3>Recarga</h3><p>Añade saldo a tu monedero. Todo en bolívares, al céntimo.</p></article>
-      <article><span class="numero">3</span><h3>Compra tu cartón</h3><p>Un cartón de 5×5 con el centro libre. Cada número vive en su columna.</p></article>
-      <article><span class="numero">4</span><h3>Canta bingo</h3><p>Completa la línea y canta. La mesa comprueba tus números contra las bolas.</p></article>
+      <article><span class="numero">1</span><h3 data-i18n="como.p1_t">Entra</h3><p data-i18n="como.p1_d">Crea tu cuenta con correo y contraseña. Sin redes sociales de por medio.</p></article>
+      <article><span class="numero">2</span><h3 data-i18n="como.p2_t">Recarga</h3><p id="como-p2">Añade saldo a tu monedero.</p></article>
+      <article><span class="numero">3</span><h3 data-i18n="como.p3_t">Compra tu cartón</h3><p data-i18n="como.p3_d">Un cartón de 5×5 con el centro libre. Cada número vive en su columna.</p></article>
+      <article><span class="numero">4</span><h3 data-i18n="como.p4_t">Canta bingo</h3><p data-i18n="como.p4_d">Completa la línea y canta. La mesa comprueba tus números contra las bolas.</p></article>
     </div>
   </section>
 
   <section class="panel panel--suave" id="premios">
-    <h2>Premios y reglas</h2>
+    <h2 data-i18n="premios.titulo">Premios y reglas</h2>
     <div class="rejilla-info">
-      <div><h3>El bote</h3><p>Todo lo recaudado con los cartones de la partida. El <strong>80 %</strong> va al ganador y el 20 % queda para la casa.</p></div>
-      <div><h3>Las bolas</h3><p>75 bolas, del 1 al 75. La columna B lleva del 1 al 15, la I del 16 al 30, la N del 31 al 45, la G del 46 al 60 y la O del 61 al 75.</p></div>
-      <div><h3>El centro libre</h3><p>El centro del cartón nace marcado: cuenta como número bueno para cualquier línea o patrón.</p></div>
-      <div><h3>Sin cantadas falsas</h3><p>Si cantas bingo sin tener la línea completa, la mesa lo rechaza. El premio solo se paga si los números están de verdad.</p></div>
+      <div><h3 data-i18n="premios.bote_t">El bote</h3><p data-i18n="premios.bote_d">Todo lo recaudado con los cartones de la partida. El 80 % va al ganador y el 20 % queda para la casa.</p></div>
+      <div><h3 data-i18n="premios.bolas_t">Las bolas</h3><p data-i18n="premios.bolas_d">75 bolas, del 1 al 75. La columna B lleva del 1 al 15, la I del 16 al 30, la N del 31 al 45, la G del 46 al 60 y la O del 61 al 75.</p></div>
+      <div><h3 data-i18n="premios.centro_t">El centro libre</h3><p data-i18n="premios.centro_d">El centro del cartón nace marcado: cuenta como número bueno para cualquier línea o patrón.</p></div>
+      <div><h3 data-i18n="premios.cantadas_t">Sin cantadas falsas</h3><p data-i18n="premios.cantadas_d">Si cantas bingo sin tener la línea completa, la mesa lo rechaza. El premio solo se paga si los números están de verdad.</p></div>
     </div>
   </section>
 
 </main>
 
 <footer class="pie">
-  <p><strong>Bingo Pirámide 777</strong> — Somos la pepa del queso.</p>
-  <p class="aviso">Juega con responsabilidad. Prohibido para menores de edad.
-     Este sitio no está afiliado a ninguna otra plataforma de juego.</p>
+  <p><strong>Bingo Pirámide 777</strong> — <span data-i18n="app.eslogan">Somos la pepa del queso</span>.</p>
+  <p class="aviso" data-i18n="pie.aviso">Juega con responsabilidad. Prohibido para menores de edad. Este sitio no está afiliado a ninguna otra plataforma de juego.</p>
 </footer>
 
 <div class="dialogo" id="dialogo" hidden>
@@ -257,6 +295,7 @@
 
 <div class="brindis" id="brindis" hidden></div>
 
+<script src="/i18n.js"></script>
 <script src="/app.js"></script>
 </body>
 </html>

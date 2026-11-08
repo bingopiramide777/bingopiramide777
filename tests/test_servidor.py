@@ -40,10 +40,12 @@ class ServidorTest(unittest.TestCase):
 
     # -- ayuda --
 
-    def pedir(self, ruta, datos=None, token=None):
+    def pedir(self, ruta, datos=None, token=None, cabeceras_extra=None):
         cabeceras = {"Content-Type": "application/json"}
         if token:
             cabeceras["Authorization"] = "Bearer " + token
+        if cabeceras_extra:
+            cabeceras.update(cabeceras_extra)
         cuerpo = json.dumps(datos).encode() if datos is not None else None
         peticion = urllib.request.Request(
             f"http://127.0.0.1:{self.puerto}{ruta}", data=cuerpo, headers=cabeceras,
@@ -278,7 +280,41 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(estado, 200)
         self.assertEqual([s["nombre"] for s in r["salas"]],
                          ["Zulia", "Lara", "Carabobo", "Mérida", "Táchira", "Nueva Esparta",
+                          "Ganar Dinero Desde Casa con BingoPiramide777",
                           "Sala de Eventos Lago de Maracaibo"])
+
+    def test_la_sala_de_jugar_desde_casa_viene_configurada(self):
+        _, r = self.pedir("/api/salas")
+        sala = next(s for s in r["salas"] if s["id"] == "sala-ganar-desde-casa")
+        self.assertEqual(sala["modo"], "carton_lleno")
+        self.assertEqual(sala["max_cartones"], 6)
+        self.assertEqual(sala["precio_texto"], "Bs 50,00")
+
+    def test_no_se_pueden_comprar_mas_de_seis_cartones_en_la_sala_de_casa(self):
+        """El tope por jugador es lo que impide acaparar el bote."""
+        token = self.usuario("ana@correo.com", recarga="5000,00")
+        # Seis cartones: entran.
+        estado, r = self.pedir("/api/carton",
+                               {"sala": "sala-ganar-desde-casa", "cantidad": 6}, token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["cantidad"], 6)
+        # El séptimo se rechaza y no cobra nada.
+        estado, err = self.pedir("/api/carton", {"sala": "sala-ganar-desde-casa"}, token)
+        self.assertEqual(estado, 400)
+        self.assertIn("6 cartones", err["error"])
+        # Se cobraron los seis cartones, ni uno más.
+        _, saldo = self.pedir("/api/saldo", token=token)
+        self.assertEqual(saldo["saldo"], 500_000 - 6 * 5_000)
+
+    def test_pasarse_del_tope_no_deja_media_compra_hecha(self):
+        """Si pide 5 y solo le caben 2, no se le cobra nada."""
+        token = self.usuario("ana@correo.com", recarga="5000,00")
+        self.pedir("/api/carton", {"sala": "sala-ganar-desde-casa", "cantidad": 4}, token)
+        estado, err = self.pedir("/api/carton",
+                                 {"sala": "sala-ganar-desde-casa", "cantidad": 4}, token)
+        self.assertEqual(estado, 400)
+        _, saldo = self.pedir("/api/saldo", token=token)
+        self.assertEqual(saldo["saldo"], 500_000 - 4 * 5_000)
 
     def test_un_jugador_crea_su_sala(self):
         token = self.usuario("ana@correo.com")
@@ -300,6 +336,29 @@ class ServidorTest(unittest.TestCase):
                    {"nombre": "La de Ana", "modo": "normal", "precio": "10,00"}, token)
         _, r = self.pedir("/api/salas")
         self.assertIn("La de Ana", [s["nombre"] for s in r["salas"]])
+
+    def test_la_sala_privada_no_sale_en_la_lista_pero_si_por_su_enlace(self):
+        """El enlace de una sala privada es exclusivo: no se lista, pero entra."""
+        token = self.usuario("ana@correo.com")
+        _, r = self.pedir("/api/sala/crear",
+                          {"nombre": "La de Ana", "modo": "normal",
+                           "precio": "10,00", "publica": False}, token)
+        sala_id = r["sala"]["id"]
+        self.assertFalse(r["sala"]["publica"])
+        # No aparece en el listado público...
+        _, listado = self.pedir("/api/salas")
+        self.assertNotIn(sala_id, [s["id"] for s in listado["salas"]])
+        # ...pero quien tiene el enlace (el id) entra sin problema.
+        estado, entra = self.pedir("/api/sala/entrar", {"sala": sala_id}, token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(entra["partida"]["sala_nombre"], "La de Ana")
+
+    def test_entrar_a_una_sala_incluye_el_tope_de_cartones(self):
+        token = self.usuario("ana@correo.com")
+        _, r = self.pedir("/api/sala/entrar", {"sala": "sala-ganar-desde-casa"}, token)
+        self.assertEqual(r["partida"]["max_cartones"], 6)
+        _, r2 = self.pedir("/api/sala/entrar", {"sala": "sala-zulia"}, token)
+        self.assertEqual(r2["partida"]["max_cartones"], 0)
 
     def test_mis_salas_trae_las_ganancias(self):
         token = self.usuario("ana@correo.com")
@@ -598,6 +657,62 @@ class ServidorTest(unittest.TestCase):
         estado, r = self.pedir("/api/config", token=token)
         self.assertEqual(estado, 200)
         self.assertEqual(r["cuenta_pago"]["telefono"], "0416-7677264")
+
+    # -- multi-país --
+
+    def test_el_catalogo_de_paises_se_ve_sin_entrar(self):
+        estado, r = self.pedir("/api/paises")
+        self.assertEqual(estado, 200)
+        self.assertEqual([p["code"] for p in r["paises"]], ["VE", "CO", "CL", "US"])
+        # 5 métodos: EE. UU. tiene Cash App y Wise; los demás países, uno cada uno.
+        self.assertEqual(len(r["metodos_pago"]), 5)
+
+    def test_config_trae_los_metodos_del_pais_y_las_cuentas_admin(self):
+        estado, r = self.pedir("/api/config")
+        self.assertEqual(estado, 200)
+        # En Venezuela solo hay un método, pero la lista siempre viene.
+        self.assertEqual([m["id"] for m in r["metodos_pago"]], ["pago_movil_ve"])
+        # Las cuentas de administración van una por país, para el desglose.
+        self.assertEqual([c["pais"] for c in r["cuentas_admin"]], ["VE", "CO", "CL", "US"])
+
+    def test_config_trae_el_pais_y_la_moneda(self):
+        estado, r = self.pedir("/api/config")
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["pais"], "VE")
+        self.assertEqual(r["moneda"], "VES")
+        self.assertEqual(r["simbolo"], "Bs")
+        self.assertEqual(r["metodo_pago"]["id"], "pago_movil_ve")
+
+    def test_la_cabecera_de_pais_cambia_la_moneda(self):
+        estado, r = self.pedir("/api/config", cabeceras_extra={"X-Pais": "CO"})
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["pais"], "CO")
+        self.assertEqual(r["moneda"], "COP")
+        self.assertEqual(r["simbolo"], "$")
+        self.assertEqual(r["metodo_pago"]["id"], "nequi_co")
+
+    def test_el_idioma_detecta_el_pais(self):
+        estado, r = self.pedir("/api/config", cabeceras_extra={"Accept-Language": "es-CO,es"})
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["pais"], "CO")
+
+    def test_un_pais_desconocido_cae_en_venezuela(self):
+        estado, r = self.pedir("/api/config", cabeceras_extra={"X-Pais": "ZZ"})
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["pais"], "VE")
+
+    def test_los_importes_se_muestran_en_la_moneda_del_pais(self):
+        estado, r = self.pedir("/api/config", cabeceras_extra={"X-Pais": "US"})
+        self.assertEqual(estado, 200)
+        self.assertTrue(r["deposito_minimo_texto"].startswith("$"))
+
+    def test_el_deposito_guarda_el_pais(self):
+        token = self.usuario("ana@correo.com")
+        estado, r = self.pedir("/api/deposito", {
+            "importe": "100,00", "referencia": "123456", "banco": "",
+            "dia": time.strftime("%Y-%m-%d"), "metodo": "cashapp", "pais": "US"}, token)
+        self.assertEqual(estado, 200, r)
+        self.assertEqual(r["deposito"]["pais"], "US")
 
     # -- la administración cambia los precios de las salas --
 

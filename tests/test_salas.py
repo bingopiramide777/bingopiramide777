@@ -7,6 +7,7 @@ fondo los céntimos: que nada se pierda y que nadie cobre de más.
 from __future__ import annotations
 
 import unittest
+from decimal import Decimal
 
 from bingo import MesaBingo, Sala as SalaBingo
 from nucleo.almacen import Almacen
@@ -15,6 +16,8 @@ from nucleo.money import a_texto
 from nucleo.salas import (
     COMISION_ANFITRION,
     PREMIO_CASA,
+    SALA_CASA_ID,
+    SALA_CASA_NOMBRE,
     SALAS_INICIALES_ANTIGUAS,
     ErrorDeSalas,
     Salas,
@@ -66,8 +69,18 @@ class SalasTest(unittest.TestCase):
     def test_vienen_las_salas_de_la_casa(self):
         nombres = [s.nombre for s in self.salas.de_la_casa()]
         self.assertEqual(nombres, ["Zulia", "Lara", "Carabobo", "Mérida", "Táchira",
-                                   "Nueva Esparta"])
+                                   "Nueva Esparta", SALA_CASA_NOMBRE])
         self.assertTrue(all(not s.es_de_jugador for s in self.salas.de_la_casa()))
+
+    def test_viene_la_sala_de_jugar_desde_casa(self):
+        """La sala para trabajar desde casa: cartón lleno y 6 cartones por jugador."""
+        sala = self.salas.de(SALA_CASA_ID)
+        self.assertEqual(sala.nombre, SALA_CASA_NOMBRE)
+        self.assertEqual(sala.modo, "carton_lleno")
+        self.assertEqual(sala.tipo_juego, "carton_lleno")
+        self.assertEqual(sala.precio_carton, 50_00)
+        self.assertEqual(sala.max_cartones, 6)
+        self.assertFalse(sala.es_de_jugador)
 
     def test_viene_la_sala_de_eventos_lago_de_maracaibo(self):
         evento = self.salas.evento()
@@ -87,6 +100,7 @@ class SalasTest(unittest.TestCase):
             "Mérida": 200_00,
             "Táchira": 100_00,
             "Nueva Esparta": 50_00,
+            SALA_CASA_NOMBRE: 50_00,
         })
         modos = {s.nombre: s.modo for s in self.salas.de_la_casa()}
         self.assertEqual(modos["Carabobo"], "carton_lleno")
@@ -203,6 +217,24 @@ class ConfigurarSalasTest(unittest.TestCase):
     def test_los_precios_de_las_salas_de_jugador_siguen_limitados(self):
         with self.assertRaises(ErrorDeSalas):
             self.salas.crear("ana@correo.com", "Cara", "normal", "1000,00")
+
+    def test_el_admin_pone_el_tope_de_cartones_por_jugador(self):
+        """El tope por jugador se cambia desde el panel, como el precio."""
+        sala = self.salas.configurar_sala(SALA_CASA_ID, max_cartones=6)
+        self.assertEqual(sala.max_cartones, 6)
+        # Y queda guardado: al volver a leerla, sigue el tope.
+        self.assertEqual(self.salas.de(SALA_CASA_ID).max_cartones, 6)
+
+    def test_el_tope_por_jugador_tiene_limites(self):
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_sala(SALA_CASA_ID, max_cartones=-1)
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_sala(SALA_CASA_ID, max_cartones="muchos")
+
+    def test_el_tope_por_jugador_sobrevive_al_reinicio(self):
+        self.salas.configurar_sala(SALA_CASA_ID, max_cartones=4)
+        otra = Salas(self.almacen)
+        self.assertEqual(otra.de(SALA_CASA_ID).max_cartones, 4)
 
 
 class MigracionPreciosTest(unittest.TestCase):
@@ -345,7 +377,11 @@ class EconomiaTest(unittest.TestCase):
         self.assertEqual(a_texto(e["app"]), "Bs 0,00")
 
     def test_los_porcentajes_son_los_documentados(self):
-        self.assertEqual(PREMIO_CASA, COMISION_ANFITRION * 8)
+        # El ganador siempre cobra el 80 %; el 20 % restante se reparte a partes
+        # iguales entre el anfitrión (10 %) y la app (10 %).
+        self.assertEqual(PREMIO_CASA, Decimal("0.80"))
+        self.assertEqual(COMISION_ANFITRION, Decimal("0.10"))
+        self.assertEqual(Decimal("1") - PREMIO_CASA - COMISION_ANFITRION, Decimal("0.10"))
 
 
 class RepartoEventoTest(unittest.TestCase):

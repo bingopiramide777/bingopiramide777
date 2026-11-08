@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from .almacen import Almacen
 from .monedero import ErrorDeMonedero, Monedero
-from .money import a_centimos
+from .money import a_centimos, a_texto
 
 METODOS = ("transferencia", "pago_movil", "zelle", "paypal", "cripto")
 
@@ -67,14 +67,17 @@ class Retiros:
         if len(detalles) < 5:
             raise ErrorDeRetiro("Hacen falta los datos de cobro (cuenta, teléfono o correo).")
         try:
-            centimos = a_centimos(importe)
+            # El importe lo pide el jugador en su moneda; dentro se guarda en la base.
+            from .paises import a_base, pais_actual
+
+            centimos = a_base(a_centimos(importe), pais_actual())
         except ValueError as exc:
             raise ErrorDeRetiro(str(exc)) from None
         if centimos <= 0:
             raise ErrorDeRetiro("El importe tiene que ser mayor que cero.")
         if centimos < self.config.minimo:
             raise ErrorDeRetiro(
-                f"El mínimo para retirar es {self.config.minimo // 100} en moneda local."
+                f"El mínimo para retirar es {a_texto(self.config.minimo)}."
             )
         # El tope diario cuenta lo pedido hoy, sin contar lo rechazado.
         desde = time.time() - 86400

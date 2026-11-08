@@ -3,6 +3,9 @@
 from .almacen import Almacen
 from .monedero import ErrorDeMonedero, Monedero, Movimiento
 from .money import ErrorDeDinero, a_centimos, a_texto, multiplicar
+from . import idiomas, paises
+from .datos_cobro import ErrorDeDatosCobro, FichaCobro
+from .fichas import ErrorDeFicha, FichasCobro
 from .usuarios import ErrorDeUsuario, Sesion, Usuario, Usuarios, hash_clave, verificar_clave
 
 __all__ = [
@@ -20,4 +23,10 @@ __all__ = [
     "a_texto",
     "multiplicar",
     "ErrorDeDinero",
+    "paises",
+    "idiomas",
+    "FichasCobro",
+    "ErrorDeFicha",
+    "FichaCobro",
+    "ErrorDeDatosCobro",
 ]

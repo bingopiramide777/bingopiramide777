@@ -82,3 +82,22 @@ class Correo:
   Si no has pedido tú este código, ignora este mensaje.</p>
 </div>"""
         return self.enviar(destino, asunto, texto, html)
+
+    def enviar_verificacion(self, destino: str, codigo: str, minutos: int) -> bool:
+        asunto = f"Confirma tu cuenta de Bingo Pirámide 777: {codigo}"
+        texto = (
+            f"¡Bienvenido a Bingo Pirámide 777!\n\n"
+            f"Tu código para confirmar el correo es:\n\n    {codigo}\n\n"
+            f"Caduca en {minutos} minutos y solo se puede usar una vez.\n"
+            "Si no has creado tú esta cuenta, ignora este mensaje.\n\n"
+            "— Bingo Pirámide 777"
+        )
+        html = f"""<div style="font-family:Arial,sans-serif;background:#17082e;color:#fdf6e3;padding:28px;border-radius:14px">
+  <h2 style="color:#f7c948;margin:0 0 6px">Bingo Pirámide 777</h2>
+  <p style="color:#b9a9d4;margin:0 0 18px">Somos la pepa del queso</p>
+  <p>¡Bienvenido! Tu código para confirmar el correo es:</p>
+  <p style="font-size:38px;font-weight:900;letter-spacing:.18em;color:#f7c948;margin:10px 0">{codigo}</p>
+  <p style="color:#b9a9d4;font-size:13px">Caduca en {minutos} minutos y solo se puede usar una vez.<br>
+  Si no has creado tú esta cuenta, ignora este mensaje.</p>
+</div>"""
+        return self.enviar(destino, asunto, texto, html)

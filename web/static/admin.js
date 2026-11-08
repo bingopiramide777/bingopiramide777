@@ -6,6 +6,14 @@ const CLAVE_TOKEN = "bp777_token";
 let token = localStorage.getItem(CLAVE_TOKEN) || "";
 let jugadores = [];
 
+// Métodos de pago de todos los países y su bandera, para la cola de depósitos.
+const NOMBRES_METODO = {
+  pago_movil: "Pago Móvil", transferencia: "Transferencia",
+  nequi: "Nequi", mach: "MACH", cashapp: "Cash App",
+};
+const BANDERAS_PAIS = { VE: "🇻🇪", CO: "🇨🇴", CL: "🇨🇱", US: "🇺🇸" };
+const banderaPais = (code) => BANDERAS_PAIS[code] || "🏳️";
+
 async function pedir(ruta, opciones = {}) {
   const cabeceras = { "Content-Type": "application/json" };
   if (token) cabeceras["Authorization"] = "Bearer " + token;
@@ -191,24 +199,25 @@ async function refrescarDepositos() {
     <div class="panel__cabecera">
       <div class="pastilla">${res.depositos.length} por revisar</div>
     </div>
-    <p class="entrada">Pagos declarados por los jugadores (Pago Móvil o transferencia).
-       Comprueba la referencia en tu banco antes de acreditar.</p>
+    <p class="entrada">Pagos declarados por los jugadores (Pago Móvil, transferencia, Nequi,
+       MACH o Cash App). Comprueba la referencia antes de acreditar.</p>
     <div class="tabla-scroll"><table class="tabla">
-      <thead><tr><th>Jugador</th><th>Monto</th><th>Método</th><th>Banco</th><th>Referencia</th>
+      <thead><tr><th>Jugador</th><th>Monto</th><th>País</th><th>Método</th><th>Banco</th><th>Referencia</th>
         <th>Día</th><th>Acciones</th></tr></thead>
       <tbody>${res.depositos.length ? res.depositos.map((d) => `
         <tr>
           <td>${d.correo}</td>
           <td><strong>${d.importe_texto}</strong></td>
-          <td>${d.metodo === "pago_movil" ? "Pago Móvil" : "Transferencia"}</td>
-          <td>${d.banco}</td>
+          <td>${banderaPais(d.pais)} ${d.pais || "VE"}</td>
+          <td>${NOMBRES_METODO[d.metodo] || d.metodo}</td>
+          <td>${d.banco || "—"}</td>
           <td class="mono">${d.referencia}</td>
           <td>${d.dia}</td>
           <td class="acciones-celda">
             <button class="boton boton--brillo boton--mini" data-acreditar="${d.id}">Acreditar</button>
             <button class="boton boton--fantasma boton--mini" data-rechazar="${d.id}">Rechazar</button>
           </td>
-        </tr>`).join("") : '<tr><td colspan="7" class="vacio">No hay depósitos por revisar.</td></tr>'}
+        </tr>`).join("") : '<tr><td colspan="8" class="vacio">No hay depósitos por revisar.</td></tr>'}
       </tbody></table></div>`;
   caja.querySelectorAll("[data-acreditar]").forEach((b) =>
     (b.onclick = () => resolverDeposito(b.dataset.acreditar, "acreditar")));
@@ -442,7 +451,7 @@ async function cargarGanancias() {
   ];
   caja.innerHTML = `
     <p class="entrada">El ganador cobra el 80% del bote; en las salas de jugadores el anfitrión
-       se lleva un 10% y la app el otro 10%.</p>
+       se lleva un 10% y la app el 10%.</p>
     <div class="tarjetas-resumen">${tarjetas.map(([t, v, p]) => `
       <div class="tarjeta-resumen">
         <p class="tarjeta-resumen__titulo">${t}</p>
@@ -451,10 +460,141 @@ async function cargarGanancias() {
       </div>`).join("")}</div>`;
 }
 
+/* --- referidos --- */
+
+async function cargarReferidosAdmin() {
+  const caja = cuerpo("referidos");
+  if (!caja) return;
+  const r = await get("/api/admin/referidos");
+  const porPais = r.economia_pais || [];
+  const tarjetas = [
+    ["Comisión de padrinos", r.pct + "%", "de la ganancia de la app"],
+    ["Total pagado", r.total_texto, "a padrinos"],
+  ];
+  caja.innerHTML = `
+    <p class="entrada">Cada padrino cobra el ${r.pct}% de lo que la app gana cuando
+       uno de sus invitados canta bingo. Sale de la parte de la app: el premio del
+       ganador y la comisión del anfitrión no se tocan.</p>
+    <div class="tarjetas-resumen">${tarjetas.map(([t, v, p]) => `
+      <div class="tarjeta-resumen">
+        <p class="tarjeta-resumen__titulo">${t}</p>
+        <p class="tarjeta-resumen__valor">${v}</p>
+        <p class="tarjeta-resumen__pie">${p}</p>
+      </div>`).join("")}</div>
+    <h3>Ganancia de la app por país</h3>
+    <div class="tabla-envoltorio"><table class="tabla">
+      <thead><tr><th>País</th><th>Ganancia de la app</th></tr></thead>
+      <tbody>${porPais.length ? porPais.map((p) => `
+        <tr><td>${p.pais}</td><td>${p.app_texto}</td></tr>`).join("")
+        : '<tr><td colspan="2" class="vacio">Sin datos todavía.</td></tr>'}
+      </tbody></table></div>
+    <h3>Últimas comisiones</h3>
+    <div class="tabla-envoltorio"><table class="tabla">
+      <thead><tr><th>Padrino</th><th>Invitado</th><th>Comisión</th><th>Partida</th></tr></thead>
+      <tbody>${r.referidos.length ? r.referidos.map((f) => `
+        <tr><td>${f.padrino}</td><td>${f.referido}</td>
+          <td>${f.texto}</td><td>${f.partida}</td></tr>`).join("")
+        : '<tr><td colspan="4" class="vacio">Sin comisiones todavía.</td></tr>'}
+      </tbody></table></div>`;
+}
+
+/* --- torneos (sala de evento) --- */
+
+async function cargarTorneos() {
+  const caja = cuerpo("torneos");
+  if (!caja) return;
+  const res = await get("/api/admin/salas");
+  const evento = res.evento || {};
+  const premios = (evento.premios || []).map((p) =>
+    `<div class="premio"><div class="premio__puesto">${p.puesto}º</div>
+       <div class="premio__importe">${p.premio_texto}</div>
+       <div class="premio__pct">${p.pct_texto} del bote</div></div>`).join("");
+  caja.innerHTML = `
+    <p class="entrada">El torneo es una sala especial que reparte el bote entre varios puestos.
+       Configúralo aquí: precio del cartón, aforo, premios por porcentaje y fecha.</p>
+    <div class="tarjetas-resumen">
+      <div class="tarjeta-resumen">
+        <p class="tarjeta-resumen__titulo">Estado</p>
+        <p class="tarjeta-resumen__valor">${evento.activa ? "Abierto" : "Cerrado"}</p>
+        <p class="tarjeta-resumen__pie">${evento.nombre || "Torneo"}</p>
+      </div>
+      <div class="tarjeta-resumen">
+        <p class="tarjeta-resumen__titulo">Jugadores</p>
+        <p class="tarjeta-resumen__valor">${evento.jugadores ?? 0}</p>
+        <p class="tarjeta-resumen__pie">${evento.aforo_texto || "Sin límite"}</p>
+      </div>
+      <div class="tarjeta-resumen">
+        <p class="tarjeta-resumen__titulo">Bote</p>
+        <p class="tarjeta-resumen__valor">${evento.bote_texto || "—"}</p>
+        <p class="tarjeta-resumen__pie">Cartón ${evento.precio_texto || "—"}</p>
+      </div>
+      <div class="tarjeta-resumen">
+        <p class="tarjeta-resumen__titulo">Fecha</p>
+        <p class="tarjeta-resumen__valor" style="font-size:1rem">${evento.fecha_partida || "—"}</p>
+        <p class="tarjeta-resumen__pie">cuándo se juega</p>
+      </div>
+    </div>
+    <div class="evento__premios" style="margin:1rem 0">${premios || '<p class="ayuda">Sin premios configurados.</p>'}</div>
+    <button class="boton boton--principal boton--alto" id="btn-config-torneo">Configurar el torneo</button>`;
+  $("#btn-config-torneo").onclick = () => editarTorneo(evento);
+}
+
+async function editarTorneo(evento) {
+  const tipos = await tiposDeJuego();
+  const opciones = tipos.map((t) =>
+    `<option value="${t.id}" ${t.id === evento.tipo_juego ? "selected" : ""}>${t.nombre}</option>`).join("");
+  const pctActual = (evento.premios || []).map((p) => p.pct).join(",") || "70,20,10";
+  abrirDialogo(`
+    <h2>Configurar el torneo</h2>
+    <p style="color:var(--gris);font-size:.9rem">Sala de evento: reparte el bote entre los puestos.</p>
+    <form id="form-torneo">
+      <label>Nombre<input type="text" name="nombre" value="${evento.nombre || "Torneo del día"}" maxlength="40"></label>
+      <label>Precio del cartón (Bs)
+        <input type="text" name="precio" value="${(evento.precio_texto || "").replace("Bs ", "")}" required>
+      </label>
+      <label>Aforo (0 = sin límite)
+        <input type="number" name="aforo" min="0" step="1" value="${evento.aforo || 0}">
+      </label>
+      <label>Premios por porcentaje (separados por coma, de 1º a último)
+        <input type="text" name="premios_pct" value="${pctActual}" placeholder="70,20,10">
+      </label>
+      <label>Tipo de juego<select name="tipo_juego">${opciones}</select></label>
+      <label>Cartones a la venta (0 = sin tope)
+        <input type="number" name="cupo_cartones" min="0" step="1" value="${evento.cupo_cartones || 0}">
+      </label>
+      <label>Fecha de la partida
+        <input type="text" name="fecha_partida" maxlength="60" placeholder="Ej.: hoy 8:00 pm"
+               value="${evento.fecha_partida || ""}">
+      </label>
+      <label>¿Abierto?
+        <select name="activa">
+          <option value="si" ${evento.activa ? "selected" : ""}>Sí, abierto</option>
+          <option value="no" ${!evento.activa ? "selected" : ""}>No, cerrado</option>
+        </select>
+      </label>
+      <button class="boton boton--principal" type="submit">Guardar torneo</button>
+    </form>
+    <p class="ayuda">Los porcentajes no pueden sumar más de 100 %. Lo que sobre queda para la app.</p>`);
+  $("#form-torneo").onsubmit = async (e) => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      await post("/api/admin/evento", {
+        nombre: d.nombre, precio: d.precio, aforo: d.aforo,
+        premios_pct: d.premios_pct, tipo_juego: d.tipo_juego,
+        cupo_cartones: d.cupo_cartones, fecha_partida: d.fecha_partida,
+        activa: d.activa === "si",
+      });
+      $("#dialogo").hidden = true;
+      avisar("Torneo actualizado.", "bien");
+      cargarTorneos();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+}
+
 /* --- Glenis IA --- */
 
 let historialGlenis = [];
-
 function burbuja(quien, texto, clase = "") {
   const div = document.createElement("div");
   div.className = `chat__burbuja chat__burbuja--${clase}`;
@@ -552,12 +692,14 @@ async function hablarConGlenis(texto) {
 const VENTANAS = {
   resumen:     { titulo: "Resumen",               cargar: () => cargarResumen() },
   glenis:      { titulo: "Glenis IA",             cargar: () => cargarGlenis() },
+  torneos:     { titulo: "Torneos",               cargar: () => cargarTorneos() },
   depositos:   { titulo: "Depósitos por revisar", cargar: () => refrescarDepositos() },
   retiros:     { titulo: "Retiros pendientes",    cargar: () => cargarRetiros() },
   jugadores:   { titulo: "Jugadores",             cargar: () => cargarJugadores() },
   partidas:    { titulo: "Partidas",              cargar: () => cargarPartidas() },
   salas:       { titulo: "Salas en vivo",         cargar: () => cargarSalasAdmin() },
   ganancias:   { titulo: "Ganancias del bingo",   cargar: () => cargarGanancias() },
+  referidos:   { titulo: "Referidos",             cargar: () => cargarReferidosAdmin() },
   movimientos: { titulo: "Últimos movimientos",   cargar: () => cargarMovimientos() },
 };
 
@@ -675,13 +817,16 @@ async function editarSala(sala) {
     <h2>Editar sala</h2>
     <p style="color:var(--gris);font-size:.9rem">${sala.nombre}</p>
     <form id="form-sala">
-      <label>Nombre<input type="text" name="nombre" value="${sala.nombre}" required maxlength="30"></label>
+      <label>Nombre<input type="text" name="nombre" value="${sala.nombre}" required maxlength="60"></label>
       <label>Precio del cartón (Bs)
         <input type="text" name="precio" value="${sala.precio_texto.replace("Bs ", "")}" required>
       </label>
       <label>Tipo de juego<select name="tipo_juego">${opciones}</select></label>
       <label>Cartones a la venta (0 = sin tope)
         <input type="number" name="cupo_cartones" min="0" step="1" value="${sala.cupo_cartones || 0}">
+      </label>
+      <label>Cartones por jugador (0 = sin tope)
+        <input type="number" name="max_cartones" min="0" step="1" value="${sala.max_cartones || 0}">
       </label>
       <label>Fecha de la partida
         <input type="text" name="fecha_partida" maxlength="60" placeholder="Ej.: hoy 8:00 pm"
@@ -698,7 +843,7 @@ async function editarSala(sala) {
       const res = await post("/api/admin/sala/editar", {
         sala: sala.id, nombre: d.nombre, precio: d.precio,
         tipo_juego: d.tipo_juego, cupo_cartones: d.cupo_cartones,
-        fecha_partida: d.fecha_partida,
+        max_cartones: d.max_cartones, fecha_partida: d.fecha_partida,
       });
       $("#dialogo").hidden = true;
       avisar(res.mensaje, "bien");
@@ -747,8 +892,8 @@ function cartonHtml(c) {
 
 /* --- arranque --- */
 
-const ORDEN_VENTANAS = ["resumen", "glenis", "depositos", "retiros", "jugadores",
-                        "partidas", "salas", "ganancias", "movimientos"];
+const ORDEN_VENTANAS = ["resumen", "glenis", "torneos", "depositos", "retiros", "jugadores",
+                        "partidas", "salas", "ganancias", "referidos", "movimientos"];
 
 function pintarLanzadera() {
   const caja = $("#lanzadera");

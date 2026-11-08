@@ -26,6 +26,37 @@ services:
         value: "0416-7677264"
       - key: BINGO_PAGO_CEDULA
         value: "12.256.618"
+      # Cobro en EE. UU.: Cash App (cashtag) y Wise (transferencia ACH).
+      - key: BINGO_PAGO_CASHAPP_CASHTAG
+        value: "$bingopiramide777"
+      - key: BINGO_PAGO_WISE_TIPO
+        value: Checking
+      - key: BINGO_PAGO_WISE_RUTA
+        value: "101019628"
+      - key: BINGO_PAGO_WISE_CUENTA
+        value: "211072264375"
+      # Cuentas donde la app cobra su 10%, una por país (panel de administración).
+      - key: BINGO_ADMIN_CUENTA_VE_BANCO
+        value: Banco de Venezuela
+      - key: BINGO_ADMIN_CUENTA_VE_DATO1
+        value: "0416-7677264"
+      - key: BINGO_ADMIN_CUENTA_VE_DATO2
+        value: "12.256.618"
+      - key: BINGO_ADMIN_CUENTA_CO_BANCO
+        value: Nequi
+      - key: BINGO_ADMIN_CUENTA_CO_DATO1
+        value: "3052111153"
+      - key: BINGO_ADMIN_CUENTA_US_BANCO
+        value: Wise
+      - key: BINGO_ADMIN_CUENTA_US_DATO1
+        value: Checking
+      - key: BINGO_ADMIN_CUENTA_US_DATO2
+        value: "101019628"
+      - key: BINGO_ADMIN_CUENTA_US_DATO3
+        value: "211072264375"
+      # Comisión de referidos: % de la ganancia de la app que se lleva el padrino.
+      - key: BINGO_REFERIDO_PCT
+        value: "10"
     disk:
       name: datos
       mountPath: /var/data

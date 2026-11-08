@@ -3,15 +3,15 @@
 Aquí se decide, y se puede comprobar, en qué se convierte cada cartón vendido.
 Es la parte más delicada del programa: si esto está mal, el dinero no cuadra.
 
-El reparto, calcado del modelo de Juegoactivo:
+El reparto:
 
     bote = precio del cartón x cartones vendidos
 
     premio al ganador  = 80 % del bote
     se queda la app    = 20 % del bote
 
-Y cuando la sala es de un jugador (salas personalizadas, como en Juegoactivo),
-el ganador cobra lo mismo y el 10 % del anfitrión sale del margen de la app:
+Y cuando la sala es de un jugador (salas personalizadas), el ganador cobra lo
+mismo y el 20 % restante se parte entre el anfitrión y la app:
 
     premio al ganador      = 80 % del bote   (igual que en las salas de la casa)
     comisión del anfitrión = 10 % del bote   (lo cobra quien creó la sala)
@@ -33,6 +33,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from .money import a_centimos, a_texto
+from .paises import PAIS_POR_DEFECTO, cuenta_admin, formatear_local
 
 
 class ErrorDeSalas(ValueError):
@@ -42,7 +43,7 @@ class ErrorDeSalas(ValueError):
 # Qué parte del bote va al ganador en cada tipo de sala.
 PREMIO_CASA = Decimal("0.80")        # sala de la casa: 80 % al ganador
 PREMIO_CON_ANFITRION = Decimal("0.80")  # sala de un jugador: el ganador cobra igual
-COMISION_ANFITRION = Decimal("0.10")    # el anfitrión cobra un 10 % (sale del margen)
+COMISION_ANFITRION = Decimal("0.10")    # el anfitrión cobra un 10 %; la app el otro 10 %
 
 # Límites del precio del cartón, en céntimos. Ni regalado ni abusivo.
 # Las salas de la casa y el evento los pone la administración desde el panel, así
@@ -57,16 +58,35 @@ MODOS_VALIDOS = ("normal", "carton_lleno", "competencia")
 TIPO_JUEGO_POR_DEFECTO = "linea_h1"
 CUPO_MAXIMO_CARTONES = 1000        # cartones que se pueden vender en una sala (0 = sin tope)
 
+# Cuántos cartones puede comprar un mismo jugador en una sala (0 = sin tope).
+# Es distinto del cupo: el cupo limita la sala entera, esto limita a cada quien.
+MAX_CARTONES_POR_JUGADOR = 100
+
+# Las salas de jugador llevan nombres cortos (30 letras). Las de la casa y el
+# evento admiten nombres largos, como el de la sala de jugar desde casa.
+NOMBRE_MAXIMO_JUGADOR = 30
+NOMBRE_MAXIMO_CASA = 60
+
 # Las salas de la casa llevan nombre de estado de Venezuela. El último dato es
-# el tipo de juego que premia la sala.
+# el tipo de juego que premia la sala. Todas nacen en Venezuela (moneda base).
 SALAS_INICIALES = (
-    ("sala-zulia", "Zulia", "normal", 2_000_00, "linea_h1"),
-    ("sala-lara", "Lara", "competencia", 1_000_00, "cuatro_esquinas"),
-    ("sala-carabobo", "Carabobo", "carton_lleno", 500_00, "carton_lleno"),
-    ("sala-miranda", "Mérida", "normal", 200_00, "cruz_grande"),
-    ("sala-tachira", "Táchira", "competencia", 100_00, "cruz_pequena"),
-    ("sala-nueva-esparta", "Nueva Esparta", "carton_lleno", 50_00, "diagonal"),
+    ("sala-zulia", "Zulia", "normal", 2_000_00, "linea_h1", "VE"),
+    ("sala-lara", "Lara", "competencia", 1_000_00, "cuatro_esquinas", "VE"),
+    ("sala-carabobo", "Carabobo", "carton_lleno", 500_00, "carton_lleno", "VE"),
+    ("sala-miranda", "Mérida", "normal", 200_00, "cruz_grande", "VE"),
+    ("sala-tachira", "Táchira", "competencia", 100_00, "cruz_pequena", "VE"),
+    ("sala-nueva-esparta", "Nueva Esparta", "carton_lleno", 50_00, "diagonal", "VE"),
 )
+
+# La sala para jugar desde casa. Es una sala de la casa (no de un anfitrión),
+# de cartón lleno y con tope de 6 cartones por jugador para que el bote se
+# reparta entre más gente. El precio lo cambia la administración desde el panel.
+SALA_CASA_ID = "sala-ganar-desde-casa"
+SALA_CASA_NOMBRE = "Ganar Dinero Desde Casa con BingoPiramide777"
+SALA_CASA_MODO = "carton_lleno"
+SALA_CASA_PRECIO = 50_00           # Bs 50,00 por cartón
+SALA_CASA_TIPO = "carton_lleno"
+SALA_CASA_MAX_CARTONES = 6         # cartones por jugador
 
 # Precios que traían las salas antes de que la administración pudiera cambiarlos.
 # Se usan una sola vez, para subir la base de datos de quien ya tenía el programa
@@ -101,8 +121,9 @@ PREMIO_EVENTO_POR_DEFECTO = (60, 15, 5)    # % del bote para 1º, 2º y 3º
 PLAZAS_EVENTO = len(PREMIO_EVENTO_POR_DEFECTO)
 AFORO_MAXIMO = 1000
 
-NOMBRES_RESERVADOS = tuple(n.lower() for _, n, _, _, _ in SALAS_INICIALES) + (
+NOMBRES_RESERVADOS = tuple(n.lower() for _, n, _, _, _, _ in SALAS_INICIALES) + (
     NOMBRE_VIEJO_MIRANDA.lower(), SALA_EVENTO_NOMBRE.lower(), "lago de maracaibo",
+    SALA_CASA_NOMBRE.lower(),
 )
 
 
@@ -178,11 +199,25 @@ class Sala:
     premios_pct: tuple[int, ...] = ()  # % del bote para 1º, 2º y 3º (solo eventos)
     tipo_juego: str = TIPO_JUEGO_POR_DEFECTO  # patrón que premia la sala
     cupo_cartones: int = 0             # cartones a la venta como máximo; 0 = sin tope
+    max_cartones: int = 0              # cartones por jugador como máximo; 0 = sin tope
     fecha_partida: str = ""            # cuándo se juega (texto libre: "hoy 8 pm")
+    pais: str = "VE"                   # país y moneda de la sala (Opción A)
 
     @property
     def es_de_jugador(self) -> bool:
         return bool(self.dueno)
+
+    @property
+    def precio_texto(self) -> str:
+        """El precio del cartón en la moneda de QUIEN MIRA (se convierte)."""
+        return a_texto(self.precio_carton)
+
+    @property
+    def precio_nativo_texto(self) -> str:
+        """El precio del cartón en la moneda propia de la sala (sin convertir)."""
+        from .paises import formatear_local
+
+        return formatear_local(self.precio_carton, self.pais)
 
     @property
     def nombre_tipo_juego(self) -> str:
@@ -210,7 +245,8 @@ class Sala:
             "nombre": self.nombre,
             "modo": self.modo,
             "precio_carton": self.precio_carton,
-            "precio_texto": a_texto(self.precio_carton),
+            "precio_texto": self.precio_texto,
+            "pais": self.pais,
             "dueno": self.dueno,
             "publica": self.publica,
             "activa": self.activa,
@@ -222,6 +258,7 @@ class Sala:
             "tipo_juego": self.tipo_juego,
             "tipo_juego_texto": self.nombre_tipo_juego,
             "cupo_cartones": self.cupo_cartones,
+            "max_cartones": self.max_cartones,
             "fecha_partida": self.fecha_partida,
         }
 
@@ -254,7 +291,7 @@ class Salas:
         """
         if self.almacen.meta("precios_v") == str(VERSION_PRECIOS):
             return
-        nuevos = {id_: precio for id_, _, _, precio, _ in SALAS_INICIALES}
+        nuevos = {id_: precio for id_, _, _, precio, _, _ in SALAS_INICIALES}
         for id_, viejo in SALAS_INICIALES_ANTIGUAS.items():
             fila = self.almacen.sala(id_)
             if fila is None:
@@ -271,13 +308,22 @@ class Salas:
 
     def _asegurar_iniciales(self) -> None:
         """Crea las salas de la casa la primera vez. No pisa las que ya existan."""
-        for id_, nombre, modo, precio, tipo in SALAS_INICIALES:
+        for id_, nombre, modo, precio, tipo, pais in SALAS_INICIALES:
             if self.almacen.sala(id_) is None:
                 self.almacen.guardar_sala({
                     "id": id_, "nombre": nombre, "modo": modo, "precio_carton": precio,
                     "dueno": "", "publica": 1, "creada": time.time(), "activa": 1,
                     "es_evento": 0, "aforo": 0, "premios_pct": "", "tipo_juego": tipo,
+                    "pais": pais,
                 })
+        if self.almacen.sala(SALA_CASA_ID) is None:
+            self.almacen.guardar_sala({
+                "id": SALA_CASA_ID, "nombre": SALA_CASA_NOMBRE, "modo": SALA_CASA_MODO,
+                "precio_carton": SALA_CASA_PRECIO, "dueno": "", "publica": 1,
+                "creada": time.time(), "activa": 1, "es_evento": 0,
+                "tipo_juego": SALA_CASA_TIPO,
+                "max_cartones": SALA_CASA_MAX_CARTONES,
+            })
         if self.almacen.sala(SALA_EVENTO_ID) is None:
             self.almacen.guardar_sala({
                 "id": SALA_EVENTO_ID, "nombre": SALA_EVENTO_NOMBRE, "modo": SALA_EVENTO_MODO,
@@ -316,31 +362,48 @@ class Salas:
     # -- creación --
 
     def crear(self, dueno: str, nombre: str, modo: str, precio: object,
-              publica: bool = True) -> Sala:
-        """Un jugador crea su sala. El anfitrión se lleva el 10 % de los botes."""
+              publica: bool = True, pais: str | None = None) -> Sala:
+        """Un jugador crea su sala. El anfitrión se lleva el 10 % de los botes.
+
+        La sala nace con un país (y por tanto una moneda). Si no se indica, se usa
+        el país del jugador que la crea, y si tampoco, el de por defecto. El precio
+        se entiende en ESA moneda.
+        """
         nombre = (nombre or "").strip()
         if not dueno:
             raise ErrorDeSalas("Hace falta saber quién crea la sala.")
         if not nombre:
             raise ErrorDeSalas("Ponle un nombre a la sala.")
-        if len(nombre) > 30:
-            raise ErrorDeSalas("El nombre de la sala no puede pasar de 30 letras.")
+        if len(nombre) > NOMBRE_MAXIMO_JUGADOR:
+            raise ErrorDeSalas(f"El nombre de la sala no puede pasar de {NOMBRE_MAXIMO_JUGADOR} letras.")
         if nombre.lower() in NOMBRES_RESERVADOS:
             raise ErrorDeSalas(f"El nombre {nombre!r} está reservado para las salas de la casa.")
         if modo not in MODOS_VALIDOS:
             raise ErrorDeSalas(f"Modo de juego no válido: {modo!r}.")
-        centimos = self._precio_valido(precio, PRECIO_MAXIMO, "de tu sala")
+        from .paises import a_base, es_pais_valido
+
+        pais = (pais or "").strip().upper()
+        if not es_pais_valido(pais):
+            pais = PAIS_POR_DEFECTO
+        # El precio llega en la moneda del anfitrión; dentro se guarda en la base.
+        centimos = a_base(a_centimos(precio), pais)
+        if not PRECIO_MINIMO <= centimos <= PRECIO_MAXIMO:
+            raise ErrorDeSalas(
+                f"El cartón de tu sala tiene que costar entre {a_texto(PRECIO_MINIMO)} "
+                f"y {a_texto(PRECIO_MAXIMO)}."
+            )
         # Un anfitrión no puede llenar la web de salas.
         if len(self.de_dueno(dueno)) >= 3:
             raise ErrorDeSalas("Ya tienes 3 salas. Borra una para crear otra.")
 
         sala = Sala(id=f"s-{secrets.token_hex(4)}", nombre=nombre, modo=modo,
                     precio_carton=centimos, dueno=dueno, publica=bool(publica),
-                    creada=time.time())
+                    creada=time.time(), pais=pais)
         self.almacen.guardar_sala({
             "id": sala.id, "nombre": sala.nombre, "modo": sala.modo,
             "precio_carton": sala.precio_carton, "dueno": sala.dueno,
             "publica": int(sala.publica), "creada": sala.creada, "activa": 1,
+            "pais": sala.pais,
         })
         return sala
 
@@ -387,9 +450,20 @@ class Salas:
                                "(0 = sin tope).")
         return n
 
+    def _max_cartones_valido(self, tope: object) -> int:
+        try:
+            n = int(tope)
+        except (TypeError, ValueError):
+            raise ErrorDeSalas("El tope de cartones por jugador tiene que ser un número entero.") from None
+        if n < 0 or n > MAX_CARTONES_POR_JUGADOR:
+            raise ErrorDeSalas(f"El tope de cartones por jugador tiene que estar entre 0 y "
+                               f"{MAX_CARTONES_POR_JUGADOR} (0 = sin tope).")
+        return n
+
     def configurar_sala(self, id_: str, precio: object | None = None,
                         nombre: object | None = None, activa: object | None = None,
                         tipo_juego: object | None = None, cupo_cartones: object | None = None,
+                        max_cartones: object | None = None,
                         fecha_partida: object | None = None) -> Sala:
         """Cambia precio, nombre, tipo de juego, cupo o fecha de una sala de la casa.
 
@@ -408,13 +482,15 @@ class Salas:
             limpio = str(nombre).strip()
             if not limpio:
                 raise ErrorDeSalas("Ponle un nombre a la sala.")
-            if len(limpio) > 30:
-                raise ErrorDeSalas("El nombre de la sala no puede pasar de 30 letras.")
+            if len(limpio) > NOMBRE_MAXIMO_CASA:
+                raise ErrorDeSalas(f"El nombre de la sala no puede pasar de {NOMBRE_MAXIMO_CASA} letras.")
             campos["nombre"] = limpio
         if tipo_juego is not None:
             campos["tipo_juego"] = self._tipo_juego_valido(tipo_juego)
         if cupo_cartones is not None:
             campos["cupo_cartones"] = self._cupo_valido(cupo_cartones)
+        if max_cartones is not None:
+            campos["max_cartones"] = self._max_cartones_valido(max_cartones)
         if fecha_partida is not None:
             campos["fecha_partida"] = str(fecha_partida).strip()[:60]
         if activa is not None:
@@ -427,6 +503,7 @@ class Salas:
                           premios_pct: object | None = None, activa: object | None = None,
                           nombre: object | None = None, tipo_juego: object | None = None,
                           cupo_cartones: object | None = None,
+                          max_cartones: object | None = None,
                           fecha_partida: object | None = None) -> Sala:
         """Ajusta la sala de eventos: precio, aforo, premios, tipo de juego y fecha.
 
@@ -442,13 +519,15 @@ class Salas:
             limpio = str(nombre).strip()
             if not limpio:
                 raise ErrorDeSalas("Ponle un nombre a la sala.")
-            if len(limpio) > 40:
-                raise ErrorDeSalas("El nombre de la sala no puede pasar de 40 letras.")
+            if len(limpio) > NOMBRE_MAXIMO_CASA:
+                raise ErrorDeSalas(f"El nombre de la sala no puede pasar de {NOMBRE_MAXIMO_CASA} letras.")
             campos["nombre"] = limpio
         if tipo_juego is not None:
             campos["tipo_juego"] = self._tipo_juego_valido(tipo_juego)
         if cupo_cartones is not None:
             campos["cupo_cartones"] = self._cupo_valido(cupo_cartones)
+        if max_cartones is not None:
+            campos["max_cartones"] = self._max_cartones_valido(max_cartones)
         if fecha_partida is not None:
             campos["fecha_partida"] = str(fecha_partida).strip()[:60]
         if aforo is not None:
@@ -543,6 +622,45 @@ class Salas:
             "app": app, "app_texto": a_texto(app),
         }
 
+    def economia_por_pais(self) -> dict:
+        """La ganancia de la app (su parte) desglosada por país.
+
+        Cada sala nace con un país, así que el dinero que deja una partida se
+        imputa al país de su sala. Sirve para saber cuánto se cobra en cada
+        cuenta de administración. Los importes se muestran en la moneda del país
+        que corresponda, no en la del visitante.
+        """
+        por_pais: dict[str, dict] = {}
+        for fila in self.almacen.partidas(1000):
+            if fila["estado"] != "terminada":
+                continue
+            bote = fila["precio_carton"] * len(self.almacen.cartones(fila["id"]))
+            if bote == 0:
+                continue
+            sala_fila = self.almacen.sala(fila["sala"]) if fila["sala"] else None
+            claves = sala_fila.keys() if sala_fila is not None else ()
+            code = (sala_fila["pais"] if "pais" in claves else "") or PAIS_POR_DEFECTO
+            r = self._reparto_de_partida(fila)
+            d = por_pais.setdefault(code, {"pais": code, "partidas": 0, "botes": 0,
+                                           "premios": 0, "comisiones": 0, "app": 0})
+            d["partidas"] += 1
+            d["botes"] += r["bote"]
+            d["premios"] += sum(r.get("premios", [r.get("premio", 0)]))
+            d["comisiones"] += r.get("anfitrion", 0)
+            d["app"] += r["app"]
+
+        lista = []
+        for code in sorted(por_pais):
+            d = por_pais[code]
+            d["botes_texto"] = formatear_local(d["botes"], code)
+            d["premios_texto"] = formatear_local(d["premios"], code)
+            d["comisiones_texto"] = formatear_local(d["comisiones"], code)
+            d["app_texto"] = formatear_local(d["app"], code)
+            d["cuenta_admin"] = cuenta_admin(code).a_dict()
+            lista.append(d)
+        return {"paises": lista, "app": sum(d["app"] for d in lista),
+                "app_texto": a_texto(sum(d["app"] for d in lista))}
+
     def _reparto_de_partida(self, fila) -> dict:
         """Reparte el bote de una partida según el tipo de sala que la abrió."""
         bote = fila["precio_carton"] * len(self.almacen.cartones(fila["id"]))
@@ -573,4 +691,6 @@ class Salas:
                     tipo_juego=(fila["tipo_juego"] or TIPO_JUEGO_POR_DEFECTO)
                     if "tipo_juego" in claves else TIPO_JUEGO_POR_DEFECTO,
                     cupo_cartones=int(fila["cupo_cartones"]) if "cupo_cartones" in claves else 0,
-                    fecha_partida=(fila["fecha_partida"] or "") if "fecha_partida" in claves else "")
+                    max_cartones=int(fila["max_cartones"]) if "max_cartones" in claves else 0,
+                    fecha_partida=(fila["fecha_partida"] or "") if "fecha_partida" in claves else "",
+                    pais=(fila["pais"] or "VE") if "pais" in claves else "VE")

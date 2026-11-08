@@ -10,14 +10,43 @@ let misCartones = [];          // todos los cartones comprados en la partida
 let automarcar = false;        // marca solo las bolas que salgan
 let cuentaAtras = null;        // temporizador de la cuenta atrás de la partida
 
+/* --- país y moneda --- */
+// La app sirve a varios países. El país activo decide la moneda que se muestra
+// y el método de cobro. Se recuerda la elección y, si no hay, la detecta el
+// servidor por el idioma o por IP.
+const CLAVE_PAIS = "bp777_pais";
+let paisActual = localStorage.getItem(CLAVE_PAIS) || "";
+let paisInfo = null;           // { code, name, currency, currencySymbol, locale, flag }
+let catalogoPaises = [];       // todos los países soportados
+
+/* --- idioma --- */
+// El idioma va aparte del país: el país decide la moneda y el cobro; el idioma,
+// los textos. Así un jugador chino en Estados Unidos lee la mesa en chino y paga
+// en dólares. Las funciones t() y el selector viven en i18n.js.
+
+function simboloMoneda() {
+  return (paisInfo && paisInfo.currencySymbol) || "Bs";
+}
+
+function localeMoneda() {
+  return (paisInfo && paisInfo.locale) || "es-VE";
+}
+
+/* Nombre de la moneda en plural para los textos: "bolívares", "pesos". */
+function nombreMoneda() {
+  return (paisInfo && paisInfo.currencyName) || "bolívares";
+}
+
 /* --- peticiones --- */
 
 async function pedir(ruta, opciones = {}) {
   const cabeceras = { "Content-Type": "application/json" };
   if (token) cabeceras["Authorization"] = "Bearer " + token;
+  if (paisActual) cabeceras["X-Pais"] = paisActual;
+  if (idiomaElegido()) cabeceras["X-Idioma"] = idiomaElegido();
   const respuesta = await fetch(ruta, { ...opciones, headers: cabeceras });
   const datos = await respuesta.json().catch(() => ({}));
-  if (!respuesta.ok) throw new Error(datos.error || "Algo ha ido mal.");
+  if (!respuesta.ok) throw new Error(datos.error || t("aviso.algo_mal"));
   return datos;
 }
 
@@ -49,7 +78,7 @@ function pintarCarton(destino, numeros, marcados = []) {
       const esLibre = f === 2 && c === 2;
       if (esLibre) {
         celda.classList.add("celda--libre");
-        celda.textContent = "LIBRE";
+        celda.textContent = t("mesa.libre");
       } else {
         celda.textContent = numeros[f][c];
       }
@@ -94,12 +123,12 @@ function pintarSesion() {
       panel.className = "boton boton--fantasma";
       panel.href = "/admin";
       panel.style.padding = ".4rem 1rem";
-      panel.textContent = "Panel";
+      panel.textContent = t("sesion.panel");
       caja.appendChild(panel);
     }
     const salir = document.createElement("button");
     salir.className = "boton boton--fantasma";
-    salir.textContent = "Salir";
+    salir.textContent = t("sesion.salir");
     salir.style.padding = ".4rem 1rem";
     salir.onclick = () => cerrarSesion();
     caja.append(salir);
@@ -107,7 +136,7 @@ function pintarSesion() {
     const entrar = document.createElement("button");
     entrar.className = "boton boton--principal";
     entrar.style.padding = ".45rem 1.1rem";
-    entrar.textContent = "Entrar";
+    entrar.textContent = t("sesion.entrar");
     entrar.onclick = () => abrirAcceso("entrar");
     caja.appendChild(entrar);
   }
@@ -130,39 +159,42 @@ let preguntas = [];
 
 function abrirAcceso(modo) {
   const cabeceras = {
-    entrar: ["Entrar", "Tu correo y tu contraseña. Nada de redes sociales."],
-    registrar: ["Crear cuenta", "Regístrate con tu correo. La contraseña, mínimo 8 caracteres."],
-    recuperar: ["Recuperar la cuenta", "Te mandamos un código al correo para poner una contraseña nueva."],
+    entrar: [t("acceso.entrar_t"), t("acceso.entrar_d")],
+    registrar: [t("acceso.crear_t"), t("acceso.crear_d")],
+    recuperar: [t("acceso.recuperar_t"), t("acceso.recuperar_d")],
   };
   const [titulo, ayuda] = cabeceras[modo] || cabeceras.entrar;
 
   const campos = {
     entrar: `
-      <label>Correo<input type="email" name="correo" required placeholder="tu@correo.com" autocomplete="email"></label>
-      <label>Contraseña<input type="password" name="clave" required placeholder="••••••••" autocomplete="current-password"></label>`,
+      <label>${t("acceso.correo")}<input type="email" name="correo" required placeholder="${t("acceso.correo_ph")}" autocomplete="email"></label>
+      <label>${t("acceso.clave")}<input type="password" name="clave" required placeholder="••••••••" autocomplete="current-password"></label>
+      <button class="boton boton--principal boton--alto" type="submit">${t("acceso.entrar_t")}</button>`,
     registrar: `
-      <label>Nombre<input type="text" name="nombre" placeholder="Cómo te llamas"></label>
-      <label>Correo<input type="email" name="correo" required placeholder="tu@correo.com" autocomplete="email"></label>
-      <label>Contraseña<input type="password" name="clave" required minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
-      <label>Pregunta secreta (para recuperar la cuenta)
-        <select name="pregunta"><option value="">— Sin pregunta —</option></select>
+      <label>${t("acceso.nombre")}<input type="text" name="nombre" placeholder="${t("acceso.nombre_ph")}"></label>
+      <label>${t("acceso.correo")}<input type="email" name="correo" required placeholder="${t("acceso.correo_ph")}" autocomplete="email"></label>
+      <label>${t("acceso.clave")}<input type="password" name="clave" required minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
+      <label>${t("acceso.codigo_amigo")}<input type="text" name="codigo_amigo" maxlength="10" placeholder="${t("acceso.codigo_amigo_ph")}" style="text-transform:uppercase"></label>
+      <label>${t("acceso.pregunta")}
+        <select name="pregunta"><option value="">${t("acceso.sin_pregunta")}</option></select>
       </label>
-      <label>Tu respuesta<input type="text" name="respuesta" placeholder="Solo la sabes tú"></label>`,
+      <label>${t("acceso.respuesta")}<input type="text" name="respuesta" placeholder="${t("acceso.respuesta_ph")}"></label>
+      <button class="boton boton--principal boton--alto" type="submit">${t("acceso.crear_t")}</button>`,
     recuperar: `
-      <label>Correo<input type="email" name="correo" required placeholder="tu@correo.com" autocomplete="email"></label>
-      <button class="boton boton--principal" type="submit" id="btn-enviar-codigo">Enviar código</button>
+      <label>${t("acceso.correo")}<input type="email" name="correo" required placeholder="${t("acceso.correo_ph")}" autocomplete="email"></label>
+      <button class="boton boton--principal" type="submit" id="btn-enviar-codigo">${t("acceso.enviar_codigo")}</button>
       <div id="paso-codigo" hidden>
-        <label>Código de 6 cifras<input type="text" name="codigo" inputmode="numeric" maxlength="6" placeholder="000000"></label>
-        <label>Contraseña nueva<input type="password" name="clave" minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
-        <button class="boton boton--principal" type="submit" id="btn-cambiar-codigo">Cambiar contraseña</button>
+        <label>${t("acceso.codigo")}<input type="text" name="codigo" inputmode="numeric" maxlength="6" placeholder="000000"></label>
+        <label>${t("acceso.clave_nueva")}<input type="password" name="clave" minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
+        <button class="boton boton--principal" type="submit" id="btn-cambiar-codigo">${t("acceso.cambiar_clave")}</button>
       </div>
-      <p class="ayuda">¿Prefieres tu pregunta secreta?
-        <button type="button" class="enlace" id="usar-pregunta">Usar la pregunta</button></p>
+      <p class="ayuda">${t("acceso.usar_pregunta")}
+        <button type="button" class="enlace" id="usar-pregunta">${t("acceso.usar_pregunta_b")}</button></p>
       <div id="paso-pregunta" hidden>
-        <label>Pregunta<input type="text" name="pregunta_mostrada" readonly></label>
-        <label>Tu respuesta<input type="text" name="respuesta" placeholder="Tu respuesta"></label>
-        <label>Contraseña nueva<input type="password" name="clave2" minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
-        <button class="boton boton--principal" type="submit" id="btn-cambiar-pregunta">Cambiar contraseña</button>
+        <label>${t("acceso.pregunta")}<input type="text" name="pregunta_mostrada" readonly></label>
+        <label>${t("acceso.respuesta")}<input type="text" name="respuesta" placeholder="${t("acceso.respuesta_ph")}"></label>
+        <label>${t("acceso.clave_nueva")}<input type="password" name="clave2" minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
+        <button class="boton boton--principal" type="submit" id="btn-cambiar-pregunta">${t("acceso.cambiar_clave")}</button>
       </div>`,
   };
 
@@ -171,8 +203,8 @@ function abrirAcceso(modo) {
     <p style="color:var(--gris);font-size:.9rem">${ayuda}</p>
     <form id="form-acceso">${campos[modo]}</form>
     <p class="dialogo__cambio">
-      ${modo === "entrar" ? '¿No tienes cuenta? <button id="ir-registrar">Créala</button> · <button id="ir-recuperar">Olvidé mi contraseña</button>'
-        : '<button id="ir-entrar">Volver a entrar</button>'}
+      ${modo === "entrar" ? `${t("acceso.no_cuenta")} <button id="ir-registrar">${t("acceso.creala")}</button> · <button id="ir-recuperar">${t("acceso.olvide")}</button>`
+        : `<button id="ir-entrar">${t("acceso.volver")}</button>`}
     </p>`;
   $("#dialogo").hidden = false;
   $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
@@ -195,7 +227,7 @@ function abrirAcceso(modo) {
     const correoDe = () => form.querySelector("[name=correo]").value.trim();
     $("#btn-enviar-codigo").onclick = async (e) => {
       e.preventDefault();
-      if (!correoDe()) return avisar("Escribe tu correo.", "error");
+      if (!correoDe()) return avisar(t("acceso.falta_correo"), "error");
       try {
         const res = await post("/api/recuperar/codigo", { correo: correoDe() });
         $("#paso-codigo").hidden = false;
@@ -215,7 +247,7 @@ function abrirAcceso(modo) {
     };
     $("#usar-pregunta").onclick = async (e) => {
       e.preventDefault();
-      if (!correoDe()) return avisar("Escribe tu correo primero.", "error");
+      if (!correoDe()) return avisar(t("acceso.falta_correo2"), "error");
       try {
         const res = await post("/api/recuperar/pregunta", { correo: correoDe() });
         form.querySelector("[name=pregunta_mostrada]").value = res.pregunta;
@@ -248,20 +280,68 @@ function abrirAcceso(modo) {
         localStorage.setItem("bp777_correo", res.correo);
         localStorage.setItem("bp777_admin", res.admin ? "1" : "0");
         $("#dialogo").hidden = true;
-        avisar("Bienvenido de nuevo.", "bien");
+        avisar(t("acceso.bienvenido"), "bien");
         pintarSesion();
         refrescarTodo();
         refrescarRetiros();
   refrescarDepositos();
+        if (salaInvitada) {
+          const id = salaInvitada;
+          salaInvitada = "";
+          await entrarASala(id);
+        }
       } else {
-        await post("/api/registro", datos);
-        avisar("Cuenta creada. Ahora entra.", "bien");
-        abrirAcceso("entrar");
+        const res = await post("/api/registro", datos);
+        if (res.verificacion_requerida) {
+          // Hay correo configurado: hay que confirmar el código antes de entrar.
+          avisar(res.mensaje, "bien");
+          abrirVerificacion(datos.correo);
+        } else {
+          avisar(t("acceso.cuenta_creada"), "bien");
+          abrirAcceso("entrar");
+        }
       }
     } catch (err) {
       avisar(err.message, "error");
     }
   };
+}
+
+/* --- confirmar el correo al crear la cuenta --- */
+
+function abrirVerificacion(correo) {
+  $("#dialogo-contenido").innerHTML = `
+    <h2>${t("acceso.confirmar_t")}</h2>
+    <p style="color:var(--gris);font-size:.9rem">${t("acceso.confirmar_d", { correo })}</p>
+    <form id="form-verificar">
+      <label>${t("acceso.codigo")}
+        <input type="text" name="codigo" inputmode="numeric" maxlength="6" placeholder="000000" required>
+      </label>
+      <button class="boton boton--principal" type="submit">${t("acceso.confirmar")}</button>
+    </form>
+    <p class="dialogo__cambio">
+      <button type="button" id="verificar-reenviar">${t("acceso.reenviar")}</button> ·
+      <button type="button" id="verificar-entrar">${t("acceso.ya_confirme")}</button>
+    </p>`;
+  $("#dialogo").hidden = false;
+  $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
+  $("#form-verificar").onsubmit = async (e) => {
+    e.preventDefault();
+    const codigo = e.target.querySelector("[name=codigo]").value.trim();
+    try {
+      const res = await post("/api/verificar", { correo, codigo });
+      $("#dialogo").hidden = true;
+      avisar(res.mensaje, "bien");
+      abrirAcceso("entrar");
+    } catch (err) { avisar(err.message, "error"); }
+  };
+  $("#verificar-reenviar").onclick = async () => {
+    try {
+      const res = await post("/api/verificar/reenviar", { correo });
+      avisar(res.mensaje, res.enviado ? "bien" : "");
+    } catch (err) { avisar(err.message, "error"); }
+  };
+  $("#verificar-entrar").onclick = () => { $("#dialogo").hidden = true; abrirAcceso("entrar"); };
 }
 
 /* --- depósitos --- */
@@ -273,18 +353,18 @@ async function refrescarDepositos() {
   try {
     const res = await get("/api/depositos");
     if (!res.depositos.length) {
-      caja.innerHTML = '<p class="ayuda">Todavía no has anotado ningún pago.</p>';
+      caja.innerHTML = `<p class="ayuda">${t("deposito.sin_pagos")}</p>`;
       return;
     }
     caja.innerHTML = `
-      <h3 class="tabla__titulo">Mis pagos</h3>
+      <h3 class="tabla__titulo">${t("deposito.mis_pagos")}</h3>
       <div class="tabla-scroll"><table class="tabla">
-        <thead><tr><th>Monto</th><th>Referencia</th><th>Día</th><th>Estado</th></tr></thead>
+        <thead><tr><th>${t("deposito.tabla_monto")}</th><th>${t("deposito.tabla_referencia")}</th><th>${t("deposito.tabla_dia")}</th><th>${t("deposito.tabla_estado")}</th></tr></thead>
         <tbody>${res.depositos.map((d) => `
           <tr><td>${d.importe_texto}</td><td>${d.referencia}</td><td>${d.dia}</td>
           <td><span class="etiqueta etiqueta--${d.estado}">${
-            { pendiente: "En revisión", acreditado: "Acreditado", rechazado: "Rechazado" }[d.estado]
-            || d.estado}</span></td></tr>`).join("")}
+            { pendiente: t("deposito.estado_pendiente"), acreditado: t("deposito.estado_acreditado"),
+              rechazado: t("deposito.estado_rechazado") }[d.estado] || d.estado}</span></td></tr>`).join("")}
         </tbody></table></div>`;
   } catch (err) { /* sin sesión: no se muestra nada */ }
 }
@@ -294,61 +374,76 @@ async function refrescarDepositos() {
 function abrirDeposito() {
   const bancos = (configRetiro && configRetiro.bancos) || [];
   const cuenta = (configRetiro && configRetiro.cuenta_pago) || {};
+  const metodoPais = configRetiro && configRetiro.metodo_pago;
+  const sim = simboloMoneda();
   const hoy = new Date().toISOString().slice(0, 10);
-  const bloqueCuenta = cuenta.configurada
+  // En cada país se cobra por su método (Pago Móvil, Nequi, MACH, Cash App) y a
+  // su cuenta. El bloque de cuenta sale del catálogo multi-país.
+  const cuentas = metodoPais ? metodoPais.platformAccount : [];
+  const bloqueCuenta = cuentas.length
     ? `<div class="cuenta-pago">
-         <p class="cuenta-pago__titulo">Paga a esta cuenta</p>
-         <p class="cuenta-pago__linea"><span>Banco</span><strong>${cuenta.banco}</strong></p>
-         <p class="cuenta-pago__linea"><span>Teléfono</span>
-           <strong class="mono">${cuenta.telefono}</strong>
+         <p class="cuenta-pago__titulo">${metodoPais
+           ? t("deposito.paga_a_metodo", { metodo: metodoPais.name })
+           : t("deposito.paga_a")}</p>
+         ${cuentas.map((c) => `<p class="cuenta-pago__linea"><span>${c.label}</span>
+           <strong class="mono">${c.value}</strong>
            <button type="button" class="boton boton--fantasma boton--mini"
-                   data-copiar="${cuenta.telefono}">Copiar</button></p>
-         <p class="cuenta-pago__linea"><span>Cédula</span>
-           <strong class="mono">${cuenta.cedula}</strong>
-           <button type="button" class="boton boton--fantasma boton--mini"
-                   data-copiar="${cuenta.cedula}">Copiar</button></p>
-         ${cuenta.titular
-           ? `<p class="cuenta-pago__linea"><span>Titular</span><strong>${cuenta.titular}</strong></p>`
-           : ""}
+                   data-copiar="${c.value}">${t("deposito.copiar")}</button></p>`).join("")}
        </div>`
-    : "";
+    : (cuenta.configurada
+      ? `<div class="cuenta-pago">
+           <p class="cuenta-pago__titulo">${t("deposito.paga_a")}</p>
+           <p class="cuenta-pago__linea"><span>${t("deposito.banco")}</span><strong>${cuenta.banco}</strong></p>
+           <p class="cuenta-pago__linea"><span>${t("deposito.telefono")}</span>
+             <strong class="mono">${cuenta.telefono}</strong>
+             <button type="button" class="boton boton--fantasma boton--mini"
+                     data-copiar="${cuenta.telefono}">${t("deposito.copiar")}</button></p>
+         </div>`
+      : "");
+  const metodos = [
+    ["pago_movil", t("metodo.pago_movil")], ["transferencia", t("metodo.transferencia")],
+    ["nequi", t("metodo.nequi")], ["mach", t("metodo.mach")], ["cashapp", t("metodo.cashapp")],
+  ];
+  const metodosUsados = metodoPais
+    ? { pago_movil_ve: "pago_movil", nequi_co: "nequi", mach_cl: "mach", cashapp_us: "cashapp" }[metodoPais.id]
+    : "pago_movil";
   $("#dialogo-contenido").innerHTML = `
-    <h2>Recargar saldo</h2>
+    <h2>${t("deposito.titulo")}</h2>
     ${bloqueCuenta}
     <p style="color:var(--gris);font-size:.9rem">
-      Haz tu pago y anótalo aquí. Lo revisamos y te lo acreditamos enseguida.
-      Mínimo ${configRetiro ? configRetiro.deposito_minimo_texto : ""}.</p>
+      ${t("deposito.instrucciones", { minimo: configRetiro ? configRetiro.deposito_minimo_texto : "" })}</p>
     <form id="form-deposito">
-      <label>Monto (Bs)
-        <input type="text" name="importe" inputmode="decimal" placeholder="Bs 100,00" required>
+      <label>${t("deposito.monto", { moneda: sim })}
+        <input type="text" name="importe" inputmode="decimal" placeholder="${sim} 100,00" required>
       </label>
-      <label>Método
+      <label>${t("deposito.metodo")}
         <select name="metodo">
-          <option value="pago_movil">Pago móvil</option>
-          <option value="transferencia">Transferencia</option>
+          ${metodos.map(([v, texto]) => `<option value="${v}"
+            ${v === metodosUsados ? "selected" : ""}>${texto}</option>`).join("")}
         </select>
       </label>
-      <label>Banco
+      <label>${t("deposito.banco")}
         <select name="banco">${bancos.map((b) => `<option value="${b}">${b}</option>`).join("")}</select>
       </label>
-      <label>Referencia
-        <input type="text" name="referencia" placeholder="Número de referencia" required>
+      <label>${t("deposito.referencia")}
+        <input type="text" name="referencia" placeholder="${t("deposito.referencia_ph")}" required>
       </label>
-      <label>Día del pago
+      <label>${t("deposito.dia")}
         <input type="text" name="dia" value="${hoy}" placeholder="AAAA-MM-DD">
       </label>
-      <button class="boton boton--principal boton--alto" type="submit">Anotar mi pago</button>
+      <button class="boton boton--principal boton--alto" type="submit">${t("deposito.anotar")}</button>
     </form>`;
   $("#dialogo").hidden = false;
   $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
   $("#dialogo-contenido").querySelectorAll("[data-copiar]").forEach((b) =>
     (b.onclick = async () => {
-      try { await navigator.clipboard.writeText(b.dataset.copiar); avisar("Copiado.", "bien"); }
-      catch (err) { avisar("Cópialo a mano.", "error"); }
+      try { await navigator.clipboard.writeText(b.dataset.copiar); avisar(t("deposito.copiado"), "bien"); }
+      catch (err) { avisar(t("deposito.copiar_manual"), "error"); }
     }));
   $("#form-deposito").onsubmit = async (e) => {
     e.preventDefault();
     const datos = Object.fromEntries(new FormData(e.target));
+    datos.pais = paisActual;
     try {
       const res = await post("/api/deposito", datos);
       $("#dialogo").hidden = true;
@@ -362,6 +457,8 @@ function abrirDeposito() {
 
 let salaActual = "";
 let salasDisponibles = [];
+let topeSalaActual = 0;
+let salaInvitada = "";
 
 async function cargarSalas() {
   const caja = $("#lista-salas");
@@ -372,24 +469,40 @@ async function cargarSalas() {
     caja.innerHTML = salasDisponibles.map((s) => s.es_evento
       ? `<button class="sala-tarjeta sala-tarjeta--evento ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
                  data-sala="${s.id}">
-           <span class="sala-tarjeta__etiqueta">Evento</span>
+           <span class="sala-tarjeta__etiqueta">${t("salas.evento_etiqueta")}</span>
            <div class="sala-tarjeta__nombre">${s.nombre}</div>
            <div class="sala-tarjeta__modo">${nombreModo(s.modo)}</div>
-           <div class="sala-tarjeta__precio">Cartón ${s.precio_texto}</div>
-           <div class="sala-tarjeta__dueno">La administración pone el aforo y los premios</div>
+           <div class="sala-tarjeta__precio">${t("mesa.carton_precio", { precio: s.precio_texto })}</div>
+           <div class="sala-tarjeta__dueno">${t("salas.evento_pie")}</div>
          </button>`
       : `<button class="sala-tarjeta ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
                  data-sala="${s.id}">
            <div class="sala-tarjeta__nombre">${s.nombre}</div>
            <div class="sala-tarjeta__modo">${nombreModo(s.modo)}</div>
-           <div class="sala-tarjeta__precio">Cartón ${s.precio_texto}</div>
-           ${s.es_de_jugador ? `<div class="sala-tarjeta__dueno">Sala de ${s.dueno}</div>`
-                             : '<div class="sala-tarjeta__dueno">Sala de la casa</div>'}
+           <div class="sala-tarjeta__precio">${t("mesa.carton_precio", { precio: s.precio_texto })}</div>
+           ${s.es_de_jugador ? `<div class="sala-tarjeta__dueno">${t("salas.de_jugador", { dueno: s.dueno })}</div>`
+                             : `<div class="sala-tarjeta__dueno">${t("salas.de_casa")}</div>`}
+           ${s.max_cartones > 0
+             ? `<div class="sala-tarjeta__dueno">${t("salas.max_cartones", { n: s.max_cartones })}</div>`
+             : ""}
          </button>`).join("");
     caja.querySelectorAll("[data-sala]").forEach((b) =>
       (b.onclick = () => entrarASala(b.dataset.sala)));
     const evento = salasDisponibles.find((s) => s.es_evento);
     pintarEvento(evento ? evento.id : "");
+    // Enlace exclusivo: ?sala=<id> entra directo a esa sala, aunque sea privada
+    // (las privadas no salen en el listado; el id es el secreto del enlace).
+    const invitada = new URLSearchParams(location.search).get("sala");
+    if (invitada) {
+      if (!token) {
+        // Sin sesión: se pide entrar y, al hacerlo, se entra a la sala del enlace.
+        salaInvitada = invitada;
+        abrirAcceso("entrar");
+        return;
+      }
+      await entrarASala(invitada);
+      return;
+    }
     if (!salaActual && salasDisponibles.length) {
       await entrarASala(salasDisponibles[0].id);
     }
@@ -405,79 +518,121 @@ async function pintarEvento(salaId) {
     const e = await get("/api/evento");
     const premios = (e.premios || []).map((p) => `
       <div class="premio">
-        <div class="premio__puesto">${NOMBRES_PUESTO[p.puesto - 1] || p.puesto + "º"}</div>
+        <div class="premio__puesto">${nombrePuesto(p.puesto)}</div>
         <div class="premio__importe">${p.premio_texto}</div>
-        <div class="premio__pct">${p.pct_texto} del bote</div>
+        <div class="premio__pct">${t("torneo.del_bote", { pct: p.pct_texto })}</div>
       </div>`).join("");
     caja.innerHTML = `
       <div class="evento">
         <div class="evento__cabecera">
           <h3 class="evento__titulo">${e.nombre}</h3>
           <span class="evento__aforo ${e.llena ? "evento__aforo--lleno" : ""}">
-            ${e.llena ? "Aforo completo" : e.jugadores + " / " + (e.aforo || "∞") + " jugadores"}
+            ${e.llena ? t("torneo.aforo_completo")
+              : t("torneo.jugadores", { n: e.jugadores, aforo: e.aforo || "∞" })}
           </span>
         </div>
-        <p class="evento__bote">Cartón ${e.precio_texto} · Bote acumulado:
-          <strong>${e.bote_texto}</strong></p>
-        <div class="evento__premios">${premios || '<p class="ayuda">Sin premios configurados.</p>'}</div>
+        <p class="evento__bote">${t("torneo.bote", { precio: e.precio_texto, bote: e.bote_texto })}</p>
+        <div class="evento__premios">${premios || `<p class="ayuda">${t("torneo.sin_premios")}</p>`}</div>
       </div>`;
   } catch (err) { caja.innerHTML = ""; }
 }
 
-const NOMBRES_PUESTO = ["Primer lugar", "Segundo lugar", "Tercer lugar"];
+function nombrePuesto(n) {
+  return t("puesto." + n) || n + "º";
+}
 
 function nombreModo(modo) {
-  return { normal: "Normal", carton_lleno: "Cartón lleno", competencia: "Competencia" }[modo]
-    || modo;
+  const clave = "modo." + modo;
+  const nombre = t(clave);
+  return nombre === clave ? modo : nombre;
 }
 
 async function entrarASala(id) {
   try {
     const res = await post("/api/sala/entrar", { sala: id });
     salaActual = id;
+    topeSalaActual = res.partida ? (res.partida.max_cartones || 0) : 0;
     document.querySelectorAll("[data-sala]").forEach((b) =>
       b.classList.toggle("sala-tarjeta--activa", b.dataset.sala === id));
     carton = null;
     const caja = $("#carton-jugador");
-    if (caja) caja.innerHTML = '<p class="vacio">Todavía no tienes cartón.</p>';
+    if (caja) caja.innerHTML = `<p class="vacio">${t("mesa.sin_carton")}</p>`;
     const botonBingo = $("#btn-bingo");
     if (botonBingo) botonBingo.disabled = true;
+    ajustarSelectorCartones();
     refrescarPartida();
   } catch (err) { avisar(err.message, "error"); }
+}
+
+/* El selector de cartones nunca ofrece más de los que permite la sala. */
+function ajustarSelectorCartones() {
+  const select = $("#cuantos-cartones");
+  if (!select) return;
+  const sala = salasDisponibles.find((s) => s.id === salaActual);
+  // Si la sala no está en el listado (enlace privado), se usa el tope que
+  // devolvió el servidor al entrar.
+  const tope = sala && sala.max_cartones > 0 ? Math.min(sala.max_cartones, 10)
+    : (topeSalaActual > 0 ? Math.min(topeSalaActual, 10) : 10);
+  select.querySelectorAll("option").forEach((o) => {
+    o.disabled = parseInt(o.value, 10) > tope;
+  });
+  if (parseInt(select.value, 10) > tope) select.value = String(tope);
+}
+
+/* El enlace exclusivo de una sala: lleva su id para entrar directo. */
+function enlaceDeSala(id) {
+  return `${location.origin}${location.pathname}?sala=${encodeURIComponent(id)}`;
+}
+
+async function copiarEnlaceSala(id) {
+  const enlace = enlaceDeSala(id);
+  try {
+    await navigator.clipboard.writeText(enlace);
+    avisar(t("salas.enlace_copiado"), "bien");
+  } catch (err) {
+    // Sin permiso de portapapeles (o sin HTTPS): se muestra para copiar a mano.
+    prompt(t("salas.copiar_manual"), enlace);
+  }
 }
 
 async function cargarMisSalas() {
   const caja = $("#tabla-mis-salas");
   if (!caja) return;
-  if (!token) { caja.innerHTML = '<p class="ayuda">Entra para crear tus salas.</p>'; return; }
+  if (!token) { caja.innerHTML = `<p class="ayuda">${t("salas.entra_crear")}</p>`; return; }
   try {
     const res = await get("/api/mis-salas");
     const g = res.ganancias;
     const p = $("#ganancias-pastilla");
-    if (p) p.textContent = "Ganas " + g.anfitrion_texto;
+    if (p) p.textContent = t("salas.ganas", { monto: g.anfitrion_texto });
     if (!res.salas.length) {
-      caja.innerHTML = '<p class="ayuda">Todavía no tienes salas. Crea la primera arriba.</p>';
+      caja.innerHTML = `<p class="ayuda">${t("salas.sin_salas")}</p>`;
       return;
     }
     caja.innerHTML = `
       <div class="tabla-scroll"><table class="tabla">
-        <thead><tr><th>Sala</th><th>Modo</th><th>Cartón</th><th>Partidas</th>
-          <th>Botes</th><th>Has ganado</th><th></th></tr></thead>
+        <thead><tr><th>${t("salas.tabla_sala")}</th><th>${t("salas.tabla_modo")}</th><th>${t("salas.tabla_carton")}</th><th>${t("salas.tabla_partidas")}</th>
+          <th>${t("salas.tabla_botes")}</th><th>${t("salas.tabla_ganado")}</th><th></th></tr></thead>
         <tbody>${res.salas.map((s) => `
-          <tr><td><strong>${s.nombre}</strong></td><td>${nombreModo(s.modo)}</td>
+          <tr><td><strong>${s.nombre}</strong><br>
+                <span class="ayuda">${s.publica ? t("salas.publica_corta") : t("salas.privada_corta")}</span></td>
+          <td>${nombreModo(s.modo)}</td>
           <td>${s.precio_texto}</td><td>${g.partidas}</td><td>${g.botes_texto}</td>
           <td><strong>${g.anfitrion_texto}</strong></td>
-          <td><button class="boton boton--fantasma boton--mini"
-                data-cerrar="${s.id}">Cerrar</button></td></tr>`).join("")}
+          <td class="acciones-celda">
+            <button class="boton boton--fantasma boton--mini"
+                    data-enlace="${s.id}">${t("salas.copiar_enlace")}</button>
+            <button class="boton boton--fantasma boton--mini"
+                    data-cerrar="${s.id}">${t("salas.cerrar")}</button></td></tr>`).join("")}
         </tbody></table></div>
-      <p class="ayuda">Ganas el ${g.comision_pct}% del bote de cada partida de tus salas.
-         Hasta ahora: <strong>${g.anfitrion_texto}</strong> de ${g.botes_texto} en botes.</p>`;
+      <p class="ayuda">${t("salas.pie", { pct: g.comision_pct, ganado: g.anfitrion_texto, botes: g.botes_texto })}</p>`;
+    caja.querySelectorAll("[data-enlace]").forEach((b) =>
+      (b.onclick = () => copiarEnlaceSala(b.dataset.enlace)));
     caja.querySelectorAll("[data-cerrar]").forEach((b) =>
       (b.onclick = async () => {
-        if (!confirm("¿Cerrar esta sala? No se podrá jugar más en ella.")) return;
+        if (!confirm(t("salas.confirmar_cerrar"))) return;
         try {
           await post("/api/sala/cerrar", { sala: b.dataset.cerrar });
-          avisar("Sala cerrada.", "bien");
+          avisar(t("salas.cerrada"), "bien");
           cargarMisSalas();
           cargarSalas();
         } catch (err) { avisar(err.message, "error"); }
@@ -491,10 +646,10 @@ async function refrescarPartida() {
   try {
     const p = await get("/api/partida");
     $("#estado-partida").textContent =
-      p.estado === "vendiendo" ? "Vendiendo cartones"
-      : p.estado === "jugando" ? "En juego" : "Terminada";
-    $("#precio-carton").textContent = "Cartón " + formatear(p.precio_carton);
-    $("#contador-bolas").textContent = p.bolas_sacadas.length + " bolas sacadas";
+      p.estado === "vendiendo" ? t("mesa.vendiendo")
+      : p.estado === "jugando" ? t("mesa.en_juego") : t("mesa.terminada");
+    $("#precio-carton").textContent = t("mesa.carton_precio", { precio: formatear(p.precio_carton) });
+    $("#contador-bolas").textContent = t("mesa.bolas_sacadas", { n: p.bolas_sacadas.length });
     pintarBolas(p.bolas_sacadas);
     pintarOponentes(p.a_cuanto_estan);
     const mio = (p.a_cuanto_estan || []).find(
@@ -503,9 +658,9 @@ async function refrescarPartida() {
     pintarCuentaAtras(p.fecha_partida);
     const botonBola = $("#btn-bola");
     botonBola.disabled = !token || p.estado === "terminada";
-    if (p.ganador) $("#estado-partida").textContent = "Ganó " + p.ganador;
+    if (p.ganador) $("#estado-partida").textContent = t("mesa.gano", { nombre: p.ganador });
   } catch (err) {
-    $("#estado-partida").textContent = "Sin conexión";
+    $("#estado-partida").textContent = t("mesa.sin_conexion");
   }
 }
 
@@ -527,7 +682,7 @@ function pintarBolas(bolas) {
 }
 
 async function refrescarSaldo() {
-  if (!token) { $("#saldo").textContent = "Bs 0,00"; return; }
+  if (!token) { $("#saldo").textContent = formatear(0); return; }
   try {
     const s = await get("/api/saldo");
     $("#saldo").textContent = s.saldo_texto;
@@ -535,16 +690,17 @@ async function refrescarSaldo() {
 }
 
 async function refrescarHistorial() {
-  if (!token) { $("#historial").innerHTML = '<li class="vacio">Sin movimientos.</li>'; return; }
+  if (!token) { $("#historial").innerHTML = `<li class="vacio">${t("mesa.sin_movimientos")}</li>`; return; }
   try {
     const h = await get("/api/historial");
     const lista = $("#historial");
-    if (!h.movimientos.length) { lista.innerHTML = '<li class="vacio">Sin movimientos.</li>'; return; }
+    if (!h.movimientos.length) { lista.innerHTML = `<li class="vacio">${t("mesa.sin_movimientos")}</li>`; return; }
     lista.innerHTML = "";
     h.movimientos.slice().reverse().forEach((m) => {
       const li = document.createElement("li");
       const signo = m.centimos > 0 ? "mas" : "menos";
-      li.innerHTML = `<span>${m.tipo}</span>
+      const nombre = t("mov." + m.tipo);
+      li.innerHTML = `<span>${nombre === "mov." + m.tipo ? m.tipo : nombre}</span>
         <span class="${signo}">${m.centimos > 0 ? "+" : ""}${formatear(m.centimos)}</span>`;
       lista.appendChild(li);
     });
@@ -554,9 +710,9 @@ async function refrescarHistorial() {
 function formatear(centimos) {
   const negativo = centimos < 0;
   const n = Math.abs(centimos);
-  const entero = Math.floor(n / 100).toLocaleString("es-VE");
+  const entero = Math.floor(n / 100).toLocaleString(localeMoneda());
   const resto = String(n % 100).padStart(2, "0");
-  return (negativo ? "-" : "") + "Bs " + entero + "," + resto;
+  return (negativo ? "-" : "") + simboloMoneda() + " " + entero + "," + resto;
 }
 
 function refrescarTodo() {
@@ -566,6 +722,121 @@ function refrescarTodo() {
   refrescarRetiros();
   refrescarDepositos();
   cargarMisSalas();
+  cargarReferidos();
+  cargarEstadisticas();
+  cargarTorneo();
+}
+
+/* --- referidos: invita y gana --- */
+
+async function cargarReferidos() {
+  const caja = $("#tabla-referidos");
+  if (!caja) return;
+  const codigo = $("#referidos-codigo");
+  const pie = $("#referidos-pie");
+  const pastilla = $("#referidos-pastilla");
+  if (!token) {
+    if (codigo) codigo.textContent = "—";
+    if (pie) pie.textContent = t("referidos.entra");
+    caja.innerHTML = "";
+    return;
+  }
+  try {
+    const r = await get("/api/referidos");
+    if (codigo) codigo.textContent = r.codigo || "—";
+    if (pastilla) pastilla.textContent = r.total_texto;
+    if (pie) pie.textContent = t("referidos.pie", {
+      pct: r.pct, invitados: r.invitados, total: r.total_texto,
+    });
+    if (!r.detalle.length) {
+      caja.innerHTML = `<p class="ayuda">${t("referidos.sin_comisiones")}</p>`;
+      return;
+    }
+    caja.innerHTML = `
+      <div class="tabla-scroll"><table class="tabla">
+        <thead><tr><th>${t("referidos.tabla_amigo")}</th><th>${t("referidos.tabla_monto")}</th></tr></thead>
+        <tbody>${r.detalle.map((d) => `
+          <tr><td>${d.invitado}</td><td><strong>${d.texto}</strong></td></tr>`).join("")}
+        </tbody></table></div>`;
+  } catch (err) { /* sin sesión */ }
+}
+
+/* --- estadísticas del jugador --- */
+
+async function cargarEstadisticas() {
+  const caja = $("#mis-stats");
+  if (!caja) return;
+  if (!token) {
+    caja.innerHTML = `<p class="vacio">${t("stats.entra_ver")}</p>`;
+    $("#tabla-ranking").innerHTML = `<p class="vacio">${t("stats.entra_ranking")}</p>`;
+    return;
+  }
+  try {
+    const e = await get("/api/estadisticas");
+    const j = e.jugador;
+    const netoClase = j.neto >= 0 ? "mas" : "menos";
+    caja.innerHTML = `
+      <div class="stat"><span class="stat__numero">${j.cartones}</span><span class="stat__texto">${t("stats.cartones")}</span></div>
+      <div class="stat"><span class="stat__numero">${j.partidas}</span><span class="stat__texto">${t("stats.partidas")}</span></div>
+      <div class="stat"><span class="stat__numero">${j.premios_ganados}</span><span class="stat__texto">${t("stats.premios")}</span></div>
+      <div class="stat"><span class="stat__numero">${j.total_ganado_texto}</span><span class="stat__texto">${t("stats.ganado")}</span></div>
+      <div class="stat"><span class="stat__numero">${j.total_apostado_texto}</span><span class="stat__texto">${t("stats.apostado")}</span></div>
+      <div class="stat"><span class="stat__numero ${netoClase}">${j.neto_texto}</span><span class="stat__texto">${t("stats.neto")}</span></div>`;
+    $("#estadisticas-pastilla").textContent = j.puesto
+      ? t("stats.puesto", { n: j.puesto }) : t("stats.sin_premios");
+
+    const filas = e.ranking || [];
+    const tabla = $("#tabla-ranking");
+    if (!filas.length) {
+      tabla.innerHTML = `<p class="vacio">${t("stats.sin_ganadores")}</p>`;
+      return;
+    }
+    tabla.innerHTML = `
+      <table class="tabla">
+        <thead><tr><th>#</th><th>${t("stats.tabla_jugador")}</th><th>${t("stats.tabla_premios")}</th><th>${t("stats.tabla_ganado")}</th></tr></thead>
+        <tbody>${filas.map((f) => `
+          <tr class="${f.correo === j.correo ? "tabla__yo" : ""}">
+            <td>${f.puesto}</td><td>${f.correo}</td><td>${f.premios}</td>
+            <td>${f.ganado_texto}</td>
+          </tr>`).join("")}</tbody>
+      </table>`;
+  } catch (err) { /* sin sesión válida */ }
+}
+
+/* --- torneo del día --- */
+
+async function cargarTorneo() {
+  const caja = $("#torneo-info");
+  if (!caja) return;
+  try {
+    const e = await get("/api/evento");
+    if (!e || e.activa === false || !e.nombre) {
+      caja.innerHTML = `<p class="vacio">${t("torneo.sin_torneo")}</p>`;
+      $("#torneo-pastilla").textContent = "—";
+      return;
+    }
+    const premios = (e.premios || []).map((p) => `
+      <div class="premio">
+        <div class="premio__puesto">${nombrePuesto(p.puesto)}</div>
+        <div class="premio__importe">${p.premio_texto}</div>
+        <div class="premio__pct">${t("torneo.del_bote", { pct: p.pct_texto })}</div>
+      </div>`).join("");
+    caja.innerHTML = `
+      <div class="evento">
+        <div class="evento__cabecera">
+          <h3 class="evento__titulo">${e.nombre}</h3>
+          <span class="evento__aforo ${e.llena ? "evento__aforo--lleno" : ""}">
+            ${e.llena ? t("torneo.aforo_completo")
+              : t("torneo.jugadores", { n: e.jugadores, aforo: e.aforo || "∞" })}
+          </span>
+        </div>
+        <p class="evento__bote">${t("torneo.bote", { precio: e.precio_texto, bote: e.bote_texto })}</p>
+        <div class="evento__premios">${premios || `<p class="ayuda">${t("torneo.sin_premios")}</p>`}</div>
+      </div>`;
+    $("#torneo-pastilla").textContent = e.llena ? t("torneo.aforo_completo") : t("torneo.plazas");
+  } catch (err) {
+    caja.innerHTML = `<p class="vacio">${t("torneo.sin_torneo")}</p>`;
+  }
 }
 
 /* --- acciones --- */
@@ -588,6 +859,19 @@ function conectarBotones() {
     abrirDeposito();
   };
 
+  const copiarCodigo = $("#btn-copiar-codigo");
+  if (copiarCodigo) copiarCodigo.onclick = async () => {
+    if (!token) return abrirAcceso("entrar");
+    const codigo = $("#referidos-codigo").textContent.trim();
+    try {
+      await navigator.clipboard.writeText(codigo);
+      avisar(t("referidos.codigo_copiado"), "bien");
+    } catch (err) {
+      // Sin permiso de portapapeles: se muestra para copiar a mano.
+      prompt(t("referidos.copiar_manual"), codigo);
+    }
+  };
+
   $("#btn-carton").onclick = async () => {
     if (!token) return abrirAcceso("entrar");
     const cantidad = parseInt($("#cuantos-cartones")?.value || "1", 10) || 1;
@@ -599,8 +883,8 @@ function conectarBotones() {
       $("#btn-bingo").disabled = false;
       const cuantos = res.cantidad || 1;
       avisar(cuantos > 1
-        ? `${cuantos} cartones por ${res.precio_total_texto}`
-        : "Cartón comprado por " + res.precio_texto, "bien");
+        ? t("jugador.cartones_comprados", { n: cuantos, precio: res.precio_total_texto })
+        : t("jugador.carton_comprado", { precio: res.precio_texto }), "bien");
       refrescarSaldo();
       refrescarHistorial();
       refrescarPartida();
@@ -619,7 +903,7 @@ function conectarBotones() {
     try {
       const res = await post("/api/bola", { sala: salaActual });
       pintarBolas(res.bolas);
-      $("#contador-bolas").textContent = res.bolas.length + " bolas sacadas";
+      $("#contador-bolas").textContent = t("mesa.bolas_sacadas", { n: res.bolas.length });
       if (carton && automarcar) marcarEnCarton(res.bolas);
       refrescarPartida();
     } catch (err) { avisar(err.message, "error"); }
@@ -630,11 +914,11 @@ function conectarBotones() {
     const importe = $("#retiro-importe").value.trim();
     const metodo = $("#retiro-metodo").value;
     const detalles = $("#retiro-detalles").value.trim();
-    if (!importe) return avisar("Escribe el importe a retirar.", "error");
-    if (detalles.length < 5) return avisar("Escribe los datos para el pago.", "error");
+    if (!importe) return avisar(t("retirar.falta_importe"), "error");
+    if (detalles.length < 5) return avisar(t("retirar.falta_datos"), "error");
     try {
       const res = await post("/api/retiro", { importe, metodo, detalles });
-      avisar("Retiro pedido. Saldo: " + res.saldo_texto, "bien");
+      avisar(t("retirar.pedido", { saldo: res.saldo_texto }), "bien");
       $("#retiro-importe").value = "";
       $("#retiro-detalles").value = "";
       refrescarSaldo();
@@ -648,7 +932,8 @@ function conectarBotones() {
     if (!carton) return;
     try {
       const res = await post("/api/bingo", { carton: carton.carton, sala: salaActual });
-      avisar(`¡BINGO! ${res.nombre_puesto || "Ganaste"}: ${res.premio_texto}`, "bien");
+      avisar(t("jugador.bingo_premio",
+        { puesto: res.nombre_puesto || t("jugador.ganaste"), premio: res.premio_texto }), "bien");
       lanzarConfeti();
       carton = null;
       misCartones = [];
@@ -686,7 +971,7 @@ function pintarOponentes(filas) {
   const caja = $("#oponentes");
   if (!caja) return;
   if (!filas || !filas.length) {
-    caja.innerHTML = '<p class="vacio">Todavía no hay jugadores.</p>';
+    caja.innerHTML = `<p class="vacio">${t("mesa.sin_jugadores")}</p>`;
     return;
   }
   caja.innerHTML = "";
@@ -697,14 +982,16 @@ function pintarOponentes(filas) {
     // Cerca de cantar: 1 o 2 fichas. Se resalta en verde; a 0, en rojo.
     if (f.faltan === 0) clase.push("oponente--gana");
     else if (f.faltan <= 2) clase.push("oponente--cerca");
-    const texto = f.faltan === 0 ? "¡BINGO!"
-      : `Faltan ${f.faltan} ${f.faltan === 1 ? "ficha" : "fichas"}`;
+    const texto = f.faltan === 0 ? t("jugador.bingo")
+      : t("jugador.faltan", { n: f.faltan, ficha: f.faltan === 1 ? t("jugador.ficha") : t("jugador.fichas") });
     caja.insertAdjacentHTML("beforeend", `
       <div class="${clase.join(" ")}">
         <div class="oponente__avatar">${iniciales(f.jugador)}</div>
         <div class="oponente__datos">
-          <div class="oponente__nombre">${yo ? "Tú" : f.jugador}</div>
-          <div class="oponente__cartones">${f.cartones} cartón${f.cartones === 1 ? "" : "es"}</div>
+          <div class="oponente__nombre">${yo ? t("jugador.tu") : f.jugador}</div>
+          <div class="oponente__cartones">${f.cartones === 1
+            ? t("jugador.carton", { n: f.cartones })
+            : t("jugador.cartones", { n: f.cartones })}</div>
         </div>
         <span class="oponente__faltan">${texto}</span>
       </div>`);
@@ -728,14 +1015,14 @@ function pintarCuentaAtras(fecha) {
   const refrescar = () => {
     const segundos = Math.max(0, Math.round(marca - Date.now() / 1000));
     if (segundos <= 0) {
-      caja.textContent = "¡Ya empieza!";
+      caja.textContent = t("cuenta.ya");
       caja.classList.add("cuenta-atras--ya");
       clearInterval(cuentaAtras);
       return;
     }
     const m = String(Math.floor(segundos / 60)).padStart(2, "0");
     const s = String(segundos % 60).padStart(2, "0");
-    caja.textContent = `Empieza en ${m}:${s}`;
+    caja.textContent = t("cuenta.empieza", { tiempo: `${m}:${s}` });
     caja.classList.remove("cuenta-atras--ya");
   };
   refrescar();
@@ -778,30 +1065,149 @@ async function cargarConfigRetiro() {
     configRetiro.metodos.forEach((m) => {
       const o = document.createElement("option");
       o.value = m;
-      o.textContent = m.replace("_", " ");
+      const nombre = t("metodo." + m);
+      o.textContent = nombre === "metodo." + m ? m.replace("_", " ") : nombre;
       sel.appendChild(o);
     });
-    $("#retiro-ayuda").textContent =
-      "Mínimo " + configRetiro.retiro_minimo_texto +
-      " · Tope diario " + configRetiro.retiro_tope_texto;
+    $("#retiro-ayuda").textContent = t("retirar.limites", {
+      minimo: configRetiro.retiro_minimo_texto,
+      tope: configRetiro.retiro_tope_texto,
+    });
   } catch (err) { /* sin config no pasa nada */ }
+}
+
+/* --- país y moneda --- */
+
+async function cargarPaises() {
+  try {
+    const cat = await get("/api/paises");
+    catalogoPaises = cat.paises || [];
+    // Si el jugador no ha elegido país, se adopta el que detectó el servidor
+    // (por idioma o IP); así los importes salen en la moneda correcta.
+    if (!paisActual) paisActual = cat.pais_actual || cat.pais_por_defecto || "VE";
+    // Si el país guardado ya no existe, se vuelve al de por defecto.
+    if (!catalogoPaises.some((p) => p.code === paisActual)) {
+      paisActual = cat.pais_por_defecto || "VE";
+    }
+    paisInfo = catalogoPaises.find((p) => p.code === paisActual) || catalogoPaises[0] || null;
+    pintarSelectorPais();
+  } catch (err) { /* sin catálogo se queda en bolívares */ }
+}
+
+function pintarSelectorPais() {
+  const caja = $("#pais-selector");
+  if (!caja || !catalogoPaises.length) return;
+  caja.innerHTML = `
+    <select id="select-pais" aria-label="País y moneda">
+      ${catalogoPaises.map((p) => `<option value="${p.code}"
+        ${p.code === paisActual ? "selected" : ""}>${p.flag} ${p.name} (${p.currencySymbol})</option>`).join("")}
+    </select>`;
+  $("#select-pais").onchange = (e) => cambiarPais(e.target.value);
+  pintarTextosMoneda();
+}
+
+/* Los textos que nombran la moneda (títulos, etiquetas) se actualizan al país
+   activo y al idioma, para que no digan "bolívares" a un jugador colombiano ni
+   "cartón" a uno que lee en inglés. */
+function pintarTextosMoneda() {
+  const sim = simboloMoneda();
+  const nombre = nombreMoneda();
+  const etiquetaPrecio = $("#etiqueta-precio");
+  if (etiquetaPrecio) etiquetaPrecio.textContent = t("salas.precio", { moneda: sim });
+  const etiquetaRetiro = $("#etiqueta-retiro-importe");
+  if (etiquetaRetiro) etiquetaRetiro.textContent = t("retirar.importe", { moneda: sim });
+  const notaPortada = $("#portada-nota");
+  if (notaPortada) notaPortada.textContent = t("app.nota_portada", { moneda: nombre });
+  const titulo2 = $("#hero-titulo2");
+  if (titulo2) titulo2.textContent = t("hero.titulo2", { moneda: nombre });
+  const comoP2 = $("#como-p2");
+  if (comoP2) comoP2.textContent = t("como.p2_d", { moneda: nombre });
+  const entradaSalas = $("#salas-entrada");
+  if (entradaSalas) {
+    const fuerte = t("salas.cobras");
+    entradaSalas.innerHTML = t("salas.entrada", { fuerte: `<strong>${fuerte}</strong>` })
+      .replace("{/fuerte}", "");
+  }
+  document.querySelectorAll("[data-moneda-placeholder]").forEach(
+    (el) => (el.placeholder = sim + " 10,00"));
+}
+
+async function cambiarPais(code) {
+  paisActual = code;
+  localStorage.setItem(CLAVE_PAIS, code);
+  paisInfo = catalogoPaises.find((p) => p.code === code) || paisInfo;
+  // Se recarga todo para que los importes y el método de cobro sean los del país.
+  pintarTextosMoneda();
+  await cargarConfigRetiro();
+  refrescarTodo();
+  cargarSalas();
+  avisar(t("aviso.pais_cambiado", { pais: paisInfo ? paisInfo.name : code }), "bien");
+}
+
+/* --- idioma --- */
+
+async function cargarIdiomas() {
+  if (!idiomaActual) idiomaActual = detectarIdioma();
+  try {
+    const cat = await get("/api/idiomas");
+    idiomaInfo = (cat.idiomas || []).find((i) => i.code === idiomaActual) || null;
+  } catch (err) { /* sin catálogo se queda el español */ }
+  pintarSelectorIdioma();
+}
+
+function pintarSelectorIdioma() {
+  const caja = $("#idioma-selector");
+  if (!caja) return;
+  caja.innerHTML = `
+    <select id="select-idioma" aria-label="Idioma / Language / 语言">
+      ${IDIOMAS.map((i) => `<option value="${i.code}"
+        ${i.code === idiomaElegido() ? "selected" : ""}>${i.flag} ${i.name}</option>`).join("")}
+    </select>`;
+  $("#select-idioma").onchange = (e) => cambiarIdioma(e.target.value);
+}
+
+async function cambiarIdioma(code) {
+  idiomaActual = code;
+  localStorage.setItem(CLAVE_IDIOMA, code);
+  idiomaInfo = IDIOMAS.find((i) => i.code === code) || null;
+  aplicarIdioma();
+  avisar(t("aviso.idioma_cambiado", { idioma: (idiomaInfo || {}).name || code }), "bien");
+}
+
+/* Vuelca el diccionario a todo lo que lleve data-i18n y repinta lo dinámico. */
+function aplicarIdioma() {
+  document.documentElement.lang = idiomaElegido();
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    el.textContent = t(el.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
+    el.placeholder = t(el.dataset.i18nPh);
+  });
+  pintarTextosMoneda();
+  pintarSesion();
+  cargarConfigRetiro();
+  refrescarTodo();
+  cargarSalas();
 }
 
 async function refrescarRetiros() {
   const lista = $("#lista-retiros");
-  if (!token) { lista.innerHTML = '<li class="vacio">Entra para ver tus retiros.</li>'; return; }
+  if (!token) { lista.innerHTML = `<li class="vacio">${t("retirar.entra_ver")}</li>`; return; }
   try {
     const r = await get("/api/retiros");
     if (!r.retiros.length) {
-      lista.innerHTML = '<li class="vacio">Todavía no has pedido ningún retiro.</li>';
+      lista.innerHTML = `<li class="vacio">${t("retirar.sin_retiros")}</li>`;
       return;
     }
     lista.innerHTML = "";
     r.retiros.forEach((x) => {
       const li = document.createElement("li");
+      const nombreMetodo = t("metodo." + x.metodo);
+      const nombreEstado = t("retirar.estado_" + x.estado);
       li.innerHTML = `<span class="importe">${x.importe_texto}</span>
-        <span>${x.metodo.replace("_", " ")}</span>
-        <span class="retiro-estado retiro-estado--${x.estado}">${x.estado}</span>`;
+        <span>${nombreMetodo === "metodo." + x.metodo ? x.metodo.replace("_", " ") : nombreMetodo}</span>
+        <span class="retiro-estado retiro-estado--${x.estado}">${
+          nombreEstado === "retirar.estado_" + x.estado ? x.estado : nombreEstado}</span>`;
       lista.appendChild(li);
     });
   } catch (err) { /* nada */ }
@@ -841,8 +1247,11 @@ pintarCartonDemo();
 pintarSesion();
 conectarBotones();
 conectarPortada();
-cargarConfigRetiro();
-cargarSalas();
+// Primero el idioma (los textos), luego el país (la moneda), y al final las
+// salas: así los importes ya salen en la moneda del país y en su idioma.
+idiomaActual = idiomaActual || detectarIdioma();
+aplicarIdioma();
+cargarIdiomas().then(() => cargarPaises()).then(() => { cargarConfigRetiro(); cargarSalas(); });
 const formSala = $("#form-sala");
 if (formSala) {
   formSala.onsubmit = async (e) => {

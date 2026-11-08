@@ -91,6 +91,17 @@ a { color: inherit; }
 
 .sesion { display: flex; align-items: center; gap: .6rem; font-size: .9rem; }
 
+/* --- selector de país --- */
+
+.pais-selector { display: flex; align-items: center; margin-left: auto; }
+.pais-selector select {
+  font: inherit; font-size: .85rem; cursor: pointer;
+  padding: .35rem .6rem; border-radius: 999px;
+  border: 1px solid var(--borde, #2a3550); background: var(--panel, #131a2b);
+  color: inherit; max-width: 12rem;
+}
+.pais-selector select:focus { outline: 2px solid var(--acento, #f5c451); outline-offset: 1px; }
+
 /* --- botones --- */
 
 .boton {
@@ -784,3 +795,24 @@ input[type="text"], input[type="email"], input[type="password"], select {
 @keyframes caer {
   to { transform: translateY(105vh) rotate(640deg); opacity: .2; }
 }
+
+/* --- Estadísticas del jugador y ranking --- */
+.rejilla-stats {
+  display: grid; gap: .8rem;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-top: 1rem;
+}
+.stat {
+  display: flex; flex-direction: column; gap: .2rem;
+  background: linear-gradient(160deg, var(--tarjeta-alta), var(--tarjeta));
+  border: 1px solid var(--borde); border-radius: 14px; padding: .9rem 1rem;
+}
+.stat__numero { font-size: 1.4rem; font-weight: 800; color: var(--dorado); }
+.stat__numero.mas { color: var(--verde); }
+.stat__numero.menos { color: var(--naranja); }
+.stat__texto { font-size: .78rem; color: var(--gris); text-transform: uppercase; letter-spacing: .06em; }
+
+.tabla { width: 100%; border-collapse: collapse; margin-top: .8rem; font-size: .92rem; }
+.tabla th, .tabla td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--borde); }
+.tabla th { color: var(--gris); font-size: .76rem; text-transform: uppercase; letter-spacing: .07em; }
+.tabla__yo { background: rgba(255, 107, 0, .12); font-weight: 700; }

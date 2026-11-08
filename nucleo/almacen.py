@@ -23,8 +23,25 @@ CREATE TABLE IF NOT EXISTS usuarios (
     rol     TEXT NOT NULL DEFAULT 'jugador',
     activo  INTEGER NOT NULL DEFAULT 1,
     creado  REAL NOT NULL,
-    comision_pct INTEGER NOT NULL DEFAULT -1
+    comision_pct INTEGER NOT NULL DEFAULT -1,
+    verificado INTEGER NOT NULL DEFAULT 1,
+    datos_cobro TEXT NOT NULL DEFAULT '',
+    codigo_amigo TEXT NOT NULL DEFAULT '',
+    referido_por TEXT NOT NULL DEFAULT ''
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_codigo ON usuarios(codigo_amigo)
+    WHERE codigo_amigo <> '';
+
+CREATE TABLE IF NOT EXISTS referidos (
+    id       TEXT PRIMARY KEY,
+    partida  TEXT NOT NULL,
+    referido TEXT NOT NULL,
+    padrino  TEXT NOT NULL,
+    centimos INTEGER NOT NULL,
+    cuando   REAL NOT NULL,
+    UNIQUE(partida, padrino)
+);
+CREATE INDEX IF NOT EXISTS idx_referidos_padrino ON referidos(padrino, cuando);
 
 CREATE TABLE IF NOT EXISTS cuentas (
     correo   TEXT PRIMARY KEY,
@@ -91,7 +108,8 @@ CREATE TABLE IF NOT EXISTS depositos (
     nota          TEXT NOT NULL DEFAULT '',
     pedido        REAL NOT NULL,
     revisado      REAL,
-    revisado_por  TEXT
+    revisado_por  TEXT,
+    pais          TEXT NOT NULL DEFAULT 'VE'
 );
 CREATE INDEX IF NOT EXISTS idx_depositos ON depositos(estado, pedido);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_depositos_ref
@@ -113,7 +131,8 @@ CREATE TABLE IF NOT EXISTS codigos (
     intentos INTEGER NOT NULL DEFAULT 0,
     usado    INTEGER NOT NULL DEFAULT 0,
     creado   REAL NOT NULL,
-    caduca   REAL NOT NULL
+    caduca   REAL NOT NULL,
+    tipo     TEXT NOT NULL DEFAULT 'recuperacion'
 );
 CREATE INDEX IF NOT EXISTS idx_codigos_correo ON codigos(correo, usado, creado);
 
@@ -131,7 +150,9 @@ CREATE TABLE IF NOT EXISTS salas (
     premios_pct    TEXT NOT NULL DEFAULT '',
     tipo_juego     TEXT NOT NULL DEFAULT '',
     cupo_cartones  INTEGER NOT NULL DEFAULT 0,
-    fecha_partida  TEXT NOT NULL DEFAULT ''
+    max_cartones   INTEGER NOT NULL DEFAULT 0,
+    fecha_partida  TEXT NOT NULL DEFAULT '',
+    pais           TEXT NOT NULL DEFAULT 'VE'
 );
 CREATE INDEX IF NOT EXISTS idx_salas_dueno ON salas(dueno);
 
@@ -173,7 +194,11 @@ class Almacen:
         columnas = {f["name"] for f in self._todos("PRAGMA table_info(usuarios)")}
         nuevas = (("pregunta", "TEXT NOT NULL DEFAULT ''"),
                   ("respuesta_huella", "TEXT NOT NULL DEFAULT ''"),
-                  ("comision_pct", "INTEGER NOT NULL DEFAULT -1"))
+                  ("comision_pct", "INTEGER NOT NULL DEFAULT -1"),
+                  ("verificado", "INTEGER NOT NULL DEFAULT 1"),
+                  ("datos_cobro", "TEXT NOT NULL DEFAULT ''"),
+                  ("codigo_amigo", "TEXT NOT NULL DEFAULT ''"),
+                  ("referido_por", "TEXT NOT NULL DEFAULT ''"))
         for nombre, definicion in nuevas:
             if nombre not in columnas:
                 with self.transaccion() as c:
@@ -199,11 +224,31 @@ class Almacen:
                     ("premios_pct", "TEXT NOT NULL DEFAULT ''"),
                     ("tipo_juego", "TEXT NOT NULL DEFAULT ''"),
                     ("cupo_cartones", "INTEGER NOT NULL DEFAULT 0"),
+                    ("max_cartones", "INTEGER NOT NULL DEFAULT 0"),
                     ("fecha_partida", "TEXT NOT NULL DEFAULT ''"))
         for nombre, definicion in nuevas_s:
             if nombre not in columnas_s:
                 with self.transaccion() as c:
                     c.execute(f"ALTER TABLE salas ADD COLUMN {nombre} {definicion}")
+
+        # Cada sala nació sin país. Las que ya existen son de la casa y sus precios
+        # están en bolívares, así que se marcan Venezuela (la moneda base).
+        columnas_s2 = {f["name"] for f in self._todos("PRAGMA table_info(salas)")}
+        if "pais" not in columnas_s2:
+            with self.transaccion() as c:
+                c.execute("ALTER TABLE salas ADD COLUMN pais TEXT NOT NULL DEFAULT 'VE'")
+
+        # Los códigos aprendieron a distinguir para qué son (recuperar o verificar).
+        columnas_c = {f["name"] for f in self._todos("PRAGMA table_info(codigos)")}
+        if "tipo" not in columnas_c:
+            with self.transaccion() as c:
+                c.execute("ALTER TABLE codigos ADD COLUMN tipo TEXT NOT NULL DEFAULT 'recuperacion'")
+
+        # Los depósitos aprendieron de qué país vienen (Pago Móvil, Nequi, MACH…).
+        columnas_d = {f["name"] for f in self._todos("PRAGMA table_info(depositos)")}
+        if "pais" not in columnas_d:
+            with self.transaccion() as c:
+                c.execute("ALTER TABLE depositos ADD COLUMN pais TEXT NOT NULL DEFAULT 'VE'")
 
     @contextmanager
     def transaccion(self) -> Iterator[sqlite3.Connection]:
@@ -237,14 +282,61 @@ class Almacen:
             c.execute("INSERT OR IGNORE INTO cuentas (correo, centimos) VALUES (?, 0)", (correo,))
 
     def crear_usuario(self, correo: str, huella: str, nombre: str, rol: str, creado: float,
-                      pregunta: str = "", respuesta_huella: str = "") -> None:
+                      pregunta: str = "", respuesta_huella: str = "",
+                      verificado: bool = True, codigo_amigo: str = "",
+                      referido_por: str = "") -> None:
         with self.transaccion() as c:
             c.execute(
-                "INSERT INTO usuarios (correo, huella, nombre, rol, creado, pregunta, respuesta_huella)"
-                " VALUES (?,?,?,?,?,?,?)",
-                (correo, huella, nombre, rol, creado, pregunta, respuesta_huella),
+                "INSERT INTO usuarios (correo, huella, nombre, rol, creado, pregunta,"
+                " respuesta_huella, verificado, codigo_amigo, referido_por)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (correo, huella, nombre, rol, creado, pregunta, respuesta_huella,
+                 1 if verificado else 0, codigo_amigo, referido_por),
             )
             c.execute("INSERT INTO cuentas (correo, centimos) VALUES (?, 0)", (correo,))
+
+    def usuario_por_codigo(self, codigo: str) -> sqlite3.Row | None:
+        """El dueño de un código de amigo (vacío si nadie lo tiene)."""
+        codigo = (codigo or "").strip().upper()
+        if not codigo:
+            return None
+        return self._uno("SELECT * FROM usuarios WHERE codigo_amigo = ?", (codigo,))
+
+    def referidos_de(self, padrino: str, limite: int = 200) -> list[sqlite3.Row]:
+        return self._todos("SELECT * FROM referidos WHERE padrino = ? ORDER BY cuando DESC LIMIT ?",
+                           (padrino, limite))
+
+    def referidos(self, limite: int = 500) -> list[sqlite3.Row]:
+        return self._todos("SELECT * FROM referidos ORDER BY cuando DESC LIMIT ?", (limite,))
+
+    def anotar_referido(self, id_: str, partida: str, referido: str, padrino: str,
+                        centimos: int, cuando: float) -> bool:
+        """Apunta la comisión de un referido. Devuelve False si ya estaba anotada.
+
+        La clave (partida, referido) hace que reintentar no pague dos veces.
+        """
+        with self.transaccion() as c:
+            cur = c.execute(
+                "INSERT OR IGNORE INTO referidos (id, partida, referido, padrino, centimos,"
+                " cuando) VALUES (?,?,?,?,?,?)",
+                (id_, partida, referido, padrino, centimos, cuando),
+            )
+            return cur.rowcount > 0
+
+    def total_referidos(self, padrino: str) -> int:
+        fila = self._uno("SELECT COALESCE(SUM(centimos), 0) AS t FROM referidos WHERE padrino = ?",
+                         (padrino,))
+        return int(fila["t"]) if fila else 0
+
+    def pagado_en_partida(self, partida: str) -> int:
+        """Cuánto se ha pagado ya a padrinos por esta partida (para no pasarse)."""
+        fila = self._uno("SELECT COALESCE(SUM(centimos), 0) AS t FROM referidos WHERE partida = ?",
+                         (partida,))
+        return int(fila["t"]) if fila else 0
+
+    def invitados_de(self, padrino: str) -> list[sqlite3.Row]:
+        return self._todos("SELECT correo, nombre, creado FROM usuarios WHERE referido_por = ?"
+                           " ORDER BY creado", (padrino,))
 
     def guardar_pregunta(self, correo: str, pregunta: str, respuesta_huella: str) -> None:
         with self.transaccion() as c:
@@ -273,6 +365,16 @@ class Almacen:
         """Fija el % de comisión de anfitrión de una cuenta (-1 = usar el de siempre)."""
         with self.transaccion() as c:
             c.execute("UPDATE usuarios SET comision_pct = ? WHERE correo = ?", (int(pct), correo))
+
+    def guardar_datos_cobro(self, correo: str, paquete: str) -> None:
+        """Guarda la ficha de cobro CIFRADA. El almacén no sabe descifrarla."""
+        with self.transaccion() as c:
+            c.execute("UPDATE usuarios SET datos_cobro = ? WHERE correo = ?", (paquete, correo))
+
+    def marcar_verificado(self, correo: str, verificado: bool = True) -> None:
+        with self.transaccion() as c:
+            c.execute("UPDATE usuarios SET verificado = ? WHERE correo = ?",
+                      (1 if verificado else 0, correo))
 
     # -- dinero --
 
@@ -408,22 +510,30 @@ class Almacen:
 
     # -- códigos de recuperación --
 
-    def guardar_codigo(self, id_: str, correo: str, huella: str, creado: float, caduca: float) -> None:
+    def guardar_codigo(self, id_: str, correo: str, huella: str, creado: float, caduca: float,
+                       tipo: str = "recuperacion") -> None:
         with self.transaccion() as c:
-            # Un código nuevo anula los anteriores: solo vale el último.
-            c.execute("UPDATE codigos SET usado = 1 WHERE correo = ? AND usado = 0", (correo,))
-            c.execute("INSERT INTO codigos (id, correo, huella, creado, caduca) VALUES (?,?,?,?,?)",
-                      (id_, correo, huella, creado, caduca))
+            # Un código nuevo anula los anteriores del mismo tipo: solo vale el último.
+            c.execute("UPDATE codigos SET usado = 1 WHERE correo = ? AND usado = 0 AND tipo = ?",
+                      (correo, tipo))
+            c.execute("INSERT INTO codigos (id, correo, huella, creado, caduca, tipo)"
+                      " VALUES (?,?,?,?,?,?)", (id_, correo, huella, creado, caduca, tipo))
 
-    def codigo_pendiente(self, correo: str) -> sqlite3.Row | None:
+    def codigo_pendiente(self, correo: str, tipo: str = "recuperacion") -> sqlite3.Row | None:
         return self._uno(
-            "SELECT * FROM codigos WHERE correo = ? AND usado = 0 ORDER BY creado DESC LIMIT 1",
-            (correo,),
+            "SELECT * FROM codigos WHERE correo = ? AND usado = 0 AND tipo = ?"
+            " ORDER BY creado DESC LIMIT 1", (correo, tipo),
         )
 
-    def codigos_recientes(self, correo: str, desde: float) -> int:
-        fila = self._uno("SELECT COUNT(*) AS n FROM codigos WHERE correo = ? AND creado >= ?",
-                         (correo, desde))
+    def codigos_recientes(self, correo: str, desde: float,
+                          tipo: str | None = None) -> int:
+        if tipo is None:
+            fila = self._uno("SELECT COUNT(*) AS n FROM codigos WHERE correo = ? AND creado >= ?",
+                             (correo, desde))
+        else:
+            fila = self._uno(
+                "SELECT COUNT(*) AS n FROM codigos WHERE correo = ? AND creado >= ? AND tipo = ?",
+                (correo, desde, tipo))
         return int(fila["n"]) if fila else 0
 
     def usar_codigo(self, id_: str) -> None:
@@ -446,9 +556,10 @@ class Almacen:
         with self.transaccion() as c:
             c.execute(
                 "INSERT INTO depositos (id, correo, centimos, metodo, referencia, banco, dia,"
-                " estado, nota, pedido) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                " estado, nota, pedido, pais) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (d["id"], d["correo"], d["centimos"], d["metodo"], d["referencia"],
-                 d.get("banco", ""), d["dia"], "pendiente", d.get("nota", ""), d["pedido"]),
+                 d.get("banco", ""), d["dia"], "pendiente", d.get("nota", ""), d["pedido"],
+                 d.get("pais", "VE")),
             )
 
     def deposito(self, id_: str) -> sqlite3.Row | None:
@@ -555,25 +666,28 @@ class Almacen:
         with self.transaccion() as c:
             c.execute(
                 "INSERT INTO salas (id, nombre, modo, precio_carton, dueno, publica, activa,"
-                " creada, es_evento, aforo, premios_pct, tipo_juego, cupo_cartones, fecha_partida)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " creada, es_evento, aforo, premios_pct, tipo_juego, cupo_cartones,"
+                " max_cartones, fecha_partida, pais)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(id) DO UPDATE SET nombre=excluded.nombre, modo=excluded.modo,"
                 " precio_carton=excluded.precio_carton, publica=excluded.publica,"
                 " activa=excluded.activa, es_evento=excluded.es_evento, aforo=excluded.aforo,"
                 " premios_pct=excluded.premios_pct, tipo_juego=excluded.tipo_juego,"
-                " cupo_cartones=excluded.cupo_cartones, fecha_partida=excluded.fecha_partida",
+                " cupo_cartones=excluded.cupo_cartones, max_cartones=excluded.max_cartones,"
+                " fecha_partida=excluded.fecha_partida, pais=excluded.pais",
                 (s["id"], s["nombre"], s["modo"], s["precio_carton"], s.get("dueno", ""),
                  s.get("publica", 1), s.get("activa", 1), s["creada"],
                  s.get("es_evento", 0), s.get("aforo", 0), s.get("premios_pct", ""),
                  s.get("tipo_juego", "linea_h1"), s.get("cupo_cartones", 0),
-                 s.get("fecha_partida", "") or ""),
+                 s.get("max_cartones", 0), s.get("fecha_partida", "") or "",
+                 s.get("pais", "VE") or "VE"),
             )
 
     def actualizar_sala(self, id_: str, campos: dict) -> None:
         """Cambia solo los campos indicados de una sala (precio, aforo, premios…)."""
         permitidos = {"nombre", "modo", "precio_carton", "publica", "activa",
                       "es_evento", "aforo", "premios_pct", "tipo_juego",
-                      "cupo_cartones", "fecha_partida"}
+                      "cupo_cartones", "max_cartones", "fecha_partida", "pais"}
         asignar = {k: v for k, v in campos.items() if k in permitidos}
         if not asignar:
             return
@@ -615,3 +729,52 @@ class Almacen:
 
     def cartones(self, partida: str) -> list[sqlite3.Row]:
         return self._todos("SELECT * FROM cartones WHERE partida = ?", (partida,))
+
+    # -- estadísticas del jugador --
+
+    def resumen_jugador(self, correo: str) -> dict:
+        """Números de un jugador: cartones, partidas, premios y neto.
+
+        Todo sale de la tabla de movimientos (que ya guarda cada apuesta y cada
+        premio) y de los cartones comprados, así que no hay que llevar la cuenta
+        por separado ni puede descuadrar.
+        """
+        gastado = self._uno(
+            "SELECT COALESCE(SUM(-centimos), 0) AS t FROM movimientos"
+            " WHERE correo = ? AND tipo = 'apuesta'", (correo,))
+        ganado = self._uno(
+            "SELECT COALESCE(SUM(centimos), 0) AS t FROM movimientos"
+            " WHERE correo = ? AND tipo = 'premio'", (correo,))
+        premios_n = self._uno(
+            "SELECT COUNT(*) AS n FROM movimientos WHERE correo = ? AND tipo = 'premio'",
+            (correo,))
+        cartones_n = self._uno(
+            "SELECT COUNT(*) AS n FROM cartones WHERE correo = ?", (correo,))
+        partidas_n = self._uno(
+            "SELECT COUNT(DISTINCT partida) AS n FROM cartones WHERE correo = ?", (correo,))
+        return {
+            "cartones": int(cartones_n["n"]) if cartones_n else 0,
+            "partidas": int(partidas_n["n"]) if partidas_n else 0,
+            "premios_ganados": int(premios_n["n"]) if premios_n else 0,
+            "total_apostado": int(gastado["t"]) if gastado else 0,
+            "total_ganado": int(ganado["t"]) if ganado else 0,
+        }
+
+    def ranking(self, limite: int = 20) -> list[sqlite3.Row]:
+        """Los jugadores que más han ganado, con lo apostado y el neto."""
+        return self._todos(
+            "SELECT correo,"
+            " COALESCE(SUM(CASE WHEN tipo = 'premio' THEN centimos ELSE 0 END), 0) AS ganado,"
+            " COALESCE(SUM(CASE WHEN tipo = 'apuesta' THEN -centimos ELSE 0 END), 0) AS apostado,"
+            " COUNT(CASE WHEN tipo = 'premio' THEN 1 END) AS premios"
+            " FROM movimientos GROUP BY correo"
+            " HAVING SUM(CASE WHEN tipo = 'premio' THEN centimos ELSE 0 END) > 0"
+            " ORDER BY ganado DESC LIMIT ?", (limite,))
+
+    def ganadores_de(self, partida: str) -> list[sqlite3.Row]:
+        """Los cartones de una partida que pertenecen al ganador (o ganadores)."""
+        fila = self.partida(partida)
+        if fila is None or not fila["ganador"]:
+            return []
+        return self._todos("SELECT * FROM cartones WHERE partida = ? AND correo = ?",
+                           (partida, fila["ganador"]))

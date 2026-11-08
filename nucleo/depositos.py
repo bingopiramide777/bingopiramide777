@@ -24,9 +24,12 @@ from dataclasses import dataclass, field
 
 from .almacen import Almacen
 from .monedero import Monedero
-from .money import a_centimos
+from .money import a_centimos, a_texto
 
-METODOS = ("pago_movil", "transferencia")
+METODOS = ("pago_movil", "transferencia", "nequi", "mach", "cashapp", "wise")
+
+# Los métodos que no son de banco no piden banco: se cobran por teléfono/cashtag.
+METODOS_SIN_BANCO = frozenset({"nequi", "mach", "cashapp", "wise"})
 
 # Cuenta a la que el jugador manda el dinero. Los datos del Pago Móvil van aquí
 # y no repartidos por el código, para poder cambiarlos desde Render sin desplegar.
@@ -96,14 +99,17 @@ class Deposito:
     pedido: float
     revisado: float | None = None
     revisado_por: str | None = None
+    pais: str = "VE"
 
 
 def _deposito(fila) -> Deposito:
+    claves = fila.keys()
     return Deposito(id=fila["id"], correo=fila["correo"], centimos=fila["centimos"],
                     metodo=fila["metodo"], referencia=fila["referencia"], banco=fila["banco"],
                     dia=fila["dia"], estado=fila["estado"], nota=fila["nota"],
                     pedido=fila["pedido"], revisado=fila["revisado"],
-                    revisado_por=fila["revisado_por"])
+                    revisado_por=fila["revisado_por"],
+                    pais=fila["pais"] if "pais" in claves else "VE")
 
 
 def hoy() -> str:
@@ -120,15 +126,27 @@ class Depositos:
     # -- declarar --
 
     def declarar(self, correo: str, importe: object, referencia: str, banco: str,
-                 dia: str, metodo: str = "pago_movil", nota: str = "") -> Deposito:
+                 dia: str, metodo: str = "pago_movil", nota: str = "",
+                 pais: str = "") -> Deposito:
         """El jugador dice que ha pagado. Queda en cola, sin acreditar todavía."""
         correo = (correo or "").strip().lower()
         if not self.almacen.usuario(correo):
             raise ErrorDeDeposito("Esa cuenta no existe.")
         if metodo not in METODOS:
             raise ErrorDeDeposito(f"Método no válido. Los permitidos: {', '.join(METODOS)}.")
-        if banco not in BANCOS:
-            raise ErrorDeDeposito("Ese banco no está en la lista.")
+        banco = (banco or "").strip()
+        # Los métodos de banco (Pago Móvil, transferencia) exigen banco de la lista.
+        # Los de teléfono/cashtag (Nequi, MACH, Cash App, Wise) no lo usan.
+        if metodo not in METODOS_SIN_BANCO:
+            if banco not in BANCOS:
+                raise ErrorDeDeposito("Ese banco no está en la lista.")
+
+        from .paises import a_base, es_pais_valido
+
+        pais = (pais or "").strip().upper()
+        if pais and not es_pais_valido(pais):
+            raise ErrorDeDeposito("Ese país no está disponible todavía.")
+        pais = pais or "VE"
 
         referencia = (referencia or "").strip()
         if not REFERENCIA_VALIDA.match(referencia):
@@ -140,11 +158,13 @@ class Depositos:
         self._comprobar_fecha(dia)
 
         try:
-            centimos = a_centimos(importe)
+            # El importe llega en la moneda del país del jugador; dentro se guarda
+            # en la moneda base, para que la contabilidad sea una sola.
+            centimos = a_base(a_centimos(importe), pais)
         except ValueError as exc:
             raise ErrorDeDeposito(str(exc)) from None
         if centimos < self.config.minimo:
-            raise ErrorDeDeposito("El depósito mínimo es Bs 10,00.")
+            raise ErrorDeDeposito(f"El depósito mínimo es {a_texto(self.config.minimo)}.")
 
         desde = time.time() - 86400
         if self.almacen.deposito_hoy(correo, desde) + centimos > self.config.tope_diario:
@@ -159,11 +179,12 @@ class Depositos:
 
         deposito = Deposito(id=f"d-{secrets.token_hex(6)}", correo=correo, centimos=centimos,
                             metodo=metodo, referencia=referencia, banco=banco, dia=dia,
-                            estado="pendiente", nota=nota, pedido=time.time())
+                            estado="pendiente", nota=nota, pedido=time.time(),
+                            pais=pais or "VE")
         self.almacen.crear_deposito({
             "id": deposito.id, "correo": correo, "centimos": centimos, "metodo": metodo,
             "referencia": referencia, "banco": banco, "dia": dia, "nota": nota,
-            "pedido": deposito.pedido,
+            "pedido": deposito.pedido, "pais": deposito.pais,
         })
         return deposito
 

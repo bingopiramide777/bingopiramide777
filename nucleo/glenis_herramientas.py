@@ -94,6 +94,42 @@ class Herramientas:
                "importe": {"type": "string", "description": "Cantidad pagada"},
                "referencia": {"type": "string", "description": "Referencia de la transferencia"}},
               ["correo", "importe"]),
+            f("estado_de_cuenta", "Estado de cuenta de un jugador: saldo, total apostado, total "
+                                  "ganado, neto, cuántos cartones y premios lleva, y sus últimos "
+                                  "movimientos. Úsalo cuando pregunten por la cuenta de alguien.",
+              {"correo": {"type": "string", "description": "Correo del jugador"}}, ["correo"]),
+            f("listar_ganadores", "Ganadores de las últimas partidas, con lo que se les debe pagar. "
+                                  "Sirve para saber a quién hay que acreditarle un premio.",
+              {"limite": {"type": "integer", "description": "Cuántas partidas mirar (por defecto 10)"}}),
+            f("datos_de_acreditacion", "Datos que hacen falta para acreditarle un premio a un "
+                                       "ganador: correo, nombre, monto del premio, partida y "
+                                       "referencia. Úsalo para preparar el pago.",
+              {"partida": {"type": "string", "description": "Id de la partida (opcional)"},
+               "correo": {"type": "string", "description": "Correo del ganador (opcional)"}}),
+            f("reporte_de_pagos", "Resumen de lo que hay que pagar y lo ya pagado: premios "
+                                  "pendientes de acreditar, pagos manuales anotados, retiros "
+                                  "pendientes y depósitos por acreditar.",
+              {}),
+            f("ver_datos_cobro", "Datos de cobro de un jugador: por dónde y a qué cuenta "
+                                 "quiere que le paguen (Pago Móvil, Nequi, MACH, Cash App o "
+                                 "transferencia). Úsalo para saber a dónde mandarle un premio o "
+                                 "un retiro. No es un pago: solo dice dónde pagarle.",
+              {"correo": {"type": "string", "description": "Correo del jugador"}}, ["correo"]),
+            f("preparar_pago_ganador", "Prepara el pago de un premio: busca al ganador, mira su "
+                                       "ficha de cobro y deja la orden lista (a quién, cuánto, "
+                                       "por dónde y una referencia). NO mueve dinero: el pago lo "
+                                       "confirma una persona.",
+              {"correo": {"type": "string", "description": "Correo del ganador"},
+               "importe": {"type": "string", "description": "Cantidad a pagar, por ejemplo '160,00'"},
+               "partida": {"type": "string", "description": "Id de la partida (opcional)"}},
+              ["correo", "importe"]),
+            f("marcar_premio_pagado", "Deja constancia de que un premio ya se le acreditó al "
+                                      "ganador (por transferencia o Pago Móvil). No mueve el saldo "
+                                      "del juego: solo anota el pago.",
+              {"correo": {"type": "string", "description": "Correo del ganador"},
+               "importe": {"type": "string", "description": "Cantidad pagada"},
+               "referencia": {"type": "string", "description": "Referencia o comprobante del pago"}},
+              ["correo", "importe"]),
         ]
 
     # -- ejecución --
@@ -142,7 +178,7 @@ class Herramientas:
             "de_la_casa": sum(1 for s in salas if not s.es_de_jugador),
             "de_jugadores": sum(1 for s in salas if s.es_de_jugador),
             "aviso": ("El ganador siempre cobra el 80% del bote. En las salas de un jugador, "
-                      "el anfitrión se lleva un 10% y la app el otro 10%."),
+                      "el anfitrión se lleva un 10% y la app el 10%."),
         }
 
     def _h_ganancias(self, correo: str = "") -> dict:
@@ -159,8 +195,8 @@ class Herramientas:
             "premios_pagados": e["premios_texto"],
             "comisiones_a_anfitriones": e["comisiones_texto"],
             "ganancia_de_la_app": e["app_texto"],
-            "reparto": "El ganador cobra el 80% del bote; la app se queda el 20% (10% de ese "
-                       "20% es para el anfitrión si la sala es de un jugador).",
+            "reparto": "El ganador cobra el 80% del bote; el anfitrión se lleva el 10% si la "
+                       "sala es de un jugador, y la app el 10%.",
         }
 
     def _h_buscar_jugador(self, correo: str) -> dict:
@@ -271,3 +307,157 @@ class Herramientas:
                 f"g-{int(time.time() * 1000)}", "Glenis IA", texto, "", time.time())
         return {"ok": True, "anotado": texto,
                 "nota": "Esto NO mueve el saldo del juego: es solo constancia del pago por fuera."}
+
+    # -- estado de cuenta, ganadores y pagos --
+
+    def _h_estado_de_cuenta(self, correo: str) -> dict:
+        correo = (correo or "").strip().lower()
+        with self.juego.candado:
+            u = self.juego.usuarios.usuario(correo)
+            if u is None:
+                return {"error": f"No hay ninguna cuenta con {correo}."}
+            r = self.juego.almacen.resumen_jugador(correo)
+            saldo = self.juego.monedero.saldo(correo)
+            movs = self.juego.monedero.historial(correo, 8)
+        return {
+            "correo": u.correo, "nombre": u.nombre or "(sin nombre)", "rol": u.rol,
+            "activo": u.activo, "verificado": u.verificado,
+            "saldo": a_texto(saldo),
+            "cartones": r["cartones"], "partidas": r["partidas"],
+            "premios_ganados": r["premios_ganados"],
+            "total_apostado": a_texto(r["total_apostado"]),
+            "total_ganado": a_texto(r["total_ganado"]),
+            "neto": a_texto(r["total_ganado"] - r["total_apostado"]),
+            "ultimos_movimientos": [
+                {"tipo": m.tipo, "importe": a_texto(m.centimos), "motivo": m.motivo}
+                for m in movs],
+        }
+
+    def _h_listar_ganadores(self, limite: int = 10) -> dict:
+        limite = int(limite) if isinstance(limite, int) and limite > 0 else 10
+        with self.juego.candado:
+            filas = self.juego.almacen.partidas(limite)
+            salida = []
+            for f in filas:
+                if not f["ganador"]:
+                    continue
+                u = self.juego.usuarios.usuario(f["ganador"])
+                salida.append({
+                    "partida": f["id"], "sala": f["sala"] or "(por defecto)",
+                    "ganador": f["ganador"],
+                    "nombre": (u.nombre if u and u.nombre else "(sin nombre)"),
+                    "premio": a_texto(f["premio"]),
+                    "estado_partida": f["estado"],
+                })
+        return {"ganadores": salida,
+                "nota": "El premio se paga al ganador. Usa marcar_premio_pagado cuando lo "
+                        "hayas acreditado."}
+
+    def _h_datos_de_acreditacion(self, partida: str = "", correo: str = "") -> dict:
+        partida = (partida or "").strip()
+        correo = (correo or "").strip().lower()
+        with self.juego.candado:
+            if partida:
+                fila = self.juego.almacen.partida(partida)
+                filas = [fila] if fila else []
+            else:
+                filas = self.juego.almacen.partidas(50)
+            datos = []
+            for f in filas:
+                if f is None or not f["ganador"]:
+                    continue
+                if correo and f["ganador"] != correo:
+                    continue
+                u = self.juego.usuarios.usuario(f["ganador"])
+                datos.append({
+                    "partida": f["id"],
+                    "a_acreditar": f["ganador"],
+                    "nombre": (u.nombre if u and u.nombre else "(sin nombre)"),
+                    "monto": a_texto(f["premio"]),
+                    "referencia_sugerida": f"PREMIO-{f['id']}",
+                    "sala": f["sala"] or "(por defecto)",
+                })
+        if not datos:
+            return {"aviso": "No hay premios pendientes con esos datos.",
+                    "nota": "Para acreditar hacen falta: correo del ganador, monto y referencia."}
+        return {"acreditaciones": datos,
+                "nota": "Cada pago necesita correo, monto y referencia. Anótalo con "
+                        "marcar_premio_pagado."}
+
+    def _h_reporte_de_pagos(self) -> dict:
+        with self.juego.candado:
+            filas = self.juego.almacen.partidas(50)
+            pendientes = [
+                {"partida": f["id"], "ganador": f["ganador"], "premio": a_texto(f["premio"])}
+                for f in filas if f["ganador"] and f["premio"] > 0]
+            retiros = self.juego.retiros.listar(estado="pendiente")
+            depositos = self.juego.depositos.listar(estado="pendiente")
+            historial = self.juego.almacen.historial_glenis(200)
+        pagos_manuales = [f for f in historial
+                          if (f["texto"] or "").startswith(("PAGO MANUAL", "GANADOR"))]
+        return {
+            "premios_por_acreditar": pendientes,
+            "cuantos_premios": len(pendientes),
+            "retiros_pendientes": len(retiros),
+            "retiros_por_pagar": a_texto(sum(r.centimos for r in retiros)),
+            "depositos_por_acreditar": len(depositos),
+            "depositos_por_acreditar_monto": a_texto(sum(d.centimos for d in depositos)),
+            "pagos_manuales_anotados": [
+                {"texto": f["texto"], "cuando": f["cuando"]} for f in reversed(pagos_manuales[:20])],
+        }
+
+    def _h_ver_datos_cobro(self, correo: str) -> dict:
+        correo = (correo or "").strip().lower()
+        with self.juego.candado:
+            u = self.juego.usuarios.usuario(correo)
+            if u is None:
+                return {"error": f"No hay ninguna cuenta con {correo}."}
+            ficha = self.juego.fichas.de(correo)
+        if not ficha.configurada:
+            return {"correo": correo, "tiene_ficha": False,
+                    "aviso": (f"{correo} todavía no ha dejado sus datos de cobro. "
+                              "Pídeselos o dile que los ponga en su perfil.")}
+        return {"correo": correo, "tiene_ficha": True,
+                "metodo": ficha.metodo,
+                "datos": {c["label"]: c["value"] for c in ficha.a_dict()["campos"]},
+                "nota": "Son los datos a los que hay que mandarle el dinero."}
+
+    def _h_preparar_pago_ganador(self, correo: str, importe: str, partida: str = "") -> dict:
+        correo = (correo or "").strip().lower()
+        centimos = a_centimos(importe)
+        with self.juego.candado:
+            u = self.juego.usuarios.usuario(correo)
+            if u is None:
+                return {"error": f"No hay ninguna cuenta con {correo}."}
+            ficha = self.juego.fichas.de(correo)
+            saldo = self.juego.monedero.saldo(correo)
+        orden = {
+            "a": correo, "nombre": (u.nombre or "(sin nombre)"),
+            "importe": a_texto(centimos), "partida": partida or "",
+            "referencia": f"PREMIO-{partida}" if partida else "PREMIO",
+            "saldo_actual": a_texto(saldo),
+        }
+        if not ficha.configurada:
+            orden["falta"] = "datos de cobro"
+            orden["aviso"] = (f"{correo} no tiene datos de cobro puestos. Pídeselos antes de "
+                              "pagar, o que los ponga en su perfil.")
+            return orden
+        orden["metodo"] = ficha.metodo
+        orden["datos_de_cobro"] = {c["label"]: c["value"] for c in ficha.a_dict()["campos"]}
+        orden["listo_para_pagar"] = True
+        orden["aviso"] = ("Orden lista. El pago lo confirma una persona: Glenis no mueve dinero. "
+                          "Cuando esté hecho, anótalo con marcar_premio_pagado.")
+        return orden
+
+    def _h_marcar_premio_pagado(self, correo: str, importe: str, referencia: str = "") -> dict:
+        correo = (correo or "").strip().lower()
+        centimos = a_centimos(importe)
+        with self.juego.candado:
+            if self.juego.usuarios.usuario(correo) is None:
+                return {"error": f"No hay ninguna cuenta con {correo}."}
+            texto = (f"PREMIO PAGADO: {a_texto(centimos)} acreditados a {correo}"
+                     + (f" (referencia {referencia})" if referencia else ""))
+            self.juego.almacen.anotar_glenis(
+                f"g-{int(time.time() * 1000)}", "Glenis IA", texto, "", time.time())
+        return {"ok": True, "anotado": texto,
+                "nota": "Queda constancia del pago. No mueve el saldo del juego."}

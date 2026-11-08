@@ -148,6 +148,46 @@ class DepositoTest(unittest.TestCase):
         self.assertEqual(len(self.depositos.pendientes()), 2)
         self.assertEqual(self.depositos.total_pendiente(), 8_000)
 
+    # -- multi-país --
+
+    def test_metodos_internacionales_valen(self):
+        for metodo in ("nequi", "mach", "cashapp"):
+            # En Colombia el mínimo son 1.000 pesos: el importe va en pesos.
+            self.depositos.declarar(self.correo, "1000,00", f"9{abs(hash(metodo)) % 100000:05d}",
+                                    "", hoy(), metodo, "", "CO")
+            self.assertEqual(self.depositos.pendientes()[0].metodo, metodo)
+
+    def test_los_metodos_sin_banco_no_piden_banco(self):
+        d = self.depositos.declarar(self.correo, "1000,00", "123123", "", hoy(),
+                                    "nequi", "", "CO")
+        self.assertEqual(d.banco, "")
+        self.assertEqual(d.pais, "CO")
+
+    def test_el_importe_se_guarda_en_la_moneda_base(self):
+        # 1.000 pesos colombianos, con tasa 0,01, son 10 bolívares = 1.000 céntimos.
+        d = self.depositos.declarar(self.correo, "1000,00", "555111", "", hoy(),
+                                    "nequi", "", "CO")
+        self.assertEqual(d.centimos, 1_000)
+
+    def test_los_metodos_de_banco_siguen_pidiendo_banco(self):
+        with self.assertRaises(ErrorDeDeposito):
+            self.declarar(banco="", metodo="pago_movil")
+
+    def test_un_pais_desconocido_se_rechaza(self):
+        with self.assertRaises(ErrorDeDeposito):
+            self.declarar(pais="XX")
+
+    def test_el_pais_por_defecto_es_venezuela(self):
+        d = self.declarar()
+        self.assertEqual(d.pais, "VE")
+
+    def test_el_pais_se_guarda_y_se_recupera(self):
+        d = self.depositos.declarar(self.correo, "100,00", "456456", "", hoy(),
+                                    "cashapp", "", "US")
+        otro = Depositos(self.almacen, self.monedero, self.depositos.config)
+        guardado = next(x for x in otro.pendientes() if x.id == d.id)
+        self.assertEqual(guardado.pais, "US")
+
 
 if __name__ == "__main__":
     unittest.main()

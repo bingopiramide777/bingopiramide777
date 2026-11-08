@@ -45,10 +45,25 @@ def a_centimos(importe: object) -> int:
     return centimos
 
 
-def a_texto(centimos: int, moneda: str = "Bs") -> str:
-    """Formatea céntimos como 'Bs 1.234,50' (formato venezolano)."""
+def a_texto(centimos: int, moneda: str | None = None) -> str:
+    """Formatea céntimos de la moneda BASE como texto en la moneda de quien mira.
+
+    El dinero de dentro (saldos, botes, premios) está siempre en la moneda base
+    (bolívares). Si no se pasa moneda, se convierte a la moneda del país de la
+    petición y se usa su símbolo. Así la misma app muestra bolívares en Venezuela
+    y, por ejemplo, dólares en Estados Unidos, con el importe ya convertido.
+
+    Si se pasa ``moneda`` explícita, NO se convierte: se entiende que el importe
+    ya está en esa moneda (lo usa ``paises.formatear_local``).
+    """
     if not isinstance(centimos, int):
         raise ErrorDeDinero("Los céntimos deben ser enteros.")
+    if moneda is None:
+        from .paises import de_base, pais_actual, simbolo_de
+
+        code = pais_actual()
+        centimos = de_base(centimos, code)
+        moneda = simbolo_de(code)
     negativo = centimos < 0
     entero, resto = divmod(abs(centimos), 100)
     miles = f"{entero:,}".replace(",", ".")

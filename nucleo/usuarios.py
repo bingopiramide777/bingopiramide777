@@ -77,6 +77,7 @@ class Usuario:
     activo: bool
     creado: float
     comision_pct: int = -1     # % de comisión de anfitrión; -1 = el de por defecto
+    verificado: bool = True    # False = falta confirmar el correo
 
 
 @dataclass
@@ -104,7 +105,8 @@ def _usuario(fila) -> Usuario:
     claves = fila.keys()
     return Usuario(correo=fila["correo"], nombre=fila["nombre"], rol=fila["rol"],
                    activo=bool(fila["activo"]), creado=fila["creado"],
-                   comision_pct=int(fila["comision_pct"]) if "comision_pct" in claves else -1)
+                   comision_pct=int(fila["comision_pct"]) if "comision_pct" in claves else -1,
+                   verificado=bool(fila["verificado"]) if "verificado" in claves else True)
 
 
 class Usuarios:
@@ -119,7 +121,8 @@ class Usuarios:
     # -- registro --
 
     def registrar(self, correo: str, clave: str, nombre: str = "", rol: str = "jugador",
-                  pregunta: str = "", respuesta: str = "") -> Usuario:
+                  pregunta: str = "", respuesta: str = "",
+                  verificado: bool = True, codigo_amigo: str = "") -> Usuario:
         correo = (correo or "").strip().lower()
         if not CORREO_VALIDO.match(correo):
             raise ErrorDeUsuario("Ese correo no tiene buena pinta.")
@@ -133,12 +136,35 @@ class Usuarios:
                 raise ErrorDeUsuario("Esa pregunta no es de la lista.")
             if len((respuesta or "").strip()) < 3:
                 raise ErrorDeUsuario("La respuesta secreta es demasiado corta.")
+        # Quién lo trajo. Se resuelve ahora y se guarda el correo, no el código:
+        # así el padrino no cambia aunque el invitado use otro código después.
+        padrino = ""
+        codigo_amigo = (codigo_amigo or "").strip().upper()
+        if codigo_amigo:
+            fila_padrino = self.almacen.usuario_por_codigo(codigo_amigo)
+            if fila_padrino is None:
+                raise ErrorDeUsuario("Ese código de amigo no existe.")
+            padrino = fila_padrino["correo"]
+        # El código propio se genera aquí y se garantiza único.
+        mi_codigo = self._codigo_libre(correo)
         self.almacen.crear_usuario(
             correo, hash_clave(clave), (nombre or "").strip(), rol, time.time(),
             pregunta, hash_clave(_normalizar_respuesta(respuesta)) if pregunta else "",
+            verificado=verificado, codigo_amigo=mi_codigo, referido_por=padrino,
         )
         return Usuario(correo=correo, nombre=(nombre or "").strip(), rol=rol, activo=True,
-                       creado=time.time())
+                       creado=time.time(), verificado=verificado)
+
+    def _codigo_libre(self, correo: str) -> str:
+        """Un código de amigo corto y único, sacado del nombre o del correo."""
+        base = re.sub(r"[^A-Z0-9]", "", (correo.split("@")[0] or "").upper())[:6]
+        base = base or "AMIGO"
+        for intento in range(20):
+            sufijo = "" if intento == 0 else f"{secrets.randbelow(90) + 10}"
+            codigo = f"{base}{sufijo}"[:10]
+            if self.almacen.usuario_por_codigo(codigo) is None:
+                return codigo
+        return f"BINGO{secrets.token_hex(3).upper()}"
 
     def asegurar_admin(self, correo: str, clave: str) -> bool:
         """Crea la cuenta de administración si no existe. Devuelve si la creó."""
@@ -239,6 +265,53 @@ class Usuarios:
     def activar(self, correo: str, activo: bool) -> None:
         self.almacen.cambiar_activo(correo.strip().lower(), activo)
 
+    # -- verificación del correo --
+
+    def esta_verificado(self, correo: str) -> bool:
+        u = self.usuario(correo)
+        return bool(u and u.verificado)
+
+    def marcar_verificado(self, correo: str) -> None:
+        self.almacen.marcar_verificado((correo or "").strip().lower(), True)
+
+    def pedir_codigo_verificacion(self, correo: str, minutos: int = MINUTOS_CODIGO,
+                                  max_por_hora: int = CODIGOS_POR_HORA) -> str:
+        """Genera un código para confirmar el correo de una cuenta recién creada.
+
+        Se guarda aparte de los de recuperación (tipo 'verificacion'), para que
+        pedir uno no anule el otro.
+        """
+        correo = (correo or "").strip().lower()
+        if not CORREO_VALIDO.match(correo):
+            raise ErrorDeUsuario("Ese correo no tiene buena pinta.")
+        if not self.almacen.usuario(correo):
+            return ""
+        if self.almacen.codigos_recientes(correo, time.time() - 3600, "verificacion") >= max_por_hora:
+            raise ErrorDeUsuario("Has pedido demasiados códigos. Espera una hora.")
+        codigo = f"{secrets.randbelow(1_000_000):06d}"
+        ahora = time.time()
+        self.almacen.guardar_codigo(f"c-{secrets.token_hex(6)}", correo, hash_clave(codigo),
+                                    ahora, ahora + minutos * 60, tipo="verificacion")
+        return codigo
+
+    def confirmar_correo(self, correo: str, codigo: str) -> None:
+        """Marca la cuenta como verificada si el código es correcto."""
+        correo = (correo or "").strip().lower()
+        fila = self.almacen.codigo_pendiente(correo, "verificacion")
+        if fila is None:
+            raise ErrorDeUsuario("Pide un código nuevo.")
+        if fila["caduca"] < time.time():
+            self.almacen.usar_codigo(fila["id"])
+            raise ErrorDeUsuario("Ese código ha caducado. Pide otro.")
+        if not verificar_clave((codigo or "").strip(), fila["huella"]):
+            intentos = self.almacen.fallar_codigo(fila["id"])
+            restantes = max(0, INTENTOS_CODIGO - intentos)
+            if restantes == 0:
+                raise ErrorDeUsuario("Demasiados intentos. Pide un código nuevo.")
+            raise ErrorDeUsuario(f"Código incorrecto. Te quedan {restantes} intentos.")
+        self.almacen.usar_codigo(fila["id"])
+        self.almacen.marcar_verificado(correo, True)
+
     def comision_de(self, correo: str, por_defecto: int) -> int:
         """El % de comisión de anfitrión de una cuenta (el fijo si no tiene propio)."""
         u = self.usuario(correo)
@@ -270,6 +343,9 @@ class Usuarios:
             raise ErrorDeUsuario("Correo o contraseña incorrectos.")
         if not fila["activo"]:
             raise ErrorDeUsuario("Esa cuenta está desactivada.")
+        claves = fila.keys()
+        if "verificado" in claves and not fila["verificado"]:
+            raise ErrorDeUsuario("Confirma tu correo antes de entrar. Revisa tu bandeja.")
         self._intentos.pop(correo, None)
         token = secrets.token_urlsafe(24)
         caduca = ahora + self.horas_sesion * 3600
