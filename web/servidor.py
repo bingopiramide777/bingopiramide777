@@ -818,6 +818,23 @@ class Manejador(BaseHTTPRequestHandler):
             self._json({"retiros": lista})
             return
 
+        if ruta == "/api/admin/referidos":
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            with self.juego.candado:
+                filas = self.juego.almacen.referidos(500)
+                total = sum(int(f["centimos"]) for f in filas)
+                self._json({"referidos": [
+                    {"partida": f["partida"], "referido": f["referido"],
+                     "padrino": f["padrino"], "centimos": f["centimos"],
+                     "texto": a_texto(f["centimos"]), "cuando": f["cuando"]}
+                    for f in filas],
+                    "total": total, "total_texto": a_texto(total),
+                    "pct": self.juego.referidos.porcentaje(),
+                    "economia_pais": self.juego.salas.economia_por_pais().get("paises", [])})
+            return
+
         if ruta == "/admin":
             self._estatico("admin.html")
             return
@@ -1347,24 +1364,6 @@ class Manejador(BaseHTTPRequestHandler):
                                         "saldo": a_texto(self.juego.monedero.saldo(correo))}})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
-            return
-
-        if ruta == "/api/admin/referidos":
-            admin = self._admin()
-            if not admin:
-                self._error("Solo para administración.", 403)
-                return
-            with self.juego.candado:
-                filas = self.juego.almacen.referidos(500)
-                total = sum(int(f["centimos"]) for f in filas)
-                self._json({"referidos": [
-                    {"partida": f["partida"], "referido": f["referido"],
-                     "padrino": f["padrino"], "centimos": f["centimos"],
-                     "texto": a_texto(f["centimos"]), "cuando": f["cuando"]}
-                    for f in filas],
-                    "total": total, "total_texto": a_texto(total),
-                    "pct": self.juego.referidos.porcentaje(),
-                    "economia_pais": self.juego.salas.economia_por_pais()})
             return
 
         if ruta == "/api/admin/usuario":

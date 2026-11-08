@@ -43,6 +43,10 @@ class Referidos:
 
     # -- consultas --
 
+    def porcentaje(self) -> int:
+        """El % de la ganancia de la app que se lleva el padrino."""
+        return porcentaje()
+
     def padrino_de(self, correo: str) -> str:
         fila = self.almacen.usuario((correo or "").strip().lower())
         if fila is None:

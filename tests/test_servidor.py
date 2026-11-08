@@ -767,6 +767,106 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(estado, 400)
         self.assertIn("jugador", r["error"])
 
+    # -- referidos --
+
+    def test_referido_cobra_comision_al_ganar_el_ahijado(self):
+        """El camino real: padrino invita, el ahijado gana y el padrino cobra."""
+        padrino = self.usuario("padrino@correo.com")
+        _, r = self.pedir("/api/referidos", token=padrino)
+        codigo = r["codigo"]
+        self.assertTrue(codigo)
+
+        # El ahijado se registra con el código del padrino y entra con plata.
+        self.pedir("/api/registro", {"correo": "ahijado@correo.com",
+                                     "clave": "miClaveSegura1", "codigo_amigo": codigo})
+        _, d = self.pedir("/api/entrar", {"correo": "ahijado@correo.com",
+                                          "clave": "miClaveSegura1"})
+        ahijado = d["token"]
+        self.pedir("/api/recargar", {"correo": "ahijado@correo.com", "importe": "5000,00"},
+                   self.admin())
+
+        # Juega en Nueva Esparta (diagonal, Bs 50 el cartón) y canta bingo.
+        _, c = self.pedir("/api/carton", {"sala": "sala-nueva-esparta"}, ahijado)
+        self.pedir("/api/bola", {"sala": "sala-nueva-esparta"}, ahijado)
+        self._marcar_patron("sala-nueva-esparta", c["carton"], "diagonal")
+        estado, res = self.pedir("/api/bingo", {"sala": "sala-nueva-esparta",
+                                                "carton": c["carton"]}, ahijado)
+        self.assertEqual(estado, 200, res)
+        self.assertGreater(res["app"], 0, "la app debió ganar algo en la partida")
+
+        # El padrino cobra el 10 % de la parte de la app.
+        _, s = self.pedir("/api/saldo", token=padrino)
+        esperado = res["app"] * 10 // 100
+        self.assertEqual(s["saldo"], esperado)
+        _, rr = self.pedir("/api/referidos", token=padrino)
+        self.assertEqual(rr["invitados"], 1)
+        self.assertEqual(rr["total"], esperado)
+
+    def test_el_padrino_no_cobra_si_el_ahijado_no_gana(self):
+        padrino = self.usuario("padrino2@correo.com")
+        _, r = self.pedir("/api/referidos", token=padrino)
+        self.pedir("/api/registro", {"correo": "ahijado2@correo.com",
+                                     "clave": "miClaveSegura1", "codigo_amigo": r["codigo"]})
+        _, d = self.pedir("/api/entrar", {"correo": "ahijado2@correo.com",
+                                          "clave": "miClaveSegura1"})
+        ahijado = d["token"]
+        self.pedir("/api/recargar", {"correo": "ahijado2@correo.com", "importe": "5000,00"},
+                   self.admin())
+        # Compra cartón y saca una bola, pero no canta: no hay comisión.
+        self.pedir("/api/carton", {"sala": "sala-nueva-esparta"}, ahijado)
+        self.pedir("/api/bola", {"sala": "sala-nueva-esparta"}, ahijado)
+        _, s = self.pedir("/api/saldo", token=padrino)
+        self.assertEqual(s["saldo"], 0)
+
+    def test_un_codigo_de_amigo_que_no_existe_se_rechaza(self):
+        estado, r = self.pedir("/api/registro", {"correo": "tarde@correo.com",
+                                                 "clave": "miClaveSegura1",
+                                                 "codigo_amigo": "NOEXISTE"})
+        self.assertEqual(estado, 400)
+        self.assertIn("código", r["error"].lower())
+
+    def test_el_admin_ve_los_referidos_pagados(self):
+        padrino = self.usuario("padrino3@correo.com")
+        _, r = self.pedir("/api/referidos", token=padrino)
+        self.pedir("/api/registro", {"correo": "ahijado3@correo.com",
+                                     "clave": "miClaveSegura1", "codigo_amigo": r["codigo"]})
+        _, d = self.pedir("/api/entrar", {"correo": "ahijado3@correo.com",
+                                          "clave": "miClaveSegura1"})
+        ahijado = d["token"]
+        self.pedir("/api/recargar", {"correo": "ahijado3@correo.com", "importe": "5000,00"},
+                   self.admin())
+        _, c = self.pedir("/api/carton", {"sala": "sala-nueva-esparta"}, ahijado)
+        self.pedir("/api/bola", {"sala": "sala-nueva-esparta"}, ahijado)
+        self._marcar_patron("sala-nueva-esparta", c["carton"], "diagonal")
+        self.pedir("/api/bingo", {"sala": "sala-nueva-esparta", "carton": c["carton"]}, ahijado)
+
+        estado, panel = self.pedir("/api/admin/referidos", token=self.admin())
+        self.assertEqual(estado, 200)
+        self.assertEqual(len(panel["referidos"]), 1)
+        self.assertEqual(panel["referidos"][0]["padrino"], "padrino3@correo.com")
+        self.assertEqual(panel["pct"], 10)
+        # La economía por país es una lista, no un objeto: si no, la tabla del
+        # panel de referidos sale siempre vacía.
+        self.assertIsInstance(panel["economia_pais"], list)
+        if panel["economia_pais"]:
+            self.assertIn("app_texto", panel["economia_pais"][0])
+
+    def test_el_panel_de_referidos_es_solo_para_admin(self):
+        token = self.usuario("curioso@correo.com")
+        estado, _ = self.pedir("/api/admin/referidos", token=token)
+        self.assertEqual(estado, 403)
+
+    def _marcar_patron(self, sala_id, carton_id, patron):
+        """Marca en el cartón el patrón de la partida, para poder cantar bingo.
+
+        Se hace sobre el estado real del servidor (el mismo proceso), que es lo
+        único que la cantada comprueba: no se puede falsear por HTTP.
+        """
+        from bingo.cartones import PATRONES
+        with self.juego.candado:
+            partida = self.juego.mesa.sala.partidas[self.juego._partida_id]
+            partida.cartones[carton_id].marcados |= PATRONES[patron]
+
 
 if __name__ == "__main__":
     unittest.main()
