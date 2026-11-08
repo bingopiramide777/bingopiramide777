@@ -3,7 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0f0f13">
 <title>Administración — Bingo Pirámide 777</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/estilos.css">
 <link rel="icon" href="/logo.svg" type="image/svg+xml">
 </head>
@@ -17,14 +21,16 @@
     </svg>
     <span class="marca__texto">Bingo<b>Pirámide</b><em>777</em></span>
   </a>
-  <nav class="nav">
-    <a href="#resumen">Resumen</a>
-    <a href="#glenis">Glenis IA</a>
-    <a href="#depositos">Depósitos</a>
-    <a href="#retiros">Retiros</a>
-    <a href="#jugadores">Jugadores</a>
-    <a href="#partidas">Partidas</a>
-    <a href="#ganancias">Ganancias</a>
+  <nav class="nav" id="nav-admin">
+    <button data-ventana="resumen">Resumen</button>
+    <button data-ventana="glenis">Glenis IA</button>
+    <button data-ventana="depositos">Depósitos</button>
+    <button data-ventana="retiros">Retiros</button>
+    <button data-ventana="jugadores">Jugadores</button>
+    <button data-ventana="partidas">Partidas</button>
+    <button data-ventana="salas">Salas</button>
+    <button data-ventana="ganancias">Ganancias</button>
+    <button data-ventana="movimientos">Movimientos</button>
   </nav>
   <div class="sesion" id="sesion"></div>
 </header>
@@ -32,113 +38,12 @@
 <main>
   <section class="panel">
     <h2>Panel de administración</h2>
-    <p class="entrada">Aquí ves el dinero, los jugadores, las partidas y los retiros pendientes.</p>
-
-    <div id="resumen" class="tarjetas-resumen"></div>
+    <p class="entrada">Aquí ves el dinero, los jugadores, las partidas y los retiros pendientes.
+       Abre cada ventana cuando la necesites: cada una carga solo lo suyo.</p>
+    <div class="lanzadera" id="lanzadera"></div>
   </section>
 
-  <section class="panel panel--suave" id="glenis">
-    <div class="panel__cabecera">
-      <h2>Glenis IA</h2>
-      <div class="pastilla" id="glenis-estado">—</div>
-    </div>
-    <p class="entrada">Tu asistente. Pregúntale por el dinero, los jugadores o los depósitos,
-       o pídele que anote o acredite algo. Lo que toca dinero queda registrado a su nombre.</p>
-    <div class="chat" id="chat-glenis">
-      <div class="chat__mensajes" id="chat-mensajes"></div>
-      <form class="chat__form" id="chat-form">
-        <input type="text" id="chat-texto" placeholder="Escríbele a Glenis…" autocomplete="off">
-        <button class="boton boton--brillo" type="submit">Enviar</button>
-      </form>
-      <div class="chat__sugerencias">
-        <button class="pastilla pastilla--boton" data-sugerencia="Dame el resumen del día">Resumen del día</button>
-        <button class="pastilla pastilla--boton" data-sugerencia="¿Qué depósitos hay pendientes?">Depósitos pendientes</button>
-        <button class="pastilla pastilla--boton" data-sugerencia="¿Qué retiros hay pendientes?">Retiros pendientes</button>
-        <button class="pastilla pastilla--boton" data-sugerencia="¿Cuánto dinero hay en las cuentas?">Dinero en cuentas</button>
-      </div>
-    </div>
-  </section>
-
-  <section class="panel" id="depositos">
-    <div class="panel__cabecera">
-      <h2>Depósitos por revisar</h2>
-      <div class="pastilla" id="contador-depositos">—</div>
-    </div>
-    <p class="entrada">Pagos declarados por los jugadores (Pago Móvil o transferencia).
-       Comprueba la referencia en tu banco antes de acreditar.</p>
-    <div class="tabla-scroll">
-      <table class="tabla">
-        <thead>
-          <tr><th>Jugador</th><th>Monto</th><th>Método</th><th>Banco</th><th>Referencia</th>
-              <th>Día</th><th>Acciones</th></tr>
-        </thead>
-        <tbody id="cuerpo-depositos"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="panel panel--suave" id="retiros">
-    <div class="panel__cabecera">
-      <h2>Retiros pendientes</h2>
-      <div class="pastilla" id="contador-retiros">—</div>
-    </div>
-    <div class="tabla-envoltorio">
-      <table class="tabla" id="tabla-retiros">
-        <thead><tr><th>Jugador</th><th>Importe</th><th>Método</th><th>Datos</th><th>Pedido</th><th>Acciones</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="panel" id="jugadores">
-    <div class="panel__cabecera">
-      <h2>Jugadores</h2>
-      <div class="acciones acciones--pegadas">
-        <input type="text" id="buscar-jugador" placeholder="Buscar por correo…" aria-label="Buscar jugador">
-      </div>
-    </div>
-    <div class="tabla-envoltorio">
-      <table class="tabla" id="tabla-jugadores">
-        <thead><tr><th>Correo</th><th>Nombre</th><th>Rol</th><th>Saldo</th><th>Alta</th><th>Estado</th><th>Ajuste</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="panel panel--suave" id="partidas">
-    <h2>Partidas</h2>
-    <div class="tabla-envoltorio">
-      <table class="tabla" id="tabla-partidas">
-        <thead><tr><th>Partida</th><th>Patrón</th><th>Estado</th><th>Cartones</th><th>Bolas</th><th>Apostado</th><th>Ganador</th><th>Premio</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="panel panel--suave" id="ganancias">
-    <h2>Ganancias del bingo</h2>
-    <p class="entrada">Cuánto mueve el bingo y cuánto queda para la app.
-       El ganador siempre cobra el 80% del bote; en las salas de jugadores,
-       el anfitrión se lleva un 10% y la app el otro 10%.</p>
-    <div id="tarjetas-ganancias" class="tarjetas-resumen"></div>
-    <div class="tabla-scroll">
-      <table class="tabla">
-        <thead><tr><th>Sala</th><th>Dueño</th><th>Modo</th><th>Cartón</th>
-          <th>Estado</th><th></th></tr></thead>
-        <tbody id="cuerpo-salas"></tbody>
-      </table>
-    </div>
-  </section>
-
-  <section class="panel" id="movimientos">
-    <h2>Últimos movimientos</h2>
-    <div class="tabla-envoltorio">
-      <table class="tabla" id="tabla-movimientos">
-        <thead><tr><th>Jugador</th><th>Tipo</th><th>Importe</th><th>Saldo después</th><th>Motivo</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-  </section>
+  <div id="ventanas"></div>
 </main>
 
 <footer class="pie">

@@ -59,7 +59,9 @@ class ServidorTest(unittest.TestCase):
         _, d = self.pedir("/api/entrar", {"correo": correo, "clave": clave})
         token = d["token"]
         if recarga:
-            self.pedir("/api/recargar", {"importe": recarga}, token)
+            # El saldo se ingresa como lo hace la administración: el jugador ya no
+            # puede recargarse solo (eso era un agujero de dinero gratis).
+            self.pedir("/api/recargar", {"correo": correo, "importe": recarga}, self.admin())
         return token
 
     def admin(self):
@@ -97,11 +99,11 @@ class ServidorTest(unittest.TestCase):
     # -- juego --
 
     def test_flujo_completo_de_juego(self):
-        token = self.usuario("ana@correo.com", recarga="100,00")
-        # Se juega en la sala Roma (Bs 10 el cartón), que es la de precio medio.
-        _, c = self.pedir("/api/carton", {"sala": "sala-roma"}, token)
-        self.assertEqual(c["precio"], 1_000)
-        self.assertEqual(c["saldo"], 9_000)
+        token = self.usuario("ana@correo.com", recarga="5000,00")
+        # Se juega en la sala Lara (Bs 1.000 el cartón).
+        _, c = self.pedir("/api/carton", {"sala": "sala-lara"}, token)
+        self.assertEqual(c["precio"], 100_000)
+        self.assertEqual(c["saldo"], 400_000)
         estado, b = self.pedir("/api/bola", {}, token)
         self.assertEqual(estado, 200)
         self.assertTrue(1 <= b["bola"] <= 75)
@@ -113,6 +115,27 @@ class ServidorTest(unittest.TestCase):
         estado, datos = self.pedir("/api/carton", {}, token)
         self.assertEqual(estado, 400)
 
+    def test_comprar_varios_cartones_de_una_vez(self):
+        token = self.usuario("ana@correo.com", recarga="5000,00")
+        estado, r = self.pedir("/api/carton", {"sala": "sala-lara", "cantidad": 3}, token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["cantidad"], 3)
+        self.assertEqual(len(r["cartones"]), 3)
+        # Tres cartones de Bs 1.000: cobra 3.000 y el saldo baja en consecuencia.
+        self.assertEqual(r["saldo"], 200_000)
+        ids = {c["carton"] for c in r["cartones"]}
+        self.assertEqual(len(ids), 3)  # cada uno con su id
+
+    def test_la_cantidad_se_limita_a_diez(self):
+        token = self.usuario("ana@correo.com", recarga="99999,00")
+        _, r = self.pedir("/api/carton", {"sala": "sala-lara", "cantidad": 999}, token)
+        self.assertEqual(r["cantidad"], 10)
+
+    def test_cantidad_invalida_compra_uno(self):
+        token = self.usuario("ana@correo.com", recarga="5000,00")
+        _, r = self.pedir("/api/carton", {"sala": "sala-lara", "cantidad": "muchos"}, token)
+        self.assertEqual(r["cantidad"], 1)
+
     def test_la_partida_es_publica(self):
         estado, datos = self.pedir("/api/partida")
         self.assertEqual(estado, 200)
@@ -121,8 +144,17 @@ class ServidorTest(unittest.TestCase):
     def test_recarga_invalida(self):
         token = self.usuario("ana@correo.com")
         for malo in ("", "abc", "-5"):
-            estado, _ = self.pedir("/api/recargar", {"importe": malo}, token)
+            estado, _ = self.pedir("/api/recargar", {"correo": "ana@correo.com", "importe": malo},
+                                   self.admin())
             self.assertEqual(estado, 400, f"'{malo}' debería rechazarse")
+
+    def test_un_jugador_no_puede_ingresarse_saldo(self):
+        """El agujero del dinero gratis: un jugador no puede recargarse solo."""
+        token = self.usuario("ana@correo.com")
+        estado, datos = self.pedir("/api/recargar", {"importe": "50000,00"}, token)
+        self.assertEqual(estado, 403)
+        _, s = self.pedir("/api/saldo", token=token)
+        self.assertEqual(s["saldo"], 0, "el saldo no puede haber cambiado")
 
     # -- persistencia --
 
@@ -241,10 +273,12 @@ class ServidorTest(unittest.TestCase):
 
     # -- salas --
 
-    def test_vienen_las_tres_salas_de_la_casa(self):
+    def test_vienen_las_salas_de_la_casa(self):
         estado, r = self.pedir("/api/salas")
         self.assertEqual(estado, 200)
-        self.assertEqual([s["nombre"] for s in r["salas"]], ["Dubai", "Roma", "Estelar"])
+        self.assertEqual([s["nombre"] for s in r["salas"]],
+                         ["Zulia", "Lara", "Carabobo", "Mérida", "Táchira", "Nueva Esparta",
+                          "Sala de Eventos Lago de Maracaibo"])
 
     def test_un_jugador_crea_su_sala(self):
         token = self.usuario("ana@correo.com")
@@ -278,16 +312,16 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(r["ganancias"]["anfitrion_texto"], "Bs 0,00")
 
     def test_el_jugador_juega_en_la_sala_que_elige(self):
-        token = self.usuario("ana@correo.com", recarga="100,00")
-        _, r = self.pedir("/api/carton", {"sala": "sala-dubai"}, token)
-        self.assertEqual(r["precio"], 500)   # Dubai: Bs 5
+        token = self.usuario("ana@correo.com", recarga="5000,00")
+        _, r = self.pedir("/api/carton", {"sala": "sala-zulia"}, token)
+        self.assertEqual(r["precio"], 200_000)   # Zulia: Bs 2.000
 
     def test_entrar_a_una_sala_da_su_modo_y_reparto(self):
         token = self.usuario("ana@correo.com")
-        estado, r = self.pedir("/api/sala/entrar", {"sala": "sala-estelar"}, token)
+        estado, r = self.pedir("/api/sala/entrar", {"sala": "sala-carabobo"}, token)
         self.assertEqual(estado, 200)
         self.assertEqual(r["partida"]["modo"], "carton_lleno")
-        self.assertEqual(r["partida"]["sala_nombre"], "Estelar")
+        self.assertEqual(r["partida"]["sala_nombre"], "Carabobo")
 
     def test_solo_el_admin_ve_las_salas_del_panel(self):
         token = self.usuario("ana@correo.com")
@@ -296,6 +330,119 @@ class ServidorTest(unittest.TestCase):
         estado, r = self.pedir("/api/admin/salas", token=at)
         self.assertEqual(estado, 200)
         self.assertIn("economia", r)
+
+    # -- sala de eventos --
+
+    def test_la_sala_de_eventos_se_ve_sin_entrar(self):
+        estado, r = self.pedir("/api/evento")
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["nombre"], "Sala de Eventos Lago de Maracaibo")
+        self.assertEqual(r["aforo"], 50)
+        self.assertEqual([p["pct"] for p in r["premios"]], [60, 15, 5])
+
+    def test_solo_el_admin_configura_el_evento(self):
+        token = self.usuario("ana@correo.com")
+        estado, _ = self.pedir("/api/admin/evento", {"precio": "100,00"}, token)
+        self.assertEqual(estado, 403)
+
+    def test_el_admin_configura_precio_aforo_y_premios(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/evento",
+                               {"precio": "100,00", "aforo": 2, "premios_pct": "70,20,10"}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["evento"]["precio_texto"], "Bs 100,00")
+        self.assertEqual(r["evento"]["aforo"], 2)
+        self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [70, 20, 10])
+
+    def test_los_premios_del_evento_se_reparten_por_porcentaje(self):
+        at = self.admin()
+        self.pedir("/api/admin/evento",
+                   {"precio": "100,00", "aforo": 50, "premios_pct": "60,15,5"}, at)
+        tokens = [self.usuario(f"j{i}@correo.com", recarga="1000,00") for i in range(3)]
+        for t in tokens:
+            self.pedir("/api/carton", {"sala": "sala-evento-lago"}, t)
+        estado, r = self.pedir("/api/evento")
+        # 3 cartones x Bs 100 = Bs 300 de bote.
+        self.assertEqual(r["bote"], 30_000)
+        self.assertEqual([p["premio"] for p in r["premios"]], [18_000, 4_500, 1_500])
+
+    def test_el_aforo_del_evento_limita_los_jugadores(self):
+        at = self.admin()
+        self.pedir("/api/admin/evento", {"aforo": 2}, at)
+        t1 = self.usuario("j1@correo.com", recarga="1000,00")
+        t2 = self.usuario("j2@correo.com", recarga="1000,00")
+        t3 = self.usuario("j3@correo.com", recarga="1000,00")
+        self.assertEqual(self.pedir("/api/carton", {"sala": "sala-evento-lago"}, t1)[0], 200)
+        self.assertEqual(self.pedir("/api/carton", {"sala": "sala-evento-lago"}, t2)[0], 200)
+        # El tercero no cabe: el aforo es de 2 jugadores.
+        estado, datos = self.pedir("/api/carton", {"sala": "sala-evento-lago"}, t3)
+        self.assertEqual(estado, 400)
+        self.assertIn("llena", datos["error"].lower())
+
+    def test_quien_ya_esta_dentro_puede_comprar_mas_cartones(self):
+        at = self.admin()
+        self.pedir("/api/admin/evento", {"aforo": 1}, at)
+        t1 = self.usuario("j1@correo.com", recarga="1000,00")
+        self.assertEqual(self.pedir("/api/carton", {"sala": "sala-evento-lago"}, t1)[0], 200)
+        self.assertEqual(self.pedir("/api/carton", {"sala": "sala-evento-lago"}, t1)[0], 200)
+
+    # -- ver una sala por dentro (solo admin) --
+
+    def test_solo_el_admin_ve_el_interior_de_una_sala(self):
+        token = self.usuario("ana@correo.com")
+        estado, _ = self.pedir("/api/admin/sala?sala=sala-zulia", token=token)
+        self.assertEqual(estado, 403)
+
+    def test_el_admin_ve_los_jugadores_de_una_sala(self):
+        token = self.usuario("ana@correo.com", recarga="5000,00")
+        self.pedir("/api/carton", {"sala": "sala-zulia"}, token)
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/sala?sala=sala-zulia", token=at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["sala"]["nombre"], "Zulia")
+        self.assertEqual([j["correo"] for j in r["jugadores"]], ["ana@correo.com"])
+        self.assertEqual(r["jugadores"][0]["cartones"], 1)
+
+    def test_la_vista_de_sala_trae_los_cartones_con_sus_marcas(self):
+        token = self.usuario("ana@correo.com", recarga="5000,00")
+        self.pedir("/api/carton", {"sala": "sala-zulia"}, token)
+        at = self.admin()
+        _, r = self.pedir("/api/admin/sala?sala=sala-zulia", token=at)
+        carton = r["jugadores"][0]["detalle"][0]
+        self.assertEqual(len(carton["numeros"]), 5)
+        # El centro (2-2) siempre va marcado: es el comodín del cartón.
+        self.assertIn("2-2", carton["marcados"])
+
+    def test_la_vista_de_sala_sin_partida_no_revienta(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/sala?sala=sala-miranda", token=at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["jugadores"], [])
+
+    def test_la_vista_de_sala_pide_el_nombre_de_la_sala(self):
+        at = self.admin()
+        estado, _ = self.pedir("/api/admin/sala", token=at)
+        self.assertEqual(estado, 400)
+
+    def test_la_vista_de_una_sala_inexistente_da_error(self):
+        at = self.admin()
+        estado, _ = self.pedir("/api/admin/sala?sala=sala-fantasma", token=at)
+        self.assertEqual(estado, 400)
+
+    def test_ir_y_volver_entre_salas_no_rompe_la_partida(self):
+        """Cambiar de sala y volver no debe intentar reabrir una partida viva.
+
+        Rehidratarla desde la base cuando el objeto sigue en memoria lanzaba
+        "La partida X ya existe" y dejaba la mesa sin cargar.
+        """
+        token = self.usuario("ana@correo.com", recarga="5000,00")
+        self.pedir("/api/carton", {"sala": "sala-zulia"}, token)
+        self.pedir("/api/carton", {"sala": "sala-lara"}, token)
+        self.pedir("/api/carton", {"sala": "sala-zulia"}, token)
+        estado, r = self.pedir("/api/partida")
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["sala"], "sala-zulia")
+        self.assertEqual(r["jugadores"], 1)
 
     def test_el_admin_cierra_una_sala_de_jugador(self):
         token = self.usuario("ana@correo.com")
@@ -428,6 +575,82 @@ class ServidorTest(unittest.TestCase):
         at = self.admin()
         estado, _ = self.pedir("/api/admin/usuario", {"correo": ADMIN, "activo": False}, at)
         self.assertEqual(estado, 400)
+
+    # -- cuenta a la que el jugador manda el dinero --
+
+    def test_config_trae_la_cuenta_de_pago(self):
+        estado, r = self.pedir("/api/config")
+        self.assertEqual(estado, 200)
+        cuenta = r["cuenta_pago"]
+        self.assertTrue(cuenta["configurada"])
+        self.assertEqual(cuenta["banco"], "Banco de Venezuela")
+        self.assertEqual(cuenta["telefono"], "0416-7677264")
+        self.assertEqual(cuenta["cedula"], "12.256.618")
+
+    def test_la_cuenta_de_pago_se_ve_sin_entrar(self):
+        """El jugador tiene que verla para poder pagar."""
+        estado, r = self.pedir("/api/config")
+        self.assertEqual(estado, 200)
+        self.assertIn("cuenta_pago", r)
+
+    def test_el_jugador_tambien_ve_la_cuenta(self):
+        token = self.usuario("ana@correo.com")
+        estado, r = self.pedir("/api/config", token=token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["cuenta_pago"]["telefono"], "0416-7677264")
+
+    # -- la administración cambia los precios de las salas --
+
+    def test_el_admin_cambia_el_precio_de_una_sala(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/sala/editar",
+                               {"sala": "sala-zulia", "precio": "3000,00"}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["sala"]["precio_texto"], "Bs 3.000,00")
+        _, salas = self.pedir("/api/salas")
+        zulia = [s for s in salas["salas"] if s["id"] == "sala-zulia"][0]
+        self.assertEqual(zulia["precio_texto"], "Bs 3.000,00")
+
+    def test_el_precio_nuevo_lo_paga_el_jugador(self):
+        at = self.admin()
+        self.pedir("/api/admin/sala/editar", {"sala": "sala-tachira", "precio": "250,00"}, at)
+        token = self.usuario("ana@correo.com", recarga="1000,00")
+        _, r = self.pedir("/api/carton", {"sala": "sala-tachira"}, token)
+        self.assertEqual(r["precio"], 25_000)
+        self.assertEqual(r["saldo"], 75_000)
+
+    def test_el_admin_renombra_una_sala(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/sala/editar",
+                               {"sala": "sala-miranda", "nombre": "Mérida"}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["sala"]["nombre"], "Mérida")
+
+    def test_solo_el_admin_cambia_los_precios(self):
+        token = self.usuario("ana@correo.com")
+        estado, _ = self.pedir("/api/admin/sala/editar",
+                               {"sala": "sala-zulia", "precio": "1,00"}, token)
+        self.assertEqual(estado, 403)
+        _, salas = self.pedir("/api/salas")
+        zulia = [s for s in salas["salas"] if s["id"] == "sala-zulia"][0]
+        self.assertEqual(zulia["precio_texto"], "Bs 2.000,00", "el precio no debió cambiar")
+
+    def test_un_precio_desmedido_se_rechaza(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/sala/editar",
+                               {"sala": "sala-zulia", "precio": "999999,00"}, at)
+        self.assertEqual(estado, 400)
+        self.assertIn("costar", r["error"])
+
+    def test_no_se_cambia_una_sala_de_jugador_desde_el_panel(self):
+        token = self.usuario("ana@correo.com")
+        _, s = self.pedir("/api/sala/crear",
+                          {"nombre": "La de Ana", "modo": "normal", "precio": "10,00"}, token)
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/sala/editar",
+                               {"sala": s["sala"]["id"], "precio": "20,00"}, at)
+        self.assertEqual(estado, 400)
+        self.assertIn("jugador", r["error"])
 
 
 if __name__ == "__main__":

@@ -16,16 +16,47 @@ Tres frenos, porque aquí es donde se pierde el dinero en estas webs:
 
 from __future__ import annotations
 
+import os
 import re
 import secrets
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .almacen import Almacen
 from .monedero import Monedero
 from .money import a_centimos
 
 METODOS = ("pago_movil", "transferencia")
+
+# Cuenta a la que el jugador manda el dinero. Los datos del Pago Móvil van aquí
+# y no repartidos por el código, para poder cambiarlos desde Render sin desplegar.
+@dataclass
+class CuentaDePago:
+    banco: str = "Banco de Venezuela"
+    telefono: str = "0416-7677264"
+    cedula: str = "12.256.618"
+    titular: str = ""
+
+    @classmethod
+    def desde_entorno(cls) -> "CuentaDePago":
+        # Si la variable no está puesta, vale el valor por defecto de arriba.
+        base = cls()
+        return cls(
+            banco=os.environ.get("BINGO_PAGO_BANCO") or base.banco,
+            telefono=os.environ.get("BINGO_PAGO_TELEFONO") or base.telefono,
+            cedula=os.environ.get("BINGO_PAGO_CEDULA") or base.cedula,
+            titular=os.environ.get("BINGO_PAGO_TITULAR") or base.titular,
+        )
+
+    @property
+    def configurada(self) -> bool:
+        return bool(self.telefono or self.cedula)
+
+    def a_dict(self) -> dict:
+        return {"banco": self.banco, "telefono": self.telefono,
+                "cedula": self.cedula, "titular": self.titular,
+                "configurada": self.configurada}
+
 
 BANCOS = (
     "Banco de Venezuela", "Banesco", "Mercantil", "BBVA Provincial", "Banco Nacional de Crédito",
@@ -48,6 +79,7 @@ class ConfigDeposito:
     minimo: int = 1_000            # Bs 10,00
     tope_diario: int = 2_000_000   # Bs 20.000,00
     dias_atras: int = 3            # cuántos días atrás se admite declarar el pago
+    cuenta: CuentaDePago = field(default_factory=CuentaDePago.desde_entorno)
 
 
 @dataclass

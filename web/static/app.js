@@ -4,7 +4,11 @@ const $ = (sel) => document.querySelector(sel);
 const CLAVE_TOKEN = "bp777_token";
 
 let token = localStorage.getItem(CLAVE_TOKEN) || "";
+let esAdmin = false;
 let carton = null;
+let misCartones = [];          // todos los cartones comprados en la partida
+let automarcar = false;        // marca solo las bolas que salgan
+let cuentaAtras = null;        // temporizador de la cuenta atrás de la partida
 
 /* --- peticiones --- */
 
@@ -71,12 +75,21 @@ function pintarCartonDemo() {
 function pintarSesion() {
   const caja = $("#sesion");
   caja.innerHTML = "";
+  // La portada cambia según haya sesión o no: acceso o entrar a jugar.
+  const acceso = $("#portada-acceso");
+  const jugar = $("#portada-jugar");
+  if (acceso && jugar) {
+    acceso.hidden = !!token;
+    jugar.hidden = !token;
+  }
   if (token) {
     const correo = document.createElement("span");
     correo.textContent = localStorage.getItem("bp777_correo") || "";
     correo.style.color = "var(--gris)";
     caja.append(correo);
-    if (localStorage.getItem("bp777_admin") === "1") {
+    // El enlace al panel depende del estado real de esta sesión, no de nada
+    // guardado antes: si entras con otra cuenta, desaparece solo.
+    if (esAdmin) {
       const panel = document.createElement("a");
       panel.className = "boton boton--fantasma";
       panel.href = "/admin";
@@ -88,13 +101,7 @@ function pintarSesion() {
     salir.className = "boton boton--fantasma";
     salir.textContent = "Salir";
     salir.style.padding = ".4rem 1rem";
-    salir.onclick = async () => {
-      try { await post("/api/salir"); } catch (e) { /* da igual */ }
-      localStorage.removeItem(CLAVE_TOKEN);
-      localStorage.removeItem("bp777_correo");
-      localStorage.removeItem("bp777_admin");
-      location.reload();
-    };
+    salir.onclick = () => cerrarSesion();
     caja.append(salir);
   } else {
     const entrar = document.createElement("button");
@@ -104,6 +111,17 @@ function pintarSesion() {
     entrar.onclick = () => abrirAcceso("entrar");
     caja.appendChild(entrar);
   }
+}
+
+/* Borra la sesión de este dispositivo. El panel de administración es una página
+   aparte: nunca se recuerda aquí, así que este cierre no afecta a nadie más. */
+function cerrarSesion() {
+  try { post("/api/salir"); } catch (e) { /* da igual */ }
+  localStorage.removeItem(CLAVE_TOKEN);
+  localStorage.removeItem("bp777_correo");
+  localStorage.removeItem("bp777_admin");
+  token = "";
+  location.reload();
 }
 
 /* --- diálogo de acceso --- */
@@ -248,38 +266,6 @@ function abrirAcceso(modo) {
 
 /* --- depósitos --- */
 
-async function cargarDepositos() {
-  const banco = $("#select-banco");
-  if (banco && banco.options.length === 0) {
-    (configRetiro.bancos || []).forEach((b) => {
-      const o = document.createElement("option");
-      o.value = b; o.textContent = b;
-      banco.appendChild(o);
-    });
-    const dia = document.querySelector("#form-deposito [name=dia]");
-    if (dia) dia.value = new Date().toISOString().slice(0, 10);
-  }
-
-  const form = $("#form-deposito");
-  if (form && !form.dataset.listo) {
-    form.dataset.listo = "1";
-    form.onsubmit = async (e) => {
-      e.preventDefault();
-      if (!token) return abrirAcceso("entrar");
-      const datos = Object.fromEntries(new FormData(e.target));
-      try {
-        const res = await post("/api/deposito", datos);
-        avisar(res.mensaje, "bien");
-        form.reset();
-        document.querySelector("#form-deposito [name=dia]").value =
-          new Date().toISOString().slice(0, 10);
-        refrescarDepositos();
-      } catch (err) { avisar(err.message, "error"); }
-    };
-  }
-  refrescarDepositos();
-}
-
 async function refrescarDepositos() {
   const caja = $("#mis-depositos");
   if (!caja) return;
@@ -303,6 +289,75 @@ async function refrescarDepositos() {
   } catch (err) { /* sin sesión: no se muestra nada */ }
 }
 
+/* Recargar saldo ya no se hace a mano: el jugador declara un pago y la
+   administración lo revisa y lo acredita. */
+function abrirDeposito() {
+  const bancos = (configRetiro && configRetiro.bancos) || [];
+  const cuenta = (configRetiro && configRetiro.cuenta_pago) || {};
+  const hoy = new Date().toISOString().slice(0, 10);
+  const bloqueCuenta = cuenta.configurada
+    ? `<div class="cuenta-pago">
+         <p class="cuenta-pago__titulo">Paga a esta cuenta</p>
+         <p class="cuenta-pago__linea"><span>Banco</span><strong>${cuenta.banco}</strong></p>
+         <p class="cuenta-pago__linea"><span>Teléfono</span>
+           <strong class="mono">${cuenta.telefono}</strong>
+           <button type="button" class="boton boton--fantasma boton--mini"
+                   data-copiar="${cuenta.telefono}">Copiar</button></p>
+         <p class="cuenta-pago__linea"><span>Cédula</span>
+           <strong class="mono">${cuenta.cedula}</strong>
+           <button type="button" class="boton boton--fantasma boton--mini"
+                   data-copiar="${cuenta.cedula}">Copiar</button></p>
+         ${cuenta.titular
+           ? `<p class="cuenta-pago__linea"><span>Titular</span><strong>${cuenta.titular}</strong></p>`
+           : ""}
+       </div>`
+    : "";
+  $("#dialogo-contenido").innerHTML = `
+    <h2>Recargar saldo</h2>
+    ${bloqueCuenta}
+    <p style="color:var(--gris);font-size:.9rem">
+      Haz tu pago y anótalo aquí. Lo revisamos y te lo acreditamos enseguida.
+      Mínimo ${configRetiro ? configRetiro.deposito_minimo_texto : ""}.</p>
+    <form id="form-deposito">
+      <label>Monto (Bs)
+        <input type="text" name="importe" inputmode="decimal" placeholder="Bs 100,00" required>
+      </label>
+      <label>Método
+        <select name="metodo">
+          <option value="pago_movil">Pago móvil</option>
+          <option value="transferencia">Transferencia</option>
+        </select>
+      </label>
+      <label>Banco
+        <select name="banco">${bancos.map((b) => `<option value="${b}">${b}</option>`).join("")}</select>
+      </label>
+      <label>Referencia
+        <input type="text" name="referencia" placeholder="Número de referencia" required>
+      </label>
+      <label>Día del pago
+        <input type="text" name="dia" value="${hoy}" placeholder="AAAA-MM-DD">
+      </label>
+      <button class="boton boton--principal boton--alto" type="submit">Anotar mi pago</button>
+    </form>`;
+  $("#dialogo").hidden = false;
+  $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
+  $("#dialogo-contenido").querySelectorAll("[data-copiar]").forEach((b) =>
+    (b.onclick = async () => {
+      try { await navigator.clipboard.writeText(b.dataset.copiar); avisar("Copiado.", "bien"); }
+      catch (err) { avisar("Cópialo a mano.", "error"); }
+    }));
+  $("#form-deposito").onsubmit = async (e) => {
+    e.preventDefault();
+    const datos = Object.fromEntries(new FormData(e.target));
+    try {
+      const res = await post("/api/deposito", datos);
+      $("#dialogo").hidden = true;
+      avisar(res.mensaje, "bien");
+      refrescarDepositos();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+}
+
 /* --- salas --- */
 
 let salaActual = "";
@@ -314,22 +369,62 @@ async function cargarSalas() {
   try {
     const res = await get("/api/salas");
     salasDisponibles = res.salas;
-    caja.innerHTML = salasDisponibles.map((s) => `
-      <button class="sala-tarjeta ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
-              data-sala="${s.id}">
-        <div class="sala-tarjeta__nombre">${s.nombre}</div>
-        <div class="sala-tarjeta__modo">${nombreModo(s.modo)}</div>
-        <div class="sala-tarjeta__precio">Cartón ${s.precio_texto}</div>
-        ${s.es_de_jugador ? `<div class="sala-tarjeta__dueno">Sala de ${s.dueno}</div>`
-                          : '<div class="sala-tarjeta__dueno">Sala de la casa</div>'}
-      </button>`).join("");
+    caja.innerHTML = salasDisponibles.map((s) => s.es_evento
+      ? `<button class="sala-tarjeta sala-tarjeta--evento ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
+                 data-sala="${s.id}">
+           <span class="sala-tarjeta__etiqueta">Evento</span>
+           <div class="sala-tarjeta__nombre">${s.nombre}</div>
+           <div class="sala-tarjeta__modo">${nombreModo(s.modo)}</div>
+           <div class="sala-tarjeta__precio">Cartón ${s.precio_texto}</div>
+           <div class="sala-tarjeta__dueno">La administración pone el aforo y los premios</div>
+         </button>`
+      : `<button class="sala-tarjeta ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
+                 data-sala="${s.id}">
+           <div class="sala-tarjeta__nombre">${s.nombre}</div>
+           <div class="sala-tarjeta__modo">${nombreModo(s.modo)}</div>
+           <div class="sala-tarjeta__precio">Cartón ${s.precio_texto}</div>
+           ${s.es_de_jugador ? `<div class="sala-tarjeta__dueno">Sala de ${s.dueno}</div>`
+                             : '<div class="sala-tarjeta__dueno">Sala de la casa</div>'}
+         </button>`).join("");
     caja.querySelectorAll("[data-sala]").forEach((b) =>
       (b.onclick = () => entrarASala(b.dataset.sala)));
+    const evento = salasDisponibles.find((s) => s.es_evento);
+    pintarEvento(evento ? evento.id : "");
     if (!salaActual && salasDisponibles.length) {
       await entrarASala(salasDisponibles[0].id);
     }
   } catch (err) { /* sin salas aún */ }
 }
+
+/* El evento Lago de Maracaibo: aforo, bote y premios por puesto. */
+async function pintarEvento(salaId) {
+  const caja = $("#evento-info");
+  if (!caja) return;
+  if (!salaId) { caja.innerHTML = ""; return; }
+  try {
+    const e = await get("/api/evento");
+    const premios = (e.premios || []).map((p) => `
+      <div class="premio">
+        <div class="premio__puesto">${NOMBRES_PUESTO[p.puesto - 1] || p.puesto + "º"}</div>
+        <div class="premio__importe">${p.premio_texto}</div>
+        <div class="premio__pct">${p.pct_texto} del bote</div>
+      </div>`).join("");
+    caja.innerHTML = `
+      <div class="evento">
+        <div class="evento__cabecera">
+          <h3 class="evento__titulo">${e.nombre}</h3>
+          <span class="evento__aforo ${e.llena ? "evento__aforo--lleno" : ""}">
+            ${e.llena ? "Aforo completo" : e.jugadores + " / " + (e.aforo || "∞") + " jugadores"}
+          </span>
+        </div>
+        <p class="evento__bote">Cartón ${e.precio_texto} · Bote acumulado:
+          <strong>${e.bote_texto}</strong></p>
+        <div class="evento__premios">${premios || '<p class="ayuda">Sin premios configurados.</p>'}</div>
+      </div>`;
+  } catch (err) { caja.innerHTML = ""; }
+}
+
+const NOMBRES_PUESTO = ["Primer lugar", "Segundo lugar", "Tercer lugar"];
 
 function nombreModo(modo) {
   return { normal: "Normal", carton_lleno: "Cartón lleno", competencia: "Competencia" }[modo]
@@ -375,7 +470,7 @@ async function cargarMisSalas() {
           <td><button class="boton boton--fantasma boton--mini"
                 data-cerrar="${s.id}">Cerrar</button></td></tr>`).join("")}
         </tbody></table></div>
-      <p class="ayuda">Ganas el 10% del bote de cada partida de tus salas.
+      <p class="ayuda">Ganas el ${g.comision_pct}% del bote de cada partida de tus salas.
          Hasta ahora: <strong>${g.anfitrion_texto}</strong> de ${g.botes_texto} en botes.</p>`;
     caja.querySelectorAll("[data-cerrar]").forEach((b) =>
       (b.onclick = async () => {
@@ -401,6 +496,11 @@ async function refrescarPartida() {
     $("#precio-carton").textContent = "Cartón " + formatear(p.precio_carton);
     $("#contador-bolas").textContent = p.bolas_sacadas.length + " bolas sacadas";
     pintarBolas(p.bolas_sacadas);
+    pintarOponentes(p.a_cuanto_estan);
+    const mio = (p.a_cuanto_estan || []).find(
+      (f) => f.jugador === (localStorage.getItem("bp777_correo") || ""));
+    refrescarCercania(mio ? mio.faltan : null);
+    pintarCuentaAtras(p.fecha_partida);
     const botonBola = $("#btn-bola");
     botonBola.disabled = !token || p.estado === "terminada";
     if (p.ganador) $("#estado-partida").textContent = "Ganó " + p.ganador;
@@ -470,32 +570,49 @@ function refrescarTodo() {
 
 /* --- acciones --- */
 
+function conectarPortada() {
+  const entrar = $("#portada-entrar");
+  const crear = $("#portada-crear");
+  const seguir = $("#portada-seguir");
+  if (entrar) entrar.onclick = () => abrirAcceso("entrar");
+  if (crear) crear.onclick = () => abrirAcceso("registrar");
+  if (seguir) seguir.onclick = () => {
+    const jugar = $("#jugar");
+    if (jugar) jugar.scrollIntoView({ behavior: "smooth" });
+  };
+}
+
 function conectarBotones() {
-  $("#btn-recargar").onclick = async () => {
+  $("#btn-recargar").onclick = () => {
     if (!token) return abrirAcceso("entrar");
-    const importe = $("#importe").value.trim();
-    if (!importe) return avisar("Escribe un importe.", "error");
-    try {
-      const res = await post("/api/recargar", { importe });
-      avisar("Recarga hecha. Saldo: " + res.saldo_texto, "bien");
-      $("#importe").value = "";
-      refrescarSaldo();
-      refrescarHistorial();
-    } catch (err) { avisar(err.message, "error"); }
+    abrirDeposito();
   };
 
   $("#btn-carton").onclick = async () => {
     if (!token) return abrirAcceso("entrar");
+    const cantidad = parseInt($("#cuantos-cartones")?.value || "1", 10) || 1;
     try {
-      const res = await post("/api/carton", { sala: salaActual });
+      const res = await post("/api/carton", { sala: salaActual, cantidad });
       carton = res;
+      misCartones = res.cartones || [res];
       pintarCarton("#carton-jugador", res.numeros, []);
       $("#btn-bingo").disabled = false;
-      avisar("Cartón comprado por " + res.precio_texto, "bien");
+      const cuantos = res.cantidad || 1;
+      avisar(cuantos > 1
+        ? `${cuantos} cartones por ${res.precio_total_texto}`
+        : "Cartón comprado por " + res.precio_texto, "bien");
       refrescarSaldo();
       refrescarHistorial();
       refrescarPartida();
     } catch (err) { avisar(err.message, "error"); }
+  };
+
+  $("#automarcar").onchange = (e) => {
+    automarcar = e.target.checked;
+    if (automarcar && carton) {
+      // Marca de golpe todas las bolas ya sacadas.
+      get("/api/partida").then((p) => marcarEnCarton(p.bolas_sacadas)).catch(() => {});
+    }
   };
 
   $("#btn-bola").onclick = async () => {
@@ -503,7 +620,7 @@ function conectarBotones() {
       const res = await post("/api/bola", { sala: salaActual });
       pintarBolas(res.bolas);
       $("#contador-bolas").textContent = res.bolas.length + " bolas sacadas";
-      if (carton) marcarEnCarton(res.bolas);
+      if (carton && automarcar) marcarEnCarton(res.bolas);
       refrescarPartida();
     } catch (err) { avisar(err.message, "error"); }
   };
@@ -530,11 +647,17 @@ function conectarBotones() {
   $("#btn-bingo").onclick = async () => {
     if (!carton) return;
     try {
-      const res = await post("/api/bingo", { carton: carton.carton });
-      avisar("¡BINGO! Has ganado " + res.premio_texto, "bien");
+      const res = await post("/api/bingo", { carton: carton.carton, sala: salaActual });
+      avisar(`¡BINGO! ${res.nombre_puesto || "Ganaste"}: ${res.premio_texto}`, "bien");
+      lanzarConfeti();
+      carton = null;
+      misCartones = [];
+      $("#btn-bingo").disabled = true;
+      $("#btn-bingo").classList.remove("bingo--cerca");
       refrescarSaldo();
       refrescarHistorial();
       refrescarPartida();
+      pintarEvento(salaActual);
     } catch (err) { avisar(err.message, "error"); }
   };
 }
@@ -550,6 +673,96 @@ function marcarEnCarton(bolas) {
     }
   }
   pintarCarton("#carton-jugador", numeros, marcados);
+}
+
+/* --- transparencia: a cuánto están los demás --- */
+
+function iniciales(correo) {
+  const nombre = (correo || "?").split("@")[0];
+  return nombre.slice(0, 2).toUpperCase();
+}
+
+function pintarOponentes(filas) {
+  const caja = $("#oponentes");
+  if (!caja) return;
+  if (!filas || !filas.length) {
+    caja.innerHTML = '<p class="vacio">Todavía no hay jugadores.</p>';
+    return;
+  }
+  caja.innerHTML = "";
+  filas.forEach((f) => {
+    const yo = f.jugador === (localStorage.getItem("bp777_correo") || "");
+    const clase = ["oponente"];
+    if (yo) clase.push("oponente--yo");
+    // Cerca de cantar: 1 o 2 fichas. Se resalta en verde; a 0, en rojo.
+    if (f.faltan === 0) clase.push("oponente--gana");
+    else if (f.faltan <= 2) clase.push("oponente--cerca");
+    const texto = f.faltan === 0 ? "¡BINGO!"
+      : `Faltan ${f.faltan} ${f.faltan === 1 ? "ficha" : "fichas"}`;
+    caja.insertAdjacentHTML("beforeend", `
+      <div class="${clase.join(" ")}">
+        <div class="oponente__avatar">${iniciales(f.jugador)}</div>
+        <div class="oponente__datos">
+          <div class="oponente__nombre">${yo ? "Tú" : f.jugador}</div>
+          <div class="oponente__cartones">${f.cartones} cartón${f.cartones === 1 ? "" : "es"}</div>
+        </div>
+        <span class="oponente__faltan">${texto}</span>
+      </div>`);
+  });
+}
+
+/* --- cuenta atrás de la partida --- */
+
+function pintarCuentaAtras(fecha) {
+  const caja = $("#cuenta-atras");
+  if (!caja) return;
+  clearInterval(cuentaAtras);
+  // La sala guarda la fecha como texto libre ("hoy 8 pm") o como marca de
+  // tiempo. Solo se cuenta atrás cuando es un número que podemos restar.
+  const marca = Number(fecha);
+  if (!fecha || !Number.isFinite(marca) || marca <= 0) {
+    caja.hidden = true;
+    return;
+  }
+  caja.hidden = false;
+  const refrescar = () => {
+    const segundos = Math.max(0, Math.round(marca - Date.now() / 1000));
+    if (segundos <= 0) {
+      caja.textContent = "¡Ya empieza!";
+      caja.classList.add("cuenta-atras--ya");
+      clearInterval(cuentaAtras);
+      return;
+    }
+    const m = String(Math.floor(segundos / 60)).padStart(2, "0");
+    const s = String(segundos % 60).padStart(2, "0");
+    caja.textContent = `Empieza en ${m}:${s}`;
+    caja.classList.remove("cuenta-atras--ya");
+  };
+  refrescar();
+  cuentaAtras = setInterval(refrescar, 1000);
+}
+
+/* --- confeti de victoria --- */
+
+function lanzarConfeti() {
+  const caja = document.createElement("div");
+  caja.className = "confeti";
+  const colores = ["#ff6b00", "#ffd700", "#7b2cbf", "#00c853", "#ffffff"];
+  for (let i = 0; i < 90; i++) {
+    const trozo = document.createElement("span");
+    trozo.style.left = Math.random() * 100 + "%";
+    trozo.style.background = colores[i % colores.length];
+    trozo.style.animationDelay = Math.random() * 0.8 + "s";
+    caja.appendChild(trozo);
+  }
+  document.body.appendChild(caja);
+  setTimeout(() => caja.remove(), 4200);
+}
+
+function refrescarCercania(faltanMio) {
+  const boton = $("#btn-bingo");
+  if (!boton) return;
+  boton.classList.toggle("bingo--cerca", faltanMio === 1 || faltanMio === 2);
 }
 
 /* --- retiros --- */
@@ -596,9 +809,38 @@ async function refrescarRetiros() {
 
 /* --- arranque --- */
 
+// La sesión se valida contra el servidor, no contra lo guardado en el navegador.
+// Así, si el token ya no vale (o es de otra cuenta), el sitio no se queda pegado
+// en modo administrador: el servidor manda.
+async function comprobarSesion() {
+  if (!token) { esAdmin = false; pintarSesion(); return; }
+  try {
+    const s = await get("/api/sesion");
+    esAdmin = !!s.admin;
+    localStorage.setItem("bp777_correo", s.correo);
+    localStorage.setItem("bp777_admin", s.admin ? "1" : "0");
+  } catch (err) {
+    // El token caducó o no vale: se limpia y se sigue como visitante.
+    localStorage.removeItem(CLAVE_TOKEN);
+    localStorage.removeItem("bp777_correo");
+    localStorage.removeItem("bp777_admin");
+    token = "";
+    esAdmin = false;
+  }
+  pintarSesion();
+}
+
+// Si el navegador revive la página desde su caché (botón atrás), se comprueba
+// otra vez la sesión: no puede reaparecer un panel que ya no toca.
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) comprobarSesion();
+});
+window.addEventListener("focus", () => { if (token) comprobarSesion(); });
+
 pintarCartonDemo();
 pintarSesion();
 conectarBotones();
+conectarPortada();
 cargarConfigRetiro();
 cargarSalas();
 const formSala = $("#form-sala");
@@ -618,5 +860,5 @@ if (formSala) {
     } catch (err) { avisar(err.message, "error"); }
   };
 }
-refrescarTodo();
+comprobarSesion().then(refrescarTodo);
 setInterval(refrescarPartida, 5000);

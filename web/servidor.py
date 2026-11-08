@@ -26,6 +26,7 @@ from nucleo.salas import ErrorDeSalas, Salas
 
 RAIZ_WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 CORREO_ADMIN_POR_DEFECTO = "bingopiramide777@gmail.com"
+NOMBRES_PUESTO = ("Primer lugar", "Segundo lugar", "Tercer lugar")
 
 
 class Juego:
@@ -43,7 +44,7 @@ class Juego:
         self.monedero = Monedero(self.almacen)
         self.retiros = Retiros(self.almacen, self.monedero)
         self.depositos = Depositos(self.almacen, self.monedero)
-        self.salas = Salas(self.almacen)
+        self.salas = Salas(self.almacen, usuarios=self.usuarios)
         self.herramientas = Herramientas(self)
         self.glenis = Glenis(self.herramientas.esquemas(), self.herramientas.ejecutar)
         self.correo = Correo()
@@ -52,7 +53,7 @@ class Juego:
                               repartidor=self._reparto_de_partida)
         self._partida = None
         self._partida_id = ""
-        self._partida_sala = "sala-dubai"
+        self._partida_sala = "sala-zulia"
         self.correo_admin = (correo_admin or os.environ.get("BINGO_ADMIN_EMAIL")
                              or CORREO_ADMIN_POR_DEFECTO)
         self.clave_admin = clave_admin or os.environ.get("BINGO_ADMIN_CLAVE") or ""
@@ -62,12 +63,19 @@ class Juego:
         """Parte el bote según la sala de la partida. Lo llama el motor de bingo."""
         partida = self.mesa.sala.partidas.get(partida_id)
         sala_id = getattr(partida, "sala", "") if partida else ""
-        con_anfitrion = False
-        if sala_id:
-            fila = self.almacen.sala(sala_id)
-            con_anfitrion = bool(fila and fila["dueno"])
+        fila = self.almacen.sala(sala_id) if sala_id else None
+        if fila and fila["es_evento"]:
+            from nucleo.salas import reparto_evento
+            porcentajes = tuple(int(p) for p in (fila["premios_pct"] or "").split(",") if p)
+            reparto = reparto_evento(bote, porcentajes)
+            reparto["anfitrion"] = 0
+            reparto["anfitrion_correo"] = ""
+            reparto["con_anfitrion"] = False
+            return reparto
         from nucleo.salas import reparto_del_bote
-        reparto = reparto_del_bote(bote, con_anfitrion=con_anfitrion)
+        dueno = fila["dueno"] if fila else ""
+        comision = self.salas.comision_de(dueno) if dueno else None
+        reparto = reparto_del_bote(bote, con_anfitrion=bool(dueno), comision_pct=comision)
         reparto["anfitrion_correo"] = self.anfitrion_de(partida_id)
         return reparto
 
@@ -79,6 +87,73 @@ class Juego:
             return ""
         fila = self.almacen.sala(sala_id)
         return fila["dueno"] if fila else ""
+
+    def comprobar_aforo(self, partida, jugador: str) -> None:
+        """Comprueba que la sala admite a un jugador más.
+
+        El aforo cuenta jugadores distintos, no cartones: quien ya está dentro
+        puede comprar más cartones aunque la sala esté llena. Lo pone la
+        administración en cualquier sala; 0 = sin límite.
+        """
+        sala_id = getattr(partida, "sala", "")
+        fila = self.almacen.sala(sala_id) if sala_id else None
+        if not fila:
+            return
+        aforo = int(fila["aforo"] or 0)
+        if aforo <= 0 or jugador in partida.jugadores():
+            return
+        if len(partida.jugadores()) >= aforo:
+            from nucleo.salas import ErrorDeSalas
+            raise ErrorDeSalas(f"La sala está llena: {aforo} jugadores como máximo.")
+
+    def comprobar_cupo(self, partida) -> None:
+        """Comprueba que la sala no ha agotado sus cartones (cupo = 0 es sin tope)."""
+        sala_id = getattr(partida, "sala", "")
+        fila = self.almacen.sala(sala_id) if sala_id else None
+        if not fila:
+            return
+        cupo = int(fila["cupo_cartones"] or 0)
+        if cupo <= 0:
+            return
+        if len(partida.cartones) >= cupo:
+            from nucleo.salas import ErrorDeSalas
+            raise ErrorDeSalas(f"Se agotaron los {cupo} cartones de esta sala.")
+
+    def info_evento(self) -> dict:
+        """Todo lo que la web necesita del evento: aforo, ocupación y premios."""
+        sala = self.salas.evento()
+        partida = self.partida(sala.id)
+        jugadores = len(partida.jugadores())
+        bote = partida.precio_carton * len(partida.cartones)
+        porcentajes = list(sala.premios_pct)
+        premios = [
+            {"puesto": i + 1, "pct": pct,
+             "pct_texto": f"{pct} %",
+             "premio": bote * pct // 100,
+             "premio_texto": a_texto(bote * pct // 100)}
+            for i, pct in enumerate(porcentajes)
+        ]
+        aforo = sala.aforo
+        return {
+            "id": sala.id,
+            "nombre": sala.nombre,
+            "modo": sala.modo,
+            "precio_carton": sala.precio_carton,
+            "precio_texto": a_texto(sala.precio_carton),
+            "aforo": aforo,
+            "aforo_texto": "Sin límite" if aforo <= 0 else f"{aforo} jugadores",
+            "jugadores": jugadores,
+            "plazas_libres": None if aforo <= 0 else max(0, aforo - jugadores),
+            "llena": bool(aforo > 0 and jugadores >= aforo),
+            "activa": sala.activa,
+            "bote": bote,
+            "bote_texto": a_texto(bote),
+            "premios": premios,
+            "cartones": len(partida.cartones),
+            "ganadores": list(partida.ganadores),
+            "plazas": partida.plazas,
+            "estado": partida.estado,
+        }
 
     def _crear_admin(self) -> None:
         """Crea la cuenta de administración si no existe.
@@ -100,6 +175,66 @@ class Juego:
                   f"  Clave:  {clave}\n"
                   f"  Guárdala ahora: no se vuelve a mostrar.\n")
 
+    def _sala_publica(self, sala) -> dict:
+        d = sala.a_dict()
+        d["precio_texto"] = a_texto(sala.precio_carton)
+        return d
+
+    def _partida_de_sala(self, sala_id: str):
+        """La partida abierta de una sala, sea o no la que está en pantalla.
+
+        No toca la partida "actual" del servidor: sirve para mirar dentro de
+        cualquier sala sin cambiar lo que están viendo los jugadores.
+        """
+        # Si esa sala tiene una partida viva en memoria, es esa. Reconstruirla
+        # desde la base daría "ya existe", porque el objeto sigue cargado.
+        for partida in self.mesa.sala.partidas.values():
+            if partida.sala == sala_id and partida.estado != "terminada":
+                return partida
+        fila = self.almacen.partida_abierta_de(sala_id)
+        if fila is None:
+            return None
+        return self._rehidratar(fila)
+
+    def sala_viva(self, sala_id: str) -> dict:
+        """Lo que se ve dentro de una sala: jugadores, cartones y bolas."""
+        sala = self.salas.de(sala_id)
+        with self.candado:
+            partida = self._partida_de_sala(sala_id)
+            if partida is None:
+                return {"sala": self._sala_publica(sala), "jugadores": [], "bolas_sacadas": [],
+                        "estado": "sin partida", "cartones": 0, "bote": 0, "bote_texto": a_texto(0)}
+            jugadores = []
+            for correo in partida.jugadores():
+                cartones = []
+                for cid in partida.cartones_de(correo):
+                    c = partida.cartones[cid]
+                    cartones.append({
+                        "id": cid,
+                        "numeros": [list(fila) for fila in c.numeros],
+                        "marcados": sorted(f"{f}-{col}" for f, col in c.marcados),
+                    })
+                jugadores.append({
+                    "correo": correo,
+                    "cartones": len(cartones),
+                    "detalle": cartones,
+                    "premios": [g for g in partida.ganadores if g.get("jugador") == correo],
+                })
+            bote = partida.precio_carton * len(partida.cartones)
+            return {
+                "sala": self._sala_publica(sala),
+                "id": partida.id,
+                "estado": partida.estado,
+                "patron": partida.patron,
+                "jugadores": jugadores,
+                "cartones": len(partida.cartones),
+                "bolas_sacadas": list(partida.bombo.sacadas),
+                "bote": bote,
+                "bote_texto": a_texto(bote),
+                "plazas": partida.plazas,
+                "ganadores": list(partida.ganadores),
+            }
+
     def partida(self, sala_id: str | None = None):
         """Devuelve la partida abierta de una sala, abriendo una nueva si no hay.
 
@@ -112,10 +247,10 @@ class Juego:
             self._partida_sala = sala_id
             partida = self.mesa.sala.partidas.get(self._partida_id) if self._partida_id else None
             if partida is None or partida.estado == "terminada" or partida.sala != sala_id:
-                fila = self.almacen.partida_abierta_de(sala_id)
-                if fila is not None:
-                    partida = self._rehidratar(fila)
-                else:
+                # Buscar en memoria antes de la base: si la partida sigue
+                # cargada, rehidratarla lanzaría "ya existe".
+                partida = self._partida_de_sala(sala_id)
+                if partida is None:
                     partida = self._nueva_partida(sala_id)
                 self._partida = partida
                 self._partida_id = partida.id
@@ -124,11 +259,14 @@ class Juego:
     def _nueva_partida(self, sala_id: str | None = None) -> object:
         """Abre una partida nueva en la sala indicada (o la de por defecto)."""
         sala = self.salas.de(sala_id or self._partida_sala)
-        from bingo.cartones import MODOS
-        # El patrón se elige del modo de la sala: el primero de su lista.
-        patron = MODOS[sala.modo][0]
+        # El tipo de juego de la sala decide qué patrón se premia. Si la sala es
+        # de jugador (o vieja) y no tiene tipo, se cae al modo de siempre.
+        from bingo.cartones import MODOS, PATRONES
+        patron = sala.tipo_juego if sala.tipo_juego in PATRONES else MODOS[sala.modo][0]
+        # La sala de eventos reparte varios puestos (1º, 2º, 3º); el resto, uno.
+        plazas = sala.plazas if sala.es_evento and sala.plazas else 1
         partida = self.mesa.sala.abrir_partida(sala.precio_carton / 100, patron=patron,
-                                              sala=sala.id)
+                                              sala=sala.id, plazas=plazas)
         self._guardar(partida)
         return partida
 
@@ -136,9 +274,11 @@ class Juego:
         """Reconstruye una partida guardada, con sus cartones y sus bolas."""
         from bingo.cartones import Bombo, Carton
 
+        claves = fila.keys()
+        plazas = int(fila["plazas"]) if "plazas" in claves else 1
         partida = self.mesa.sala.abrir_partida(
             fila["precio_carton"] / 100, patron=fila["patron"], id_=fila["id"],
-            sala=fila["sala"] or "",
+            sala=fila["sala"] or "", plazas=plazas,
         )
         partida.estado = fila["estado"]
         partida.ganador = fila["ganador"]
@@ -146,6 +286,13 @@ class Juego:
         partida.premio = fila["premio"]
         partida.empezada = fila["empezada"]
         partida.terminada = fila["terminada"]
+        crudo = fila["ganadores"] if "ganadores" in claves else ""
+        if crudo:
+            import json as _json
+            try:
+                partida.ganadores = _json.loads(crudo)
+            except ValueError:
+                partida.ganadores = []
         bolas = [int(n) for n in fila["bolas"].split(",") if n]
         partida.bombo.sacadas = list(bolas)
         partida.bombo.bolas = [n for n in range(1, 76) if n not in set(bolas)]
@@ -159,12 +306,15 @@ class Juego:
         return partida
 
     def _guardar(self, partida) -> None:
+        import json as _json
         self.almacen.guardar_partida({
             "id": partida.id, "sala": getattr(partida, "sala", ""),
             "patron": partida.patron, "precio_carton": partida.precio_carton,
             "estado": partida.estado, "bolas": ",".join(str(b) for b in partida.bombo.sacadas),
             "ganador": partida.ganador, "carton_ganador": partida.carton_ganador,
             "premio": partida.premio, "empezada": partida.empezada, "terminada": partida.terminada,
+            "ganadores": _json.dumps(getattr(partida, "ganadores", []), ensure_ascii=False),
+            "plazas": getattr(partida, "plazas", 1),
         })
 
     def guardar_carton(self, partida, carton_id: str) -> None:
@@ -290,15 +440,36 @@ class Manejador(BaseHTTPRequestHandler):
             self._json({"estado": "bien", "servicio": "Bingo Pirámide 777"})
             return
 
+        if ruta == "/api/sesion":
+            # Quién es de verdad esta sesión. El navegador no se fía de lo que
+            # tenga guardado: lo pregunta al servidor cada vez que arranca.
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Sin sesión.", 401)
+                return
+            self._json({"correo": jugador,
+                        "admin": self.juego.usuarios.es_admin(jugador)})
+            return
+
         if ruta == "/api/partida":
             with self.juego.candado:
-                self._json(self.juego.mesa.partida_publica(self.juego.partida().id))
+                vista = self.juego.mesa.partida_publica(self.juego.partida().id)
+                try:
+                    vista["fecha_partida"] = self.juego.salas.de(vista.get("sala") or None).fecha_partida
+                except Exception:  # noqa: BLE001
+                    vista["fecha_partida"] = ""
+                self._json(vista)
             return
 
         if ruta == "/api/salas":
             with self.juego.candado:
                 salas = self.juego.salas.todas()
             self._json({"salas": [self._sala_json(s) for s in salas]})
+            return
+
+        if ruta == "/api/evento":
+            with self.juego.candado:
+                self._json(self.juego.info_evento())
             return
 
         if ruta == "/api/mis-salas":
@@ -314,11 +485,13 @@ class Manejador(BaseHTTPRequestHandler):
 
         if ruta == "/api/config":
             from nucleo.usuarios import PREGUNTAS
-            from bingo.cartones import MODOS
+            from bingo.cartones import MODOS, TIPOS_JUEGO
             self._json({
                 "preguntas": list(PREGUNTAS),
                 "modos": list(MODOS),
+                "tipos_juego": [{"id": i, "nombre": n} for i, n in TIPOS_JUEGO],
                 "bancos": list(BANCOS),
+                "cuenta_pago": self.juego.depositos.config.cuenta.a_dict(),
                 "metodos_deposito": ["pago_movil", "transferencia"],
                 "deposito_minimo_texto": a_texto(self.juego.depositos.config.minimo),
                 "deposito_tope_texto": a_texto(self.juego.depositos.config.tope_diario),
@@ -389,7 +562,25 @@ class Manejador(BaseHTTPRequestHandler):
             with self.juego.candado:
                 salas = self.juego.salas.todas(incluir_inactivas=True)
                 economia = self.juego.salas.economia()
-            self._json({"salas": [self._sala_json(s) for s in salas], "economia": economia})
+                evento = self.juego.info_evento()
+            self._json({"salas": [self._sala_json(s) for s in salas], "economia": economia,
+                        "evento": evento})
+            return
+
+        if ruta == "/api/admin/sala":
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            from urllib.parse import parse_qs
+            qs = parse_qs(urlparse(self.path).query)
+            sala_id = qs["sala"][0] if qs.get("sala") else ""
+            if not sala_id:
+                self._error("Falta la sala.")
+                return
+            try:
+                self._json(self.juego.sala_viva(sala_id))
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
             return
 
         if ruta == "/api/admin/jugadores":
@@ -400,6 +591,9 @@ class Manejador(BaseHTTPRequestHandler):
                 lista = [{"correo": u.correo, "nombre": u.nombre, "rol": u.rol,
                           "activo": u.activo, "creado": u.creado,
                           "pregunta": bool(self.juego.usuarios.pregunta_de(u.correo)),
+                          "comision_pct": u.comision_pct,
+                          "comision_texto": (f"{u.comision_pct} %" if u.comision_pct >= 0
+                                             else "10 % (por defecto)"),
                           "saldo": self.juego.monedero.saldo(u.correo),
                           "saldo_texto": a_texto(self.juego.monedero.saldo(u.correo))}
                          for u in self.juego.usuarios.usuarios()]
@@ -518,17 +712,24 @@ class Manejador(BaseHTTPRequestHandler):
             return
 
         if ruta == "/api/recargar":
-            jugador = self._jugador()
-            if not jugador:
-                self._error("Hace falta entrar.", 401)
+            # Solo la administración ingresa saldo a mano. El dinero de verdad
+            # entra por los depósitos, que se revisan y se aprueban. Sin esto,
+            # cualquiera se ponía el saldo que quisiera.
+            if not self._admin():
+                self._error("Solo la administración puede ingresar saldo. "
+                            "Usa un depósito para recargar.", 403)
                 return
             try:
+                correo = (datos.get("correo") or "").strip().lower()
+                if correo and not self.juego.usuarios.usuario(correo):
+                    raise ErrorDeMonedero("Ese usuario no existe.")
                 centimos = a_centimos(datos.get("importe", ""))
                 if centimos <= 0:
                     raise ErrorDeDinero("El importe tiene que ser mayor que cero.")
                 with self.juego.candado:
-                    self.juego.monedero.recargar(jugador, centimos, "recarga web")
-                    saldo = self.juego.monedero.saldo(jugador)
+                    destino = correo or self._jugador()
+                    self.juego.monedero.recargar(destino, centimos, "ingreso de administración")
+                    saldo = self.juego.monedero.saldo(destino)
                 self._json({"ok": True, "saldo": saldo, "saldo_texto": a_texto(saldo)})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
@@ -578,7 +779,12 @@ class Manejador(BaseHTTPRequestHandler):
                     vista = self.juego.mesa.partida_publica(partida.id)
                     vista["sala_nombre"] = sala.nombre
                     vista["modo"] = sala.modo
-                    vista["reparto"] = sala.reparto(partida.precio_carton * len(partida.cartones))
+                    vista["es_evento"] = sala.es_evento
+                    vista["reparto"] = sala.reparto(
+                        partida.precio_carton * len(partida.cartones),
+                        comision_pct=self.juego.salas.comision_de(sala.dueno) if sala.dueno else None)
+                    if sala.es_evento:
+                        vista["evento"] = self.juego.info_evento()
                 self._json({"ok": True, "partida": vista})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
@@ -590,15 +796,33 @@ class Manejador(BaseHTTPRequestHandler):
                 self._error("Hace falta entrar.", 401)
                 return
             try:
+                # Se pueden comprar varios cartones de una vez (1 a 10).
+                cuantos = datos.get("cantidad", 1)
+                try:
+                    cuantos = int(cuantos)
+                except (TypeError, ValueError):
+                    cuantos = 1
+                cuantos = max(1, min(cuantos, 10))
                 with self.juego.candado:
                     partida = self.juego.partida(datos.get("sala") or None)
-                    carton_id, precio = self.juego.mesa.comprar_carton(partida.id, jugador)
-                    carton = partida.cartones[carton_id]
-                    self.juego.guardar_carton(partida, carton_id)
+                    # Aforo: cuántos jugadores distintos caben. Cupo: cuántos cartones.
+                    self.juego.comprobar_aforo(partida, jugador)
+                    comprados = []
+                    for _ in range(cuantos):
+                        self.juego.comprobar_cupo(partida)
+                        carton_id, precio = self.juego.mesa.comprar_carton(partida.id, jugador)
+                        carton = partida.cartones[carton_id]
+                        self.juego.guardar_carton(partida, carton_id)
+                        comprados.append({"carton": carton_id, "numeros": carton.numeros})
                     self.juego._guardar(partida)
-                self._json({"ok": True, "carton": carton_id, "precio": precio,
-                            "precio_texto": a_texto(precio), "numeros": carton.numeros,
-                            "saldo": self.juego.monedero.saldo(jugador)})
+                    saldo = self.juego.monedero.saldo(jugador)
+                primero = comprados[0]
+                self._json({"ok": True, "carton": primero["carton"],
+                            "numeros": primero["numeros"],
+                            "cartones": comprados, "cantidad": len(comprados),
+                            "precio": precio, "precio_texto": a_texto(precio),
+                            "precio_total_texto": a_texto(precio * len(comprados)),
+                            "saldo": saldo})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
             return
@@ -633,9 +857,12 @@ class Manejador(BaseHTTPRequestHandler):
                 with self.juego.candado:
                     partida = self.juego.partida(datos.get("sala") or None)
                     res = self.juego.mesa.resolver_cantada(partida.id, jugador, datos.get("carton", ""))
-                    partida.premio = res["premio"]
+                    # El premio de la partida es la suma de todos los puestos.
+                    partida.premio = sum(res.get("premios") or [res["premio"]])
                     self.juego._guardar(partida)
                     res["premio_texto"] = a_texto(res["premio"])
+                    res["nombre_puesto"] = NOMBRES_PUESTO[res["puesto"] - 1] \
+                        if res["puesto"] <= len(NOMBRES_PUESTO) else f'{res["puesto"]}º'
                     res["saldo"] = self.juego.monedero.saldo(jugador)
                 self._json({"ok": True, **res})
             except Exception as exc:  # noqa: BLE001
@@ -835,6 +1062,49 @@ class Manejador(BaseHTTPRequestHandler):
                 self._error(str(exc))
             return
 
+        if ruta == "/api/admin/sala/editar":
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            try:
+                with self.juego.candado:
+                    sala = self.juego.salas.configurar_sala(
+                        datos.get("sala") or "",
+                        precio=datos.get("precio"),
+                        nombre=datos.get("nombre"),
+                        activa=datos.get("activa"),
+                        tipo_juego=datos.get("tipo_juego"),
+                        cupo_cartones=datos.get("cupo_cartones"),
+                        fecha_partida=datos.get("fecha_partida"),
+                    )
+                self._json({"ok": True, "sala": self._sala_json(sala),
+                            "mensaje": f"Sala {sala.nombre} actualizada."})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/evento":
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            try:
+                with self.juego.candado:
+                    sala = self.juego.salas.configurar_evento(
+                        precio=datos.get("precio"),
+                        aforo=datos.get("aforo"),
+                        premios_pct=datos.get("premios_pct"),
+                        activa=datos.get("activa"),
+                        nombre=datos.get("nombre"),
+                        tipo_juego=datos.get("tipo_juego"),
+                        cupo_cartones=datos.get("cupo_cartones"),
+                        fecha_partida=datos.get("fecha_partida"),
+                    )
+                    info = self.juego.info_evento()
+                self._json({"ok": True, "evento": info, "sala": self._sala_json(sala)})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
         if ruta == "/api/admin/usuario":
             admin = self._admin()
             if not admin:
@@ -842,10 +1112,17 @@ class Manejador(BaseHTTPRequestHandler):
                 return
             try:
                 correo = (datos.get("correo") or "").strip().lower()
-                if correo == admin:
+                if correo == admin and "activo" in datos:
                     raise ErrorDeRetiro("No puedes desactivar tu propia cuenta.")
                 if "activo" in datos:
                     self.juego.usuarios.activar(correo, bool(datos["activo"]))
+                if "comision_pct" in datos:
+                    crudo = datos["comision_pct"]
+                    try:
+                        pct = int(crudo)
+                    except (TypeError, ValueError):
+                        raise ErrorDeRetiro("El porcentaje tiene que ser un número entero.")
+                    self.juego.usuarios.fijar_comision(correo, pct)
                 self._json({"ok": True})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))

@@ -80,8 +80,28 @@ PATRONES: dict[str, set[tuple[int, int]]] = {
     "diagonal": {(i, i) for i in range(5)},
     "diagonal_inv": {(i, 4 - i) for i in range(5)},
     "esquinas": {(0, 0), (0, 4), (4, 0), (4, 4)},
+    "cuatro_esquinas": {(0, 0), (0, 4), (4, 0), (4, 4)},
+    # Cruz grande: toda la fila y la columna del centro (9 casillas).
+    "cruz_grande": ({(2, c) for c in range(5)} | {(f, 2) for f in range(5)}),
+    # Cruz pequeña: el centro y sus cuatro vecinos (5 casillas).
+    "cruz_pequena": {(2, 2), (1, 2), (3, 2), (2, 1), (2, 3)},
     "carton_lleno": {(f, c) for f in range(5) for c in range(5)},
 }
+
+# Tipos de juego (modalidades) que la administración puede poner en una sala,
+# como en Juegoactivo: Línea, Columna, Diagonal, 4 Esquinas, Cruz Grande, Cruz
+# Pequeña y Cartón Lleno. Cada uno premia un patrón del cartón.
+TIPOS_JUEGO: tuple[tuple[str, str], ...] = (
+    ("linea_h1", "Línea"),
+    ("linea_v1", "Columna"),
+    ("diagonal", "Diagonal"),
+    ("cuatro_esquinas", "Cuatro esquinas"),
+    ("cruz_grande", "Cruz grande"),
+    ("cruz_pequena", "Cruz pequeña"),
+    ("carton_lleno", "Cartón lleno"),
+)
+
+NOMBRE_TIPO_JUEGO: dict[str, str] = dict(TIPOS_JUEGO)
 
 # El centro libre cuenta para cualquier patrón que lo incluya.
 CENTRO = LIBRE
@@ -121,6 +141,26 @@ def patron_cumplido(carton: Carton, nombre: str) -> bool:
 def patrones_cumplidos(carton: Carton) -> list[str]:
     """Todos los patrones que el cartón ya tiene. Útil para 'bingo' completo."""
     return [n for n in PATRONES if PATRONES[n] <= carton.marcados]
+
+
+def fichas_que_faltan(carton: Carton, patrones: tuple[str, ...] | list[str]) -> int:
+    """Cuántas casillas le faltan al cartón para cantar, con el mejor patrón.
+
+    Es la transparencia del juego: cualquier jugador puede ver en vivo a cuánto
+    está cada oponente. Se cuenta sobre el patrón más cercano de los que valen
+    en la partida. Devuelve 0 si ya lo tiene.
+    """
+    mejor = None
+    for nombre in patrones:
+        casillas = PATRONES.get(nombre)
+        if casillas is None:
+            raise ErrorDeBingo(f"No existe el patrón {nombre!r}.")
+        faltan = len(casillas - carton.marcados)
+        if mejor is None or faltan < mejor:
+            mejor = faltan
+            if mejor == 0:
+                break
+    return mejor if mejor is not None else 0
 
 
 # -- Bombo -------------------------------------------------------------------

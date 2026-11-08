@@ -3,21 +3,37 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#17082e">
+<meta name="theme-color" content="#0f0f13">
 <title>Bingo Pirámide 777 — Bingo en línea</title>
 <meta name="description" content="Bingo Pirámide 777 — sala de bingo de 75 bolas. Compra tu cartón, sigue las bolas y canta bingo.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/estilos.css">
 <link rel="icon" href="/emblema.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/emblema.svg">
 </head>
 <body>
 
-<!-- ===== Portada: puente sobre el lago de Maracaibo + emblema + eslogan ===== -->
-<section class="portada">
+<!-- ===== Portada: puente sobre el lago de Maracaibo + emblema + acceso ===== -->
+<section class="portada" id="portada">
   <div class="portada__contenido">
+    <img class="portada__emblema" src="/emblema.svg" alt="Emblema de Bingo Pirámide 777" width="132" height="132">
     <h1 class="portada__nombre">BINGO<b>PIRÁMIDE</b><em>777</em></h1>
     <p class="portada__slogan">Somos la pepa del queso</p>
-    <img class="portada__emblema" src="/emblema.svg" alt="Emblema de Bingo Pirámide 777" width="132" height="132">
+
+    <!-- Acceso tipo app: dos botones grandes, cómodos para el pulgar -->
+    <div class="portada__acceso" id="portada-acceso">
+      <button class="boton boton--principal boton--alto" id="portada-entrar">Iniciar sesión</button>
+      <button class="boton boton--fantasma boton--alto" id="portada-crear">Crear cuenta</button>
+    </div>
+
+    <!-- Si ya hay sesión, en su lugar se ofrece entrar a jugar -->
+    <div class="portada__acceso" id="portada-jugar" hidden>
+      <button class="boton boton--brillo boton--alto" id="portada-seguir">Entrar a jugar</button>
+    </div>
+
+    <p class="portada__nota" id="portada-nota">Bingo de 75 bolas · Premios en bolívares</p>
   </div>
   <p class="portada__credito">Puente sobre el lago de Maracaibo</p>
 </section>
@@ -64,11 +80,14 @@
     <div class="panel__cabecera">
       <h2>La mesa</h2>
       <div class="pastilla" id="estado-partida">Cargando…</div>
+      <span class="cuenta-atras" id="cuenta-atras" hidden>Empieza en —</span>
     </div>
 
     <div class="salas" id="lista-salas">
       <p class="vacio">Cargando salas…</p>
     </div>
+
+    <div id="evento-info"></div>
 
     <div class="mesa">
       <div class="mesa__izq">
@@ -80,6 +99,16 @@
           <button class="boton boton--principal boton--ancho boton--alto" id="btn-bola" disabled>
             Sacar bola
           </button>
+        </div>
+
+        <div class="tarjeta">
+          <div class="tarjeta__cabecera">
+            <h3>A cuánto están</h3>
+            <span class="pastilla pastilla--suave">En vivo</span>
+          </div>
+          <div class="oponentes" id="oponentes">
+            <p class="vacio">Todavía no hay jugadores.</p>
+          </div>
         </div>
       </div>
 
@@ -93,7 +122,20 @@
           <div class="rejilla" id="carton-jugador">
             <p class="vacio">Todavía no tienes cartón.</p>
           </div>
+          <label class="automarcar">
+            <input type="checkbox" id="automarcar"> Automarcar las bolas que salgan
+          </label>
           <div class="acciones acciones--pegadas">
+            <label class="pastilla pastilla--suave" style="display:inline-flex;align-items:center;gap:.4rem">
+              Cartones
+              <select id="cuantos-cartones" style="background:transparent;border:0;color:inherit;font:inherit">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="10">10</option>
+              </select>
+            </label>
             <button class="boton boton--principal boton--alto" id="btn-carton">Comprar cartón</button>
             <button class="boton boton--brillo boton--alto" id="btn-bingo" disabled>Cantar BINGO</button>
           </div>
@@ -105,8 +147,7 @@
             <p class="saldo" id="saldo">Bs 0,00</p>
           </div>
           <div class="recarga">
-            <input type="text" id="importe" inputmode="decimal" placeholder="Bs 100,00" aria-label="Importe a recargar">
-            <button class="boton boton--fantasma" id="btn-recargar">Recargar</button>
+            <button class="boton boton--principal boton--alto" id="btn-recargar">Recargar saldo</button>
           </div>
         </div>
 

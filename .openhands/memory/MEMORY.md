@@ -29,7 +29,7 @@ Diseño: morado + dorado + verde, portada con el puente sobre el lago de Maracai
   `almacen.cerrar()` en `tearDown` (si no, SQLite se queja al cerrar).
 
 ## Pruebas
-196 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
+226 tests: `python3 -m unittest discover -s tests -t .` (necesita `tests/__init__.py`).
 
 ## DESPLEGADO EN RENDER (2026-11-07)
 - **URL pública: https://bingopiramide777.onrender.com** (live, HTTP 200).
@@ -106,6 +106,41 @@ genera `Pepa-xxxxxx`). En las tres, `cambiar_clave()` llama a
 El usuario trabaja desde el teléfono. Botones ≥44 px, `font-size:16px` en inputs
 (evita el zoom de iPhone), tablas con scroll horizontal dentro de su caja,
 `.mesa` a una columna y cartón antes que el bombo por debajo de 900 px.
+
+## Panel de admin: ventanas y ver cada sala (2026-11-07)
+- El panel ya **no es una página larga**: cada apartado (Resumen, Glenis, Depósitos,
+  Retiros, Jugadores, Partidas, Salas, Ganancias, Movimientos) se abre como **ventana**
+  con su barra y su botón de cerrar. Se abre desde el `nav` o desde la **lanzadera**
+  (`#lanzadera`). Cada ventana carga **solo lo suyo** (`VENTANAS[clave].cargar`), así el
+  panel no pide datos que no estás mirando. `admin.html` quedó casi vacío: solo la
+  lanzadera y `<div id="ventanas">`; las tablas las construye el JS en `cuerpo(clave)`.
+  `abiertas` (Set) controla qué ventanas están abiertas; el refresco de 15 s solo toca
+  las que están abiertas.
+- **Ver cada sala por dentro**: `GET /api/admin/sala?sala=<id>` (solo admin) →
+  `Juego.sala_viva()` en `web/servidor.py`. Devuelve sala, estado, jugadores (correo +
+  cartones con números y marcas), bolas sacadas, bote, plazas y ganadores.
+  En el panel: ventana "Salas en vivo" → botón **Ver sala** por fila.
+- **Trampa resuelta**: `sala_viva` debe buscar la partida **en memoria** primero
+  (`self.mesa.sala.partidas.values()`); si se rehidrata desde la DB cuando el objeto ya
+  está cargado, `abrir_partida` lanza "La partida X ya existe". Y `Juego` **no** tiene
+  `_sala_json` (eso vive en el `Manejador`): tiene su propio `_sala_publica`.
+- CSS de ventanas: `.lanzadera`, `.ventana*`, `.mesa-jugador*`, `.carton-mini*` en
+  `estilos.css`. El `nav` usa `<button data-ventana>` (no enlaces) → hace falta
+  `.nav button` en CSS.
+
+## El sistema de juego NO es (todavía) el de Juegoactivo (2026-11-07)
+- Faltan las tres cosas que definen a Juegoactivo: **ventanitas de cada jugador sobre la
+  mesa**, **bolas que salen solas** (aquí solo salen al pulsar "Sacar bola", no hay hilo
+  ni temporizador) y **una partida por sala en pantalla** (hoy hay una sola mesa
+  compartida en `_partida_sala`). No hay websockets ni SSE: el front pregunta cada 5 s.
+- Lo que sí es bingo real de 75 bolas: cartones 5x5 con rangos B-I-N-G-O, centro libre,
+  patrones (`linea_*`, `diagonal`, `esquinas`, `carton_lleno`) y modos normal/
+  carton_lleno/competencia.
+- **Juegoactivo (solo mirar estructura, nunca copiar)**: `juegoactivo.com` es una landing
+  estática; menú: Iniciar sesión / Bingo Activo (Jugar, Más información) / Animalitos
+  (Resultados, Jugar, Más información). El juego está en `/jugar/bingo`. Su distintivo
+  ("Imagina saber cuántas fichas les faltan a tus oponentes") confirma las ventanitas.
+  Derechos: Clickker C.A. — NO copiar diseño ni textos.
 
 ## Despliegue
 `render.yaml` incluido (disco persistente en `/var/data` para la DB).

@@ -15,6 +15,7 @@ from bingo import (
     generar_carton,
     patron_cumplido,
     patrones_cumplidos,
+    fichas_que_faltan,
 )
 from bingo.mesa import ErrorDeMesaBingo
 from bingo.sala import ErrorDeSala
@@ -261,8 +262,66 @@ class MesaBingoTest(unittest.TestCase):
         self.mesa.monedero.recargar("ana@correo.com", 10_000)
         self.mesa.comprar_carton(self.partida.id, "ana@correo.com")
         vista = self.mesa.partida_publica(self.partida.id)
-        self.assertEqual(set(vista), {"id", "sala", "patron", "estado", "precio_carton",
-                                      "cartones", "bolas_sacadas", "ganador"})
+        self.assertEqual(set(vista), {"id", "sala", "patron", "tipo_juego", "tipo_juego_texto",
+                                      "estado", "precio_carton",
+                                      "cartones", "jugadores", "bolas_sacadas", "ganador",
+                                      "plazas", "ganadores", "a_cuanto_estan"})
+        # La transparencia solo dice a cuánto está cada uno: ni números ni cartones.
+        for fila in vista["a_cuanto_estan"]:
+            self.assertEqual(set(fila), {"jugador", "cartones", "faltan"})
+
+
+class TransparenciaTest(unittest.TestCase):
+    """Cuántas fichas faltan: la transparencia en vivo del juego."""
+
+    def _carton(self):
+        # numeros[fila][col], con cada columna en su rango (B 1-15 … O 61-75).
+        numeros = tuple(tuple(col * 15 + 1 + fila for col in range(5)) for fila in range(5))
+        return Carton(numeros)
+
+    def test_linea_completa_no_le_falta_nada(self):
+        carton = self._carton()
+        for c in range(5):
+            carton.marcados.add((0, c))
+        self.assertEqual(fichas_que_faltan(carton, ("linea_h1",)), 0)
+
+    def test_una_linea_a_medias(self):
+        carton = self._carton()
+        for c in range(3):
+            carton.marcados.add((0, c))
+        self.assertEqual(fichas_que_faltan(carton, ("linea_h1",)), 2)
+
+    def test_coge_el_patron_mas_cercano(self):
+        carton = self._carton()
+        # Tres casillas de la fila 0 y cuatro de la fila 1: la más cerca es la fila 1.
+        for c in range(3):
+            carton.marcados.add((0, c))
+        for c in range(4):
+            carton.marcados.add((1, c))
+        self.assertEqual(fichas_que_faltan(carton, ("linea_h1", "linea_h2")), 1)
+
+    def test_carton_lleno_cuenta_todas_las_casillas(self):
+        carton = self._carton()
+        self.assertEqual(fichas_que_faltan(carton, ("carton_lleno",)), 24)  # el centro va libre
+
+    def test_un_patron_que_no_existe_avisa(self):
+        with self.assertRaises(ErrorDeBingo):
+            fichas_que_faltan(self._carton(), ("inventado",))
+
+    def test_la_mesa_dice_a_cuanto_esta_cada_jugador(self):
+        almacen = Almacen(":memory:")
+        self.addCleanup(almacen.cerrar)
+        mesa = MesaBingo(sala=Sala(), monedero=Monedero(almacen))
+        partida = mesa.sala.abrir_partida("10.00", patron="linea_h1")
+        for nombre in ("ana@correo.com", "luis@correo.com"):
+            mesa.monedero.recargar(nombre, 10_000)
+            mesa.comprar_carton(partida.id, nombre)
+        filas = mesa.a_cuanto_estan(partida.id)
+        self.assertEqual(len(filas), 2)
+        for fila in filas:
+            self.assertIn(fila["faltan"], range(0, 26))
+        # Ordenado: el que va más adelante, primero.
+        self.assertEqual(filas, sorted(filas, key=lambda f: f["faltan"]))
 
 
 if __name__ == "__main__":

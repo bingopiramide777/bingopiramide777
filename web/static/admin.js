@@ -87,9 +87,21 @@ function abrirAcceso() {
   };
 }
 
+/* --- diálogo --- */
+
+function abrirDialogo(html) {
+  $("#dialogo-contenido").innerHTML = html;
+  $("#dialogo").hidden = false;
+  $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
+}
+
+const cuerpo = (clave) => document.getElementById("cuerpo-" + clave);
+
 /* --- resumen --- */
 
 async function cargarResumen() {
+  const caja = cuerpo("resumen");
+  if (!caja) return;
   const r = await get("/api/admin/resumen");
   const tarjetas = [
     ["Jugadores", r.jugadores, "cuentas activas"],
@@ -100,47 +112,49 @@ async function cargarResumen() {
     ["Pagado en premios", formatear(r.pagado), "a los ganadores"],
     ["Margen de la casa", formatear(r.margen), r.margen >= 0 ? "ganancia" : "pérdida"],
   ];
-  $("#resumen").innerHTML = tarjetas.map(([t, v, p]) => `
+  caja.innerHTML = `<div class="tarjetas-resumen">${tarjetas.map(([t, v, p]) => `
     <div class="tarjeta-resumen">
       <p class="tarjeta-resumen__titulo">${t}</p>
       <p class="tarjeta-resumen__valor">${v}</p>
       <p class="tarjeta-resumen__pie">${p}</p>
-    </div>`).join("");
+    </div>`).join("")}</div>`;
 }
 
 /* --- retiros --- */
 
 async function cargarRetiros() {
+  const caja = cuerpo("retiros");
+  if (!caja) return;
   const r = await get("/api/admin/retiros?estado=pendiente");
-  const cuerpo = $("#tabla-retiros tbody");
-  $("#contador-retiros").textContent = r.retiros.length + " pendiente(s)";
-  if (!r.retiros.length) {
-    cuerpo.innerHTML = '<tr><td colspan="6" class="vacio">No hay retiros pendientes.</td></tr>';
-    return;
-  }
-  cuerpo.innerHTML = r.retiros.map((x) => `
-    <tr>
-      <td>${x.correo}</td>
-      <td><strong>${x.importe_texto}</strong></td>
-      <td>${x.metodo}</td>
-      <td class="detalles">${x.detalles}</td>
-      <td>${fecha(x.pedido)}</td>
-      <td class="acciones-celda">
-        <button class="boton boton--brillo" data-pagar="${x.id}">Pagar</button>
-        <button class="boton boton--peligro" data-rechazar="${x.id}">Rechazar</button>
-      </td>
-    </tr>`).join("");
-  cuerpo.querySelectorAll("[data-pagar]").forEach((b) => {
-    b.onclick = () => resolverRetiro(b.dataset.pagar, "pagar");
-  });
-  cuerpo.querySelectorAll("[data-rechazar]").forEach((b) => {
-    b.onclick = () => resolverRetiro(b.dataset.rechazar, "rechazar");
-  });
+  caja.innerHTML = `
+    <div class="panel__cabecera">
+      <div class="pastilla">${r.retiros.length} pendiente(s)</div>
+    </div>
+    <div class="tabla-envoltorio"><table class="tabla">
+      <thead><tr><th>Jugador</th><th>Importe</th><th>Método</th><th>Datos</th>
+        <th>Pedido</th><th>Acciones</th></tr></thead>
+      <tbody>${r.retiros.length ? r.retiros.map((x) => `
+        <tr>
+          <td>${x.correo}</td>
+          <td><strong>${x.importe_texto}</strong></td>
+          <td>${x.metodo}</td>
+          <td class="detalles">${x.detalles}</td>
+          <td>${fecha(x.pedido)}</td>
+          <td class="acciones-celda">
+            <button class="boton boton--brillo" data-pagar="${x.id}">Pagar</button>
+            <button class="boton boton--peligro" data-rechazar="${x.id}">Rechazar</button>
+          </td>
+        </tr>`).join("") : '<tr><td colspan="6" class="vacio">No hay retiros pendientes.</td></tr>'}
+      </tbody></table></div>`;
+  caja.querySelectorAll("[data-pagar]").forEach((b) =>
+    (b.onclick = () => resolverRetiro(b.dataset.pagar, "pagar")));
+  caja.querySelectorAll("[data-rechazar]").forEach((b) =>
+    (b.onclick = () => resolverRetiro(b.dataset.rechazar, "rechazar")));
 }
 
 function resolverRetiro(id, accion) {
   const esPago = accion === "pagar";
-  $("#dialogo-contenido").innerHTML = `
+  abrirDialogo(`
     <h2>${esPago ? "Marcar como pagado" : "Rechazar retiro"}</h2>
     <p style="color:var(--gris);font-size:.9rem">
       ${esPago ? "Confirma que ya has hecho la transferencia al jugador."
@@ -151,9 +165,7 @@ function resolverRetiro(id, accion) {
       <button class="boton ${esPago ? "boton--brillo" : "boton--peligro"}" type="submit">
         ${esPago ? "Sí, ya pagué" : "Sí, rechazar y devolver"}
       </button>
-    </form>`;
-  $("#dialogo").hidden = false;
-  $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
+    </form>`);
   $("#form-retiro").onsubmit = async (e) => {
     e.preventDefault();
     const nota = new FormData(e.target).get("nota") || "";
@@ -161,114 +173,8 @@ function resolverRetiro(id, accion) {
       await post("/api/admin/retiro", { id, accion, nota });
       $("#dialogo").hidden = true;
       avisar(esPago ? "Retiro marcado como pagado." : "Retiro rechazado y devuelto.", "bien");
-      cargarTodo();
-    } catch (err) { avisar(err.message, "error"); }
-  };
-}
-
-/* --- jugadores --- */
-
-async function cargarJugadores() {
-  const r = await get("/api/admin/jugadores");
-  jugadores = r.jugadores;
-  pintarJugadores();
-}
-
-function pintarJugadores() {
-  const filtro = ($("#buscar-jugador").value || "").toLowerCase();
-  const lista = jugadores.filter((j) => j.correo.includes(filtro) || j.nombre.toLowerCase().includes(filtro));
-  const cuerpo = $("#tabla-jugadores tbody");
-  if (!lista.length) {
-    cuerpo.innerHTML = '<tr><td colspan="7" class="vacio">Sin jugadores que mostrar.</td></tr>';
-    return;
-  }
-  cuerpo.innerHTML = lista.map((j) => `
-    <tr>
-      <td>${j.correo}</td>
-      <td>${j.nombre || "—"}</td>
-      <td>${j.rol === "admin" ? '<span class="etiqueta-rol">admin</span>' : "jugador"}</td>
-      <td><strong>${j.saldo_texto}</strong></td>
-      <td>${fecha(j.creado)}</td>
-      <td>${j.activo ? "activo" : "desactivado"}${j.pregunta ? ' · <span class="etiqueta-rol">con pregunta</span>' : ""}</td>
-      <td class="acciones-celda">
-        <button class="boton boton--fantasma boton--mini" data-ajuste="${j.correo}">Ajustar saldo</button>
-        <button class="boton boton--fantasma boton--mini" data-clave="${j.correo}">Restablecer clave</button>
-        <button class="boton boton--fantasma boton--mini" data-estado="${j.correo}" data-activo="${j.activo}">
-          ${j.activo ? "Desactivar" : "Activar"}
-        </button>
-      </td>
-    </tr>`).join("");
-  cuerpo.querySelectorAll("[data-ajuste]").forEach((b) => (b.onclick = () => ajustarSaldo(b.dataset.ajuste)));
-  cuerpo.querySelectorAll("[data-clave]").forEach((b) => (b.onclick = () => restablecerClave(b.dataset.clave)));
-  cuerpo.querySelectorAll("[data-estado]").forEach((b) => {
-    b.onclick = async () => {
-      try {
-        await post("/api/admin/usuario", { correo: b.dataset.estado, activo: b.dataset.activo !== "true" });
-        avisar("Estado cambiado.", "bien");
-        cargarTodo();
-      } catch (err) { avisar(err.message, "error"); }
-    };
-  });
-}
-
-function ajustarSaldo(correo) {
-  $("#dialogo-contenido").innerHTML = `
-    <h2>Ajustar saldo</h2>
-    <p style="color:var(--gris);font-size:.9rem">${correo}</p>
-    <form id="form-ajuste">
-      <label>Importe (Bs)<input type="text" name="importe" required placeholder="100,00"></label>
-      <label>Qué hacer
-        <select name="signo">
-          <option value="sumar">Sumar al saldo</option>
-          <option value="restar">Restar del saldo</option>
-        </select>
-      </label>
-      <button class="boton boton--principal" type="submit">Aplicar</button>
-    </form>`;
-  $("#dialogo").hidden = false;
-  $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
-  $("#form-ajuste").onsubmit = async (e) => {
-    e.preventDefault();
-    const d = Object.fromEntries(new FormData(e.target));
-    try {
-      const res = await post("/api/admin/ajuste", { correo, importe: d.importe, signo: d.signo });
-      $("#dialogo").hidden = true;
-      avisar("Saldo actualizado: " + res.saldo_texto, "bien");
-      cargarTodo();
-    } catch (err) { avisar(err.message, "error"); }
-  };
-}
-
-function restablecerClave(correo) {
-  $("#dialogo-contenido").innerHTML = `
-    <h2>Restablecer contraseña</h2>
-    <p style="color:var(--gris);font-size:.9rem">${correo}</p>
-    <p style="font-size:.9rem">Se pondrá una contraseña nueva y se cerrarán <strong>todas</strong>
-       sus sesiones abiertas. Pásasela al jugador por WhatsApp.</p>
-    <form id="form-clave">
-      <label>Contraseña nueva (déjalo vacío para generar una)
-        <input type="text" name="clave" placeholder="Automática">
-      </label>
-      <button class="boton boton--principal" type="submit">Restablecer</button>
-    </form>`;
-  $("#dialogo").hidden = false;
-  $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
-  $("#form-clave").onsubmit = async (e) => {
-    e.preventDefault();
-    const clave = new FormData(e.target).get("clave") || "";
-    try {
-      const res = await post("/api/admin/restablecer", { correo, clave });
-      $("#dialogo-contenido").innerHTML = `
-        <h2>Contraseña restablecida</h2>
-        <p style="color:var(--gris);font-size:.9rem">${correo}</p>
-        <p>Pásale esta contraseña al jugador. No se vuelve a mostrar.</p>
-        <p class="clave-temporal">${res.clave}</p>
-        <button class="boton boton--brillo boton--alto" id="copiar-clave">Copiar</button>
-        <p class="ayuda">Sus sesiones abiertas quedaron cerradas.</p>`;
-      $("#copiar-clave").onclick = async () => {
-        try { await navigator.clipboard.writeText(res.clave); avisar("Copiada.", "bien"); }
-        catch (err) { avisar("Cópiala a mano.", "error"); }
-      };
+      cargarRetiros();
+      if (abiertas.has("resumen")) cargarResumen();
     } catch (err) { avisar(err.message, "error"); }
   };
 }
@@ -278,33 +184,36 @@ function restablecerClave(correo) {
 async function cargarDepositos() { return refrescarDepositos(); }
 
 async function refrescarDepositos() {
-  const cuerpo = $("#cuerpo-depositos");
-  if (!cuerpo) return;
-  try {
-    const res = await get("/api/admin/depositos?estado=pendiente");
-    $("#contador-depositos").textContent = res.depositos.length;
-    if (!res.depositos.length) {
-      cuerpo.innerHTML = '<tr><td colspan="7" class="vacio">No hay depósitos por revisar.</td></tr>';
-      return;
-    }
-    cuerpo.innerHTML = res.depositos.map((d) => `
-      <tr>
-        <td>${d.correo}</td>
-        <td><strong>${d.importe_texto}</strong></td>
-        <td>${d.metodo === "pago_movil" ? "Pago Móvil" : "Transferencia"}</td>
-        <td>${d.banco}</td>
-        <td class="mono">${d.referencia}</td>
-        <td>${d.dia}</td>
-        <td class="acciones-celda">
-          <button class="boton boton--brillo boton--mini" data-acreditar="${d.id}">Acreditar</button>
-          <button class="boton boton--fantasma boton--mini" data-rechazar="${d.id}">Rechazar</button>
-        </td>
-      </tr>`).join("");
-    cuerpo.querySelectorAll("[data-acreditar]").forEach((b) =>
-      (b.onclick = () => resolverDeposito(b.dataset.acreditar, "acreditar")));
-    cuerpo.querySelectorAll("[data-rechazar]").forEach((b) =>
-      (b.onclick = () => resolverDeposito(b.dataset.rechazar, "rechazar")));
-  } catch (err) { avisar(err.message, "error"); }
+  const caja = cuerpo("depositos");
+  if (!caja) return;
+  const res = await get("/api/admin/depositos?estado=pendiente");
+  caja.innerHTML = `
+    <div class="panel__cabecera">
+      <div class="pastilla">${res.depositos.length} por revisar</div>
+    </div>
+    <p class="entrada">Pagos declarados por los jugadores (Pago Móvil o transferencia).
+       Comprueba la referencia en tu banco antes de acreditar.</p>
+    <div class="tabla-scroll"><table class="tabla">
+      <thead><tr><th>Jugador</th><th>Monto</th><th>Método</th><th>Banco</th><th>Referencia</th>
+        <th>Día</th><th>Acciones</th></tr></thead>
+      <tbody>${res.depositos.length ? res.depositos.map((d) => `
+        <tr>
+          <td>${d.correo}</td>
+          <td><strong>${d.importe_texto}</strong></td>
+          <td>${d.metodo === "pago_movil" ? "Pago Móvil" : "Transferencia"}</td>
+          <td>${d.banco}</td>
+          <td class="mono">${d.referencia}</td>
+          <td>${d.dia}</td>
+          <td class="acciones-celda">
+            <button class="boton boton--brillo boton--mini" data-acreditar="${d.id}">Acreditar</button>
+            <button class="boton boton--fantasma boton--mini" data-rechazar="${d.id}">Rechazar</button>
+          </td>
+        </tr>`).join("") : '<tr><td colspan="7" class="vacio">No hay depósitos por revisar.</td></tr>'}
+      </tbody></table></div>`;
+  caja.querySelectorAll("[data-acreditar]").forEach((b) =>
+    (b.onclick = () => resolverDeposito(b.dataset.acreditar, "acreditar")));
+  caja.querySelectorAll("[data-rechazar]").forEach((b) =>
+    (b.onclick = () => resolverDeposito(b.dataset.rechazar, "rechazar")));
 }
 
 async function resolverDeposito(id, accion) {
@@ -317,8 +226,229 @@ async function resolverDeposito(id, accion) {
     await post("/api/admin/deposito", { id, accion });
     avisar(accion === "acreditar" ? "Depósito acreditado." : "Depósito rechazado.", "bien");
     refrescarDepositos();
-    cargarResumen();
+    if (abiertas.has("resumen")) cargarResumen();
   } catch (err) { avisar(err.message, "error"); }
+}
+
+/* --- jugadores --- */
+
+async function cargarJugadores() {
+  const caja = cuerpo("jugadores");
+  if (!caja) return;
+  const r = await get("/api/admin/jugadores");
+  jugadores = r.jugadores;
+  caja.innerHTML = `
+    <div class="panel__cabecera">
+      <div class="acciones acciones--pegadas">
+        <input type="text" id="buscar-jugador" placeholder="Buscar por correo…" aria-label="Buscar jugador">
+      </div>
+    </div>
+    <div class="tabla-envoltorio"><table class="tabla" id="tabla-jugadores">
+      <thead><tr><th>Correo</th><th>Nombre</th><th>Rol</th><th>Saldo</th><th>Comisión</th><th>Alta</th>
+        <th>Estado</th><th>Ajuste</th></tr></thead>
+      <tbody></tbody>
+    </table></div>`;
+  $("#buscar-jugador").oninput = pintarJugadores;
+  pintarJugadores();
+}
+
+function pintarJugadores() {
+  const buscador = $("#buscar-jugador");
+  const filtro = ((buscador && buscador.value) || "").toLowerCase();
+  const lista = jugadores.filter((j) =>
+    j.correo.includes(filtro) || (j.nombre || "").toLowerCase().includes(filtro));
+  const cuerpoTabla = $("#tabla-jugadores tbody");
+  if (!cuerpoTabla) return;
+  if (!lista.length) {
+    cuerpoTabla.innerHTML = '<tr><td colspan="8" class="vacio">Sin jugadores que mostrar.</td></tr>';
+    return;
+  }
+  cuerpoTabla.innerHTML = lista.map((j) => `
+    <tr>
+      <td>${j.correo}</td>
+      <td>${j.nombre || "—"}</td>
+      <td>${j.rol === "admin" ? '<span class="etiqueta-rol">admin</span>' : "jugador"}</td>
+      <td><strong>${j.saldo_texto}</strong></td>
+      <td>${j.comision_pct >= 0 ? `<strong>${j.comision_pct} %</strong>` : '<span style="color:var(--gris)">10 % fijo</span>'}</td>
+      <td>${fecha(j.creado)}</td>
+      <td>${j.activo ? "activo" : "desactivado"}${j.pregunta ? ' · <span class="etiqueta-rol">con pregunta</span>' : ""}</td>
+      <td class="acciones-celda">
+        <button class="boton boton--fantasma boton--mini" data-comision="${j.correo}" data-pct="${j.comision_pct}">Comisión</button>
+        <button class="boton boton--fantasma boton--mini" data-ajuste="${j.correo}">Ajustar saldo</button>
+        <button class="boton boton--fantasma boton--mini" data-clave="${j.correo}">Restablecer clave</button>
+        <button class="boton boton--fantasma boton--mini" data-estado="${j.correo}" data-activo="${j.activo}">
+          ${j.activo ? "Desactivar" : "Activar"}
+        </button>
+      </td>
+    </tr>`).join("");
+  cuerpoTabla.querySelectorAll("[data-comision]").forEach((b) =>
+    (b.onclick = () => editarComision(b.dataset.comision, parseInt(b.dataset.pct, 10))));
+  cuerpoTabla.querySelectorAll("[data-ajuste]").forEach((b) =>
+    (b.onclick = () => ajustarSaldo(b.dataset.ajuste)));
+  cuerpoTabla.querySelectorAll("[data-clave]").forEach((b) =>
+    (b.onclick = () => restablecerClave(b.dataset.clave)));
+  cuerpoTabla.querySelectorAll("[data-estado]").forEach((b) => {
+    b.onclick = async () => {
+      try {
+        await post("/api/admin/usuario",
+          { correo: b.dataset.estado, activo: b.dataset.activo !== "true" });
+        avisar("Estado cambiado.", "bien");
+        cargarJugadores();
+      } catch (err) { avisar(err.message, "error"); }
+    };
+  });
+}
+
+function editarComision(correo, pctActual) {
+  const actual = Number.isFinite(pctActual) ? pctActual : -1;
+  abrirDialogo(`
+    <h2>Comisión de anfitrión</h2>
+    <p style="color:var(--gris);font-size:.9rem">${correo}</p>
+    <form id="form-comision">
+      <label>Porcentaje que cobra por cada bote de sus salas (%)
+        <input type="number" name="pct" min="-1" max="90" step="1"
+               value="${actual}" required>
+      </label>
+      <p class="ayuda">Escribe <strong>-1</strong> para dejar el 10 % fijo de siempre.
+         Del 0 al 90 fija el porcentaje de esta cuenta: el premio del ganador no cambia,
+         lo que cambia es la parte del anfitrión.</p>
+      <button class="boton boton--principal" type="submit">Guardar</button>
+    </form>`);
+  $("#form-comision").onsubmit = async (e) => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      await post("/api/admin/usuario", { correo, comision_pct: parseInt(d.pct, 10) });
+      $("#dialogo").hidden = true;
+      avisar("Comisión actualizada.", "bien");
+      cargarJugadores();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+}
+
+function ajustarSaldo(correo) {
+  abrirDialogo(`
+    <h2>Ajustar saldo</h2>
+    <p style="color:var(--gris);font-size:.9rem">${correo}</p>
+    <form id="form-ajuste">
+      <label>Importe (Bs)<input type="text" name="importe" required placeholder="100,00"></label>
+      <label>Qué hacer
+        <select name="signo">
+          <option value="sumar">Sumar al saldo</option>
+          <option value="restar">Restar del saldo</option>
+        </select>
+      </label>
+      <button class="boton boton--principal" type="submit">Aplicar</button>
+    </form>`);
+  $("#form-ajuste").onsubmit = async (e) => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      const res = await post("/api/admin/ajuste", { correo, importe: d.importe, signo: d.signo });
+      $("#dialogo").hidden = true;
+      avisar("Saldo actualizado: " + res.saldo_texto, "bien");
+      cargarJugadores();
+      if (abiertas.has("resumen")) cargarResumen();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+}
+
+function restablecerClave(correo) {
+  abrirDialogo(`
+    <h2>Restablecer contraseña</h2>
+    <p style="color:var(--gris);font-size:.9rem">${correo}</p>
+    <p style="font-size:.9rem">Se pondrá una contraseña nueva y se cerrarán <strong>todas</strong>
+       sus sesiones abiertas. Pásasela al jugador por WhatsApp.</p>
+    <form id="form-clave">
+      <label>Contraseña nueva (déjalo vacío para generar una)
+        <input type="text" name="clave" placeholder="Automática">
+      </label>
+      <button class="boton boton--principal" type="submit">Restablecer</button>
+    </form>`);
+  $("#form-clave").onsubmit = async (e) => {
+    e.preventDefault();
+    const clave = new FormData(e.target).get("clave") || "";
+    try {
+      const res = await post("/api/admin/restablecer", { correo, clave });
+      abrirDialogo(`
+        <h2>Contraseña restablecida</h2>
+        <p style="color:var(--gris);font-size:.9rem">${correo}</p>
+        <p>Pásale esta contraseña al jugador. No se vuelve a mostrar.</p>
+        <p class="clave-temporal">${res.clave}</p>
+        <button class="boton boton--brillo boton--alto" id="copiar-clave">Copiar</button>
+        <p class="ayuda">Sus sesiones abiertas quedaron cerradas.</p>`);
+      $("#copiar-clave").onclick = async () => {
+        try { await navigator.clipboard.writeText(res.clave); avisar("Copiada.", "bien"); }
+        catch (err) { avisar("Cópiala a mano.", "error"); }
+      };
+    } catch (err) { avisar(err.message, "error"); }
+  };
+}
+
+/* --- partidas y movimientos --- */
+
+async function cargarPartidas() {
+  const caja = cuerpo("partidas");
+  if (!caja) return;
+  const r = await get("/api/admin/partidas");
+  caja.innerHTML = `<div class="tabla-envoltorio"><table class="tabla">
+    <thead><tr><th>Partida</th><th>Patrón</th><th>Estado</th><th>Cartones</th><th>Bolas</th>
+      <th>Apostado</th><th>Ganador</th><th>Premio</th></tr></thead>
+    <tbody>${r.partidas.length ? r.partidas.map((p) => `
+      <tr>
+        <td><code>${p.id}</code></td>
+        <td>${p.patron}</td>
+        <td>${p.estado}</td>
+        <td>${p.cartones}</td>
+        <td>${p.bolas}</td>
+        <td>${p.apostado_texto}</td>
+        <td>${p.ganador || "—"}</td>
+        <td>${p.premio_texto}</td>
+      </tr>`).join("") : '<tr><td colspan="8" class="vacio">Todavía no hay partidas.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function cargarMovimientos() {
+  const caja = cuerpo("movimientos");
+  if (!caja) return;
+  const r = await get("/api/admin/movimientos");
+  caja.innerHTML = `<div class="tabla-envoltorio"><table class="tabla">
+    <thead><tr><th>Jugador</th><th>Tipo</th><th>Importe</th><th>Saldo después</th>
+      <th>Motivo</th></tr></thead>
+    <tbody>${r.movimientos.length ? r.movimientos.map((m) => `
+      <tr>
+        <td>${m.correo}</td>
+        <td>${m.tipo}</td>
+        <td class="${m.centimos > 0 ? "positivo" : "negativo"}">${m.importe_texto}</td>
+        <td>${formatear(m.saldo_despues)}</td>
+        <td>${m.motivo || "—"}</td>
+      </tr>`).join("") : '<tr><td colspan="5" class="vacio">Sin movimientos.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+/* --- ganancias --- */
+
+async function cargarGanancias() {
+  const caja = cuerpo("ganancias");
+  if (!caja) return;
+  const r = await get("/api/admin/resumen");
+  const e = r.economia || {};
+  const tarjetas = [
+    ["Partidas terminadas", e.partidas || 0, "jugadas"],
+    ["Botes totales", e.botes_texto, "apostado en cartones"],
+    ["Premios pagados", e.premios_texto, "a los ganadores (80%)"],
+    ["Comisiones a anfitriones", e.comisiones_texto, "salas de jugadores (10%)"],
+    ["Ganancia de la app", e.app_texto, "lo que queda a la casa"],
+  ];
+  caja.innerHTML = `
+    <p class="entrada">El ganador cobra el 80% del bote; en las salas de jugadores el anfitrión
+       se lleva un 10% y la app el otro 10%.</p>
+    <div class="tarjetas-resumen">${tarjetas.map(([t, v, p]) => `
+      <div class="tarjeta-resumen">
+        <p class="tarjeta-resumen__titulo">${t}</p>
+        <p class="tarjeta-resumen__valor">${v}</p>
+        <p class="tarjeta-resumen__pie">${p}</p>
+      </div>`).join("")}</div>`;
 }
 
 /* --- Glenis IA --- */
@@ -338,22 +468,46 @@ function burbuja(quien, texto, clase = "") {
   const nombre = document.createElement("div");
   nombre.className = "chat__quien";
   nombre.textContent = quien;
-  const cuerpo = document.createElement("div");
-  cuerpo.textContent = texto;
-  div.append(nombre, cuerpo);
+  const cuerpoTexto = document.createElement("div");
+  cuerpoTexto.textContent = texto;
+  div.append(nombre, cuerpoTexto);
   return div;
 }
 
 function pintarMensaje(quien, texto, clase) {
   const caja = $("#chat-mensajes");
+  if (!caja) return;
   caja.appendChild(burbuja(quien, texto, clase));
   caja.scrollTop = caja.scrollHeight;
 }
 
 async function cargarGlenis() {
+  const caja = cuerpo("glenis");
+  if (!caja) return;
+  caja.innerHTML = `
+    <p class="entrada">Tu asistente. Pregúntale por el dinero, los jugadores o los depósitos,
+       o pídele que anote o acredite algo. Lo que toca dinero queda registrado a su nombre.</p>
+    <div class="chat" id="chat-glenis">
+      <div class="chat__mensajes" id="chat-mensajes"></div>
+      <form class="chat__form" id="chat-form">
+        <input type="text" id="chat-texto" placeholder="Escríbele a Glenis…" autocomplete="off">
+        <button class="boton boton--brillo" type="submit">Enviar</button>
+      </form>
+      <div class="chat__sugerencias">
+        <button class="pastilla pastilla--boton" data-sugerencia="Dame el resumen del día">Resumen del día</button>
+        <button class="pastilla pastilla--boton" data-sugerencia="¿Qué depósitos hay pendientes?">Depósitos pendientes</button>
+        <button class="pastilla pastilla--boton" data-sugerencia="¿Qué retiros hay pendientes?">Retiros pendientes</button>
+        <button class="pastilla pastilla--boton" data-sugerencia="¿Cuánto dinero hay en las cuentas?">Dinero en cuentas</button>
+      </div>
+    </div>`;
+  $("#chat-form").onsubmit = (e) => {
+    e.preventDefault();
+    hablarConGlenis($("#chat-texto").value);
+  };
+  caja.querySelectorAll("[data-sugerencia]").forEach((b) =>
+    (b.onclick = () => hablarConGlenis(b.dataset.sugerencia)));
   try {
     const res = await get("/api/admin/glenis");
-    $("#glenis-estado").textContent = res.configurada ? "conectada" : "sin clave";
     if (!res.historial.length) {
       pintarMensaje("Glenis IA", "¡Hola! Soy Glenis. Pregúntame por el dinero, los jugadores "
         + "o los depósitos, o pídeme que anote algo. ¿Qué necesitas?", "glenis");
@@ -371,8 +525,8 @@ async function hablarConGlenis(texto) {
   if (!texto.trim()) return;
   pintarMensaje("Tú", texto, "yo");
   historialGlenis.push({ role: "user", content: texto });
-  const caja = $("#chat-texto");
-  if (caja) caja.value = "";
+  const cajaTexto = $("#chat-texto");
+  if (cajaTexto) cajaTexto.value = "";
   pintarMensaje("Glenis IA", "…", "glenis");
   const puntos = $("#chat-mensajes").lastChild;
   try {
@@ -383,110 +537,230 @@ async function hablarConGlenis(texto) {
     if (res.acciones && res.acciones.length) {
       const hechas = res.acciones.map((a) => a.herramienta).join(", ");
       pintarMensaje("Sistema", `Consultó y ejecutó: ${hechas}`, "error");
-      refrescarDepositos();
-      cargarResumen();
+      if (abiertas.has("depositos")) refrescarDepositos();
+      if (abiertas.has("resumen")) cargarResumen();
     }
   } catch (err) {
-    puntos.remove();
+    if (puntos && puntos.parentNode) puntos.remove();
     pintarMensaje("Glenis IA", err.message, "error");
   }
 }
 
-/* --- ganancias y salas --- */
+/* --- ventanas emergentes --- */
 
-async function cargarGanancias() {
-  const caja = $("#tarjetas-ganancias");
-  const cuerpo = $("#cuerpo-salas");
-  if (!caja) return;
-  try {
-    const r = await get("/api/admin/resumen");
-    const e = r.economia || {};
-    const tarjetas = [
-      ["Partidas terminadas", e.partidas || 0, "jugadas"],
-      ["Botes totales", e.botes_texto, "apostado en cartones"],
-      ["Premios pagados", e.premios_texto, "a los ganadores (80%)"],
-      ["Comisiones a anfitriones", e.comisiones_texto, "salas de jugadores (10%)"],
-      ["Ganancia de la app", e.app_texto, "lo que queda a la casa"],
-    ];
-    caja.innerHTML = tarjetas.map(([t, v, p]) => `
-      <div class="tarjeta-resumen">
-        <p class="tarjeta-resumen__titulo">${t}</p>
-        <p class="tarjeta-resumen__valor">${v}</p>
-        <p class="tarjeta-resumen__pie">${p}</p>
-      </div>`).join("");
-  } catch (err) { avisar(err.message, "error"); }
+// Cada apartado vive en su propia ventana: al abrirla se carga solo lo suyo.
+const VENTANAS = {
+  resumen:     { titulo: "Resumen",               cargar: () => cargarResumen() },
+  glenis:      { titulo: "Glenis IA",             cargar: () => cargarGlenis() },
+  depositos:   { titulo: "Depósitos por revisar", cargar: () => refrescarDepositos() },
+  retiros:     { titulo: "Retiros pendientes",    cargar: () => cargarRetiros() },
+  jugadores:   { titulo: "Jugadores",             cargar: () => cargarJugadores() },
+  partidas:    { titulo: "Partidas",              cargar: () => cargarPartidas() },
+  salas:       { titulo: "Salas en vivo",         cargar: () => cargarSalasAdmin() },
+  ganancias:   { titulo: "Ganancias del bingo",   cargar: () => cargarGanancias() },
+  movimientos: { titulo: "Últimos movimientos",   cargar: () => cargarMovimientos() },
+};
 
-  if (!cuerpo) return;
-  try {
-    const res = await get("/api/admin/salas");
-    if (!res.salas.length) {
-      cuerpo.innerHTML = '<tr><td colspan="6" class="vacio">No hay salas.</td></tr>';
-      return;
+const abiertas = new Set();
+
+function abrirVentana(clave) {
+  const cfg = VENTANAS[clave];
+  if (!cfg) return;
+  if (abiertas.has(clave)) {
+    const v = document.getElementById("ventana-" + clave);
+    if (v) {
+      v.classList.add("ventana--foco");
+      setTimeout(() => v.classList.remove("ventana--foco"), 700);
     }
-    cuerpo.innerHTML = res.salas.map((s) => `
-      <tr>
-        <td><strong>${s.nombre}</strong></td>
-        <td>${s.dueno || "La casa"}</td>
-        <td>${s.modo}</td>
-        <td>${s.precio_texto}</td>
-        <td><span class="etiqueta etiqueta--${s.activa ? "acreditado" : "rechazado"}">${
-          s.activa ? "abierta" : "cerrada"}</span></td>
-        <td>${s.activa && s.dueno
-          ? `<button class="boton boton--fantasma boton--mini" data-cerrar-sala="${s.id}">Cerrar</button>`
-          : ""}</td>
-      </tr>`).join("");
-    cuerpo.querySelectorAll("[data-cerrar-sala]").forEach((b) =>
-      (b.onclick = async () => {
-        if (!confirm("¿Cerrar esta sala de jugador?")) return;
-        try {
-          await post("/api/sala/cerrar", { sala: b.dataset.cerrarSala });
-          avisar("Sala cerrada.", "bien");
-          cargarGanancias();
-        } catch (err) { avisar(err.message, "error"); }
-      }));
-  } catch (err) { /* nada */ }
-}
-
-/* --- partidas y movimientos --- */
-
-async function cargarPartidas() {
-  const r = await get("/api/admin/partidas");
-  const cuerpo = $("#tabla-partidas tbody");
-  if (!r.partidas.length) {
-    cuerpo.innerHTML = '<tr><td colspan="8" class="vacio">Todavía no hay partidas.</td></tr>';
     return;
   }
-  cuerpo.innerHTML = r.partidas.map((p) => `
-    <tr>
-      <td><code>${p.id}</code></td>
-      <td>${p.patron}</td>
-      <td>${p.estado}</td>
-      <td>${p.cartones}</td>
-      <td>${p.bolas}</td>
-      <td>${p.apostado_texto}</td>
-      <td>${p.ganador || "—"}</td>
-      <td>${p.premio_texto}</td>
-    </tr>`).join("");
+  abiertas.add(clave);
+  const v = document.createElement("section");
+  v.className = "ventana";
+  v.id = "ventana-" + clave;
+  v.innerHTML = `
+    <header class="ventana__barra">
+      <h2 class="ventana__titulo">${cfg.titulo}</h2>
+      <button class="ventana__cerrar" aria-label="Cerrar" data-cerrar-ventana="${clave}">×</button>
+    </header>
+    <div class="ventana__cuerpo" id="cuerpo-${clave}">
+      <p class="vacio">Cargando…</p>
+    </div>`;
+  $("#ventanas").appendChild(v);
+  v.querySelector("[data-cerrar-ventana]").onclick = () => cerrarVentana(clave);
+  Promise.resolve()
+    .then(() => cfg.cargar())
+    .then(() => { engancharBusqueda(); engancharChat(); })
+    .catch((err) => avisar(err.message, "error"));
 }
 
-async function cargarMovimientos() {
-  const r = await get("/api/admin/movimientos");
-  const cuerpo = $("#tabla-movimientos tbody");
-  if (!r.movimientos.length) {
-    cuerpo.innerHTML = '<tr><td colspan="5" class="vacio">Sin movimientos.</td></tr>';
-    return;
-  }
-  cuerpo.innerHTML = r.movimientos.map((m) => `
-    <tr>
-      <td>${m.correo}</td>
-      <td>${m.tipo}</td>
-      <td class="${m.centimos > 0 ? "positivo" : "negativo"}">${m.importe_texto}</td>
-      <td>${formatear(m.saldo_despues)}</td>
-      <td>${m.motivo || "—"}</td>
-    </tr>`).join("");
+function cerrarVentana(clave) {
+  abiertas.delete(clave);
+  const v = document.getElementById("ventana-" + clave);
+  if (v) v.remove();
+}
+
+/* --- salas en vivo (admin) --- */
+
+// El admin ve cada sala por dentro: quién juega, con qué cartones y qué bolas.
+let salaVivaActual = "";
+
+async function cargarSalasAdmin() {
+  const caja = $("#cuerpo-salas");
+  if (!caja) return;
+  const res = await get("/api/admin/salas");
+  if (!res.salas.length) { caja.innerHTML = '<p class="vacio">No hay salas.</p>'; return; }
+  caja.innerHTML = `
+    <div class="tabla-scroll"><table class="tabla">
+      <thead><tr><th>Sala</th><th>Dueño</th><th>Modo</th><th>Juego</th><th>Cartón</th>
+        <th>Cartones</th><th>Fecha</th><th>Estado</th><th></th></tr></thead>
+      <tbody>${res.salas.map((s) => `
+        <tr>
+          <td><strong>${s.nombre}</strong>${s.es_evento ? ' <span class="etiqueta-rol">evento</span>' : ""}</td>
+          <td>${s.dueno || "La casa"}</td>
+          <td>${s.modo}</td>
+          <td>${s.tipo_juego_texto || "—"}</td>
+          <td>${s.precio_texto}</td>
+          <td>${s.cupo_cartones > 0 ? s.cupo_cartones : "sin tope"}</td>
+          <td>${s.fecha_partida || "—"}</td>
+          <td><span class="etiqueta etiqueta--${s.activa ? "acreditado" : "rechazado"}">${
+            s.activa ? "abierta" : "cerrada"}</span></td>
+          <td class="acciones-celda">
+            <button class="boton boton--fantasma boton--mini" data-ver="${s.id}">Ver sala</button>
+            ${s.dueno ? "" : `<button class="boton boton--fantasma boton--mini" data-editar="${s.id}">Editar</button>`}
+            ${s.activa && s.dueno
+              ? `<button class="boton boton--fantasma boton--mini" data-cerrar-sala="${s.id}">Cerrar</button>`
+              : ""}
+          </td>
+        </tr>`).join("")}</tbody>
+    </table></div>
+    <div id="sala-viva"></div>`;
+  caja.querySelectorAll("[data-ver]").forEach((b) => (b.onclick = () => verSala(b.dataset.ver)));
+  caja.querySelectorAll("[data-editar]").forEach((b) =>
+    (b.onclick = () => editarSala(res.salas.find((s) => s.id === b.dataset.editar))));
+  caja.querySelectorAll("[data-cerrar-sala]").forEach((b) =>
+    (b.onclick = async () => {
+      if (!confirm("¿Cerrar esta sala de jugador?")) return;
+      try {
+        await post("/api/sala/cerrar", { sala: b.dataset.cerrarSala });
+        avisar("Sala cerrada.", "bien");
+        cargarSalasAdmin();
+      } catch (err) { avisar(err.message, "error"); }
+    }));
+}
+
+async function verSala(salaId) {
+  salaVivaActual = salaId;
+  await pintarSalaViva();
+}
+
+// Cada sala se ajusta desde el panel: precio, tipo de juego, cartones a la venta
+// y fecha. Así no hay que tocar el repositorio para cambiar nada.
+let TIPOS_JUEGO = [];
+async function tiposDeJuego() {
+  if (TIPOS_JUEGO.length) return TIPOS_JUEGO;
+  try {
+    const c = await get("/api/config");
+    TIPOS_JUEGO = c.tipos_juego || [];
+  } catch (err) { TIPOS_JUEGO = []; }
+  return TIPOS_JUEGO;
+}
+
+async function editarSala(sala) {
+  if (!sala) return;
+  const tipos = await tiposDeJuego();
+  const opciones = tipos.map((t) =>
+    `<option value="${t.id}" ${t.id === sala.tipo_juego ? "selected" : ""}>${t.nombre}</option>`).join("");
+  abrirDialogo(`
+    <h2>Editar sala</h2>
+    <p style="color:var(--gris);font-size:.9rem">${sala.nombre}</p>
+    <form id="form-sala">
+      <label>Nombre<input type="text" name="nombre" value="${sala.nombre}" required maxlength="30"></label>
+      <label>Precio del cartón (Bs)
+        <input type="text" name="precio" value="${sala.precio_texto.replace("Bs ", "")}" required>
+      </label>
+      <label>Tipo de juego<select name="tipo_juego">${opciones}</select></label>
+      <label>Cartones a la venta (0 = sin tope)
+        <input type="number" name="cupo_cartones" min="0" step="1" value="${sala.cupo_cartones || 0}">
+      </label>
+      <label>Fecha de la partida
+        <input type="text" name="fecha_partida" maxlength="60" placeholder="Ej.: hoy 8:00 pm"
+               value="${sala.fecha_partida || ""}">
+      </label>
+      <button class="boton boton--principal" type="submit">Guardar</button>
+    </form>
+    <p class="ayuda">Los jugadores ven el cambio enseguida. Las partidas ya empezadas
+       mantienen el precio y el tipo de juego con el que se abrieron.</p>`);
+  $("#form-sala").onsubmit = async (e) => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      const res = await post("/api/admin/sala/editar", {
+        sala: sala.id, nombre: d.nombre, precio: d.precio,
+        tipo_juego: d.tipo_juego, cupo_cartones: d.cupo_cartones,
+        fecha_partida: d.fecha_partida,
+      });
+      $("#dialogo").hidden = true;
+      avisar(res.mensaje, "bien");
+      cargarSalasAdmin();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+}
+
+async function pintarSalaViva() {
+  const caja = $("#sala-viva");
+  if (!caja || !salaVivaActual) return;
+  try {
+    const v = await get("/api/admin/sala?sala=" + encodeURIComponent(salaVivaActual));
+    const mesas = v.jugadores.map((j) => `
+      <div class="mesa-jugador">
+        <div class="mesa-jugador__cabeza">
+          <strong>${j.correo}</strong>
+          <span class="pastilla pastilla--suave">${j.cartones} cartón(es)</span>
+        </div>
+        <div class="mesa-jugador__cartones">${j.detalle.map(cartonHtml).join("")}</div>
+        ${j.premios.length
+          ? `<p class="mesa-jugador__premio">Ganó: ${j.premios.map((p) => p.nombre || "premio").join(", ")}</p>`
+          : ""}
+      </div>`).join("") || '<p class="vacio">Nadie ha comprado cartón todavía.</p>';
+    caja.innerHTML = `
+      <div class="evento__cabecera" style="margin:1.2rem 0 .6rem">
+        <h3 class="evento__titulo">${v.sala.nombre}</h3>
+        <span class="evento__aforo">${v.jugadores.length} jugador(es) · ${v.cartones} cartón(es)
+          · Bote ${v.bote_texto}</span>
+      </div>
+      <p class="ayuda">Bolas sacadas: ${v.bolas_sacadas.length
+        ? v.bolas_sacadas.join(" · ") : "ninguna todavía"}</p>
+      <div class="mesas-jugadores">${mesas}</div>`;
+  } catch (err) { caja.innerHTML = `<p class="vacio">${err.message}</p>`; }
+}
+
+function cartonHtml(c) {
+  const marcados = new Set(c.marcados);
+  const filas = c.numeros.map((fila, f) => `<tr>${fila.map((n, col) => {
+    const libre = f === 2 && col === 2;
+    const marca = libre || marcados.has(`${f}-${col}`);
+    return `<td class="${marca ? "carton-mini__marcado" : ""}">${libre ? "★" : n}</td>`;
+  }).join("")}</tr>`).join("");
+  return `<table class="carton-mini"><tbody>${filas}</tbody></table>`;
 }
 
 /* --- arranque --- */
+
+const ORDEN_VENTANAS = ["resumen", "glenis", "depositos", "retiros", "jugadores",
+                        "partidas", "salas", "ganancias", "movimientos"];
+
+function pintarLanzadera() {
+  const caja = $("#lanzadera");
+  if (!caja) return;
+  caja.innerHTML = ORDEN_VENTANAS.map((k) =>
+    `<button class="lanzadera__boton" data-abrir="${k}">${VENTANAS[k].titulo}</button>`).join("");
+  caja.querySelectorAll("[data-abrir]").forEach((b) =>
+    (b.onclick = () => abrirVentana(b.dataset.abrir)));
+}
+
+document.querySelectorAll("#nav-admin [data-ventana]").forEach((b) =>
+  (b.onclick = () => abrirVentana(b.dataset.ventana)));
 
 async function cargarTodo() {
   if (!token) { abrirAcceso(); return; }
@@ -494,8 +768,8 @@ async function cargarTodo() {
     const s = await get("/api/saldo");
     if (!s.admin) throw new Error("Esa cuenta no es de administración.");
     pintarSesion(localStorage.getItem("bp777_correo"));
-    await Promise.all([cargarResumen(), cargarDepositos(), cargarRetiros(), cargarJugadores(),
-                       cargarPartidas(), cargarMovimientos(), cargarGlenis(), cargarGanancias()]);
+    pintarLanzadera();
+    abrirVentana("resumen");
   } catch (err) {
     avisar(err.message, "error");
     localStorage.removeItem(CLAVE_TOKEN);
@@ -503,18 +777,28 @@ async function cargarTodo() {
   }
 }
 
-$("#buscar-jugador").oninput = pintarJugadores;
-
-const formChat = $("#chat-form");
-if (formChat) {
-  formChat.onsubmit = (e) => {
-    e.preventDefault();
-    hablarConGlenis($("#chat-texto").value);
-  };
+function engancharBusqueda() {
+  const caja = $("#buscar-jugador");
+  if (caja && !caja.dataset.listo) {
+    caja.dataset.listo = "1";
+    caja.oninput = pintarJugadores;
+  }
 }
-document.querySelectorAll("[data-sugerencia]").forEach((b) => {
-  b.onclick = () => hablarConGlenis(b.dataset.sugerencia);
-});
+
+function engancharChat() {
+  const form = $("#chat-form");
+  if (form && !form.dataset.listo) {
+    form.dataset.listo = "1";
+    form.onsubmit = (e) => { e.preventDefault(); hablarConGlenis($("#chat-texto").value); };
+    document.querySelectorAll("[data-sugerencia]").forEach((b) =>
+      (b.onclick = () => hablarConGlenis(b.dataset.sugerencia)));
+  }
+}
 
 cargarTodo();
-setInterval(() => { if (token) { cargarResumen(); cargarRetiros(); } }, 20000);
+setInterval(() => {
+  if (!token) return;
+  if (abiertas.has("resumen")) cargarResumen();
+  if (abiertas.has("retiros")) cargarRetiros();
+  if (abiertas.has("salas") && salaVivaActual) pintarSalaViva();
+}, 15000);

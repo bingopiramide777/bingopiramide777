@@ -76,6 +76,7 @@ class Usuario:
     rol: str
     activo: bool
     creado: float
+    comision_pct: int = -1     # % de comisión de anfitrión; -1 = el de por defecto
 
 
 @dataclass
@@ -100,8 +101,10 @@ def _normalizar_respuesta(respuesta: str) -> str:
 
 
 def _usuario(fila) -> Usuario:
+    claves = fila.keys()
     return Usuario(correo=fila["correo"], nombre=fila["nombre"], rol=fila["rol"],
-                   activo=bool(fila["activo"]), creado=fila["creado"])
+                   activo=bool(fila["activo"]), creado=fila["creado"],
+                   comision_pct=int(fila["comision_pct"]) if "comision_pct" in claves else -1)
 
 
 class Usuarios:
@@ -235,6 +238,22 @@ class Usuarios:
 
     def activar(self, correo: str, activo: bool) -> None:
         self.almacen.cambiar_activo(correo.strip().lower(), activo)
+
+    def comision_de(self, correo: str, por_defecto: int) -> int:
+        """El % de comisión de anfitrión de una cuenta (el fijo si no tiene propio)."""
+        u = self.usuario(correo)
+        if u is None or u.comision_pct < 0:
+            return por_defecto
+        return u.comision_pct
+
+    def fijar_comision(self, correo: str, pct: int) -> None:
+        """Fija el % de comisión de anfitrión de una cuenta. -1 vuelve al de defecto."""
+        correo = (correo or "").strip().lower()
+        if not self.almacen.usuario(correo):
+            raise ErrorDeUsuario("No existe esa cuenta.")
+        if not isinstance(pct, int) or isinstance(pct, bool) or not -1 <= pct <= 90:
+            raise ErrorDeUsuario("El porcentaje tiene que estar entre 0 y 90 (o -1 para el fijo).")
+        self.almacen.cambiar_comision(correo, pct)
 
     # -- entrada --
 

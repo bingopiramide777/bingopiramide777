@@ -18,6 +18,14 @@ services:
         sync: false
       - key: BINGO_DB
         value: /var/data/bingo777.db
+      # Cuenta a la que los jugadores mandan el dinero (Pago Móvil).
+      # Si cambian de cuenta, se cambia aquí y Render vuelve a desplegar.
+      - key: BINGO_PAGO_BANCO
+        value: Banco de Venezuela
+      - key: BINGO_PAGO_TELEFONO
+        value: "0416-7677264"
+      - key: BINGO_PAGO_CEDULA
+        value: "12.256.618"
     disk:
       name: datos
       mountPath: /var/data

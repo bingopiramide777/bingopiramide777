@@ -5,7 +5,8 @@ from __future__ import annotations
 import unittest
 
 from nucleo import Almacen, Monedero, Usuarios
-from nucleo.depositos import BANCOS, ConfigDeposito, Depositos, ErrorDeDeposito, hoy
+from nucleo.depositos import (BANCOS, ConfigDeposito, CuentaDePago, Depositos,
+                              ErrorDeDeposito, hoy)
 
 
 class DepositoTest(unittest.TestCase):
@@ -32,6 +33,35 @@ class DepositoTest(unittest.TestCase):
         self.assertEqual(d.estado, "pendiente")
         self.assertEqual(d.centimos, 10_000)
         self.assertEqual(self.monedero.saldo(self.correo), 0)
+
+    # -- cuenta a la que se paga --
+
+    def test_la_cuenta_de_pago_esta_configurada_por_defecto(self):
+        cuenta = ConfigDeposito().cuenta
+        self.assertTrue(cuenta.configurada)
+        self.assertEqual(cuenta.banco, "Banco de Venezuela")
+        self.assertTrue(cuenta.telefono)
+        self.assertTrue(cuenta.cedula)
+
+    def test_la_cuenta_de_pago_se_puede_cambiar_por_entorno(self):
+        import os
+        from unittest.mock import patch
+        entorno = {"BINGO_PAGO_BANCO": "Banesco", "BINGO_PAGO_TELEFONO": "0414-0000000",
+                   "BINGO_PAGO_CEDULA": "1.111.111", "BINGO_PAGO_TITULAR": "Ana Pérez"}
+        with patch.dict(os.environ, entorno):
+            cuenta = CuentaDePago.desde_entorno()
+        self.assertEqual(cuenta.banco, "Banesco")
+        self.assertEqual(cuenta.telefono, "0414-0000000")
+        self.assertEqual(cuenta.cedula, "1.111.111")
+        self.assertEqual(cuenta.titular, "Ana Pérez")
+
+    def test_la_cuenta_sin_datos_no_se_ofrece(self):
+        cuenta = CuentaDePago(telefono="", cedula="")
+        self.assertFalse(cuenta.configurada)
+
+    def test_la_cuenta_publica_no_lleva_mas_que_lo_necesario(self):
+        datos = CuentaDePago().a_dict()
+        self.assertEqual(set(datos), {"banco", "telefono", "cedula", "titular", "configurada"})
 
     def test_acreditar_suma_el_dinero(self):
         d = self.declarar()

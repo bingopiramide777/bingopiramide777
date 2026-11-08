@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
     nombre  TEXT NOT NULL DEFAULT '',
     rol     TEXT NOT NULL DEFAULT 'jugador',
     activo  INTEGER NOT NULL DEFAULT 1,
-    creado  REAL NOT NULL
+    creado  REAL NOT NULL,
+    comision_pct INTEGER NOT NULL DEFAULT -1
 );
 
 CREATE TABLE IF NOT EXISTS cuentas (
@@ -73,7 +74,9 @@ CREATE TABLE IF NOT EXISTS partidas (
     carton_ganador TEXT,
     premio         INTEGER NOT NULL DEFAULT 0,
     empezada       REAL,
-    terminada      REAL
+    terminada      REAL,
+    ganadores      TEXT NOT NULL DEFAULT '',
+    plazas         INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS depositos (
@@ -122,7 +125,13 @@ CREATE TABLE IF NOT EXISTS salas (
     dueno          TEXT NOT NULL DEFAULT '',
     publica        INTEGER NOT NULL DEFAULT 1,
     activa         INTEGER NOT NULL DEFAULT 1,
-    creada         REAL NOT NULL
+    creada         REAL NOT NULL,
+    es_evento      INTEGER NOT NULL DEFAULT 0,
+    aforo          INTEGER NOT NULL DEFAULT 0,
+    premios_pct    TEXT NOT NULL DEFAULT '',
+    tipo_juego     TEXT NOT NULL DEFAULT '',
+    cupo_cartones  INTEGER NOT NULL DEFAULT 0,
+    fecha_partida  TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_salas_dueno ON salas(dueno);
 
@@ -133,6 +142,11 @@ CREATE TABLE IF NOT EXISTS cartones (
     numeros  TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_cartones_partida ON cartones(partida);
+
+CREATE TABLE IF NOT EXISTS meta (
+    clave TEXT PRIMARY KEY,
+    valor TEXT NOT NULL DEFAULT ''
+);
 """
 
 
@@ -158,7 +172,8 @@ class Almacen:
         """
         columnas = {f["name"] for f in self._todos("PRAGMA table_info(usuarios)")}
         nuevas = (("pregunta", "TEXT NOT NULL DEFAULT ''"),
-                  ("respuesta_huella", "TEXT NOT NULL DEFAULT ''"))
+                  ("respuesta_huella", "TEXT NOT NULL DEFAULT ''"),
+                  ("comision_pct", "INTEGER NOT NULL DEFAULT -1"))
         for nombre, definicion in nuevas:
             if nombre not in columnas:
                 with self.transaccion() as c:
@@ -169,6 +184,26 @@ class Almacen:
         if "sala" not in columnas_p:
             with self.transaccion() as c:
                 c.execute("ALTER TABLE partidas ADD COLUMN sala TEXT NOT NULL DEFAULT ''")
+        # Y a llevar varios ganadores (la sala de eventos reparte 1º, 2º y 3º).
+        nuevas_p = (("ganadores", "TEXT NOT NULL DEFAULT ''"),
+                    ("plazas", "INTEGER NOT NULL DEFAULT 1"))
+        for nombre, definicion in nuevas_p:
+            if nombre not in columnas_p:
+                with self.transaccion() as c:
+                    c.execute(f"ALTER TABLE partidas ADD COLUMN {nombre} {definicion}")
+
+        # Las salas aprendieron a ser de evento, con aforo y premios por porcentaje.
+        columnas_s = {f["name"] for f in self._todos("PRAGMA table_info(salas)")}
+        nuevas_s = (("es_evento", "INTEGER NOT NULL DEFAULT 0"),
+                    ("aforo", "INTEGER NOT NULL DEFAULT 0"),
+                    ("premios_pct", "TEXT NOT NULL DEFAULT ''"),
+                    ("tipo_juego", "TEXT NOT NULL DEFAULT ''"),
+                    ("cupo_cartones", "INTEGER NOT NULL DEFAULT 0"),
+                    ("fecha_partida", "TEXT NOT NULL DEFAULT ''"))
+        for nombre, definicion in nuevas_s:
+            if nombre not in columnas_s:
+                with self.transaccion() as c:
+                    c.execute(f"ALTER TABLE salas ADD COLUMN {nombre} {definicion}")
 
     @contextmanager
     def transaccion(self) -> Iterator[sqlite3.Connection]:
@@ -233,6 +268,11 @@ class Almacen:
     def cambiar_activo(self, correo: str, activo: bool) -> None:
         with self.transaccion() as c:
             c.execute("UPDATE usuarios SET activo = ? WHERE correo = ?", (1 if activo else 0, correo))
+
+    def cambiar_comision(self, correo: str, pct: int) -> None:
+        """Fija el % de comisión de anfitrión de una cuenta (-1 = usar el de siempre)."""
+        with self.transaccion() as c:
+            c.execute("UPDATE usuarios SET comision_pct = ? WHERE correo = ?", (int(pct), correo))
 
     # -- dinero --
 
@@ -476,15 +516,17 @@ class Almacen:
         with self.transaccion() as c:
             c.execute(
                 "INSERT INTO partidas (id, sala, patron, precio_carton, estado, bolas, ganador,"
-                " carton_ganador, premio, empezada, terminada)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?)"
+                " carton_ganador, premio, empezada, terminada, ganadores, plazas)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(id) DO UPDATE SET sala=excluded.sala, patron=excluded.patron,"
                 " precio_carton=excluded.precio_carton, estado=excluded.estado, bolas=excluded.bolas,"
                 " ganador=excluded.ganador, carton_ganador=excluded.carton_ganador,"
-                " premio=excluded.premio, empezada=excluded.empezada, terminada=excluded.terminada",
+                " premio=excluded.premio, empezada=excluded.empezada, terminada=excluded.terminada,"
+                " ganadores=excluded.ganadores, plazas=excluded.plazas",
                 (p["id"], p.get("sala", ""), p["patron"], p["precio_carton"], p["estado"],
                  p.get("bolas", ""), p.get("ganador"), p.get("carton_ganador"),
-                 p.get("premio", 0), p.get("empezada"), p.get("terminada")),
+                 p.get("premio", 0), p.get("empezada"), p.get("terminada"),
+                 p.get("ganadores", ""), p.get("plazas", 1)),
             )
 
     def partida(self, id_: str) -> sqlite3.Row | None:
@@ -512,14 +554,33 @@ class Almacen:
     def guardar_sala(self, s: dict) -> None:
         with self.transaccion() as c:
             c.execute(
-                "INSERT INTO salas (id, nombre, modo, precio_carton, dueno, publica, activa, creada)"
-                " VALUES (?,?,?,?,?,?,?,?)"
+                "INSERT INTO salas (id, nombre, modo, precio_carton, dueno, publica, activa,"
+                " creada, es_evento, aforo, premios_pct, tipo_juego, cupo_cartones, fecha_partida)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(id) DO UPDATE SET nombre=excluded.nombre, modo=excluded.modo,"
                 " precio_carton=excluded.precio_carton, publica=excluded.publica,"
-                " activa=excluded.activa",
+                " activa=excluded.activa, es_evento=excluded.es_evento, aforo=excluded.aforo,"
+                " premios_pct=excluded.premios_pct, tipo_juego=excluded.tipo_juego,"
+                " cupo_cartones=excluded.cupo_cartones, fecha_partida=excluded.fecha_partida",
                 (s["id"], s["nombre"], s["modo"], s["precio_carton"], s.get("dueno", ""),
-                 s.get("publica", 1), s.get("activa", 1), s["creada"]),
+                 s.get("publica", 1), s.get("activa", 1), s["creada"],
+                 s.get("es_evento", 0), s.get("aforo", 0), s.get("premios_pct", ""),
+                 s.get("tipo_juego", "linea_h1"), s.get("cupo_cartones", 0),
+                 s.get("fecha_partida", "") or ""),
             )
+
+    def actualizar_sala(self, id_: str, campos: dict) -> None:
+        """Cambia solo los campos indicados de una sala (precio, aforo, premios…)."""
+        permitidos = {"nombre", "modo", "precio_carton", "publica", "activa",
+                      "es_evento", "aforo", "premios_pct", "tipo_juego",
+                      "cupo_cartones", "fecha_partida"}
+        asignar = {k: v for k, v in campos.items() if k in permitidos}
+        if not asignar:
+            return
+        columnas = ", ".join(f"{k} = ?" for k in asignar)
+        with self.transaccion() as c:
+            c.execute(f"UPDATE salas SET {columnas} WHERE id = ?",
+                      (*asignar.values(), id_))
 
     def sala(self, id_: str) -> sqlite3.Row | None:
         return self._uno("SELECT * FROM salas WHERE id = ?", (id_,))
@@ -532,6 +593,18 @@ class Almacen:
     def activar_sala(self, id_: str, activa: bool) -> None:
         with self.transaccion() as c:
             c.execute("UPDATE salas SET activa = ? WHERE id = ?", (int(activa), id_))
+
+    # -- ajustes internos (marcas de migración) --
+
+    def meta(self, clave: str) -> str | None:
+        fila = self._uno("SELECT valor FROM meta WHERE clave = ?", (clave,))
+        return fila["valor"] if fila else None
+
+    def guardar_meta(self, clave: str, valor: str) -> None:
+        with self.transaccion() as c:
+            c.execute("INSERT INTO meta (clave, valor) VALUES (?,?)"
+                      " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
+                      (clave, str(valor)))
 
     def guardar_carton(self, id_: str, partida: str, correo: str, numeros: str) -> None:
         with self.transaccion() as c:

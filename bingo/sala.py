@@ -35,10 +35,25 @@ class Partida:
     premio: int = 0
     empezada: float | None = None
     terminada: float | None = None
+    plazas: int = 1             # cuántos ganadores acepta (3 en la sala de eventos)
+    ganadores: list[dict] = field(default_factory=list)  # en orden: 1º, 2º, 3º
 
     @property
     def abierta(self) -> bool:
         return self.estado == "vendiendo"
+
+    @property
+    def completa(self) -> bool:
+        """¿Ya se han cantado todos los puestos premiados?"""
+        return len(self.ganadores) >= self.plazas
+
+    def jugadores(self) -> list[str]:
+        """Correos distintos que tienen cartón en esta partida."""
+        vistos: list[str] = []
+        for correo in self.dueno.values():
+            if correo not in vistos:
+                vistos.append(correo)
+        return vistos
 
     def cartones_de(self, jugador: str) -> list[str]:
         return [c for c, d in self.dueno.items() if d == jugador]
@@ -55,7 +70,7 @@ class Sala:
 
     def abrir_partida(
         self, precio_carton: object, patron: str | None = None, id_: str | None = None,
-        sala: str = "",
+        sala: str = "", plazas: int = 1,
     ) -> Partida:
         patron = patron or self.patron_por_defecto
         if patron not in PATRONES:
@@ -63,10 +78,12 @@ class Sala:
         precio = a_centimos(precio_carton)
         if precio <= 0:
             raise ErrorDeSala("El precio del cartón tiene que ser mayor que cero.")
+        if plazas < 1:
+            raise ErrorDeSala("Una partida necesita al menos un puesto premiado.")
         pid = id_ or f"p-{secrets.token_hex(4)}"
         if pid in self.partidas:
             raise ErrorDeSala(f"La partida {pid} ya existe.")
-        partida = Partida(id=pid, patron=patron, precio_carton=precio, sala=sala)
+        partida = Partida(id=pid, patron=patron, precio_carton=precio, sala=sala, plazas=plazas)
         self.partidas[pid] = partida
         return partida
 
@@ -110,27 +127,44 @@ class Sala:
         """Comprueba una cantada de bingo contra las bolas ya sacadas.
 
         No se fía de nadie: solo es válida si el cartón pertenece a ese jugador y
-        tiene el patrón realmente completo.
+        tiene el patrón realmente completo. En una partida de un solo puesto, el
+        que canta cierra la partida; en la de eventos, cada cantada válida ocupa
+        el siguiente puesto (1º, 2º, 3º) y un jugador no puede repetir puesto.
         """
         partida = self._partida(partida_id)
         if partida.estado != "jugando":
             raise ErrorDeSala("No se puede cantar bingo en esta partida.")
+        if partida.completa:
+            raise ErrorDeSala("Ya están cubiertos todos los puestos de esta partida.")
         carton = partida.cartones.get(carton_id)
         if carton is None:
             raise ErrorDeSala(f"El cartón {carton_id!r} no está en esta partida.")
         if partida.dueno[carton_id] != jugador:
             raise ErrorDeSala("Ese cartón no es tuyo.")
+        if any(g["correo"] == jugador for g in partida.ganadores):
+            raise ErrorDeSala("Ya te llevaste un puesto en esta partida.")
         if not patron_cumplido(carton, partida.patron):
             raise ErrorDeSala("Bingo cantado en falso: al cartón le falta el patrón.")
 
-        partida.estado = "terminada"
-        partida.terminada = time.time()
-        partida.ganador = jugador
-        partida.carton_ganador = carton_id
+        puesto = len(partida.ganadores) + 1
+        partida.ganadores.append({
+            "puesto": puesto, "correo": jugador, "carton": carton_id,
+            "bolas": len(partida.bombo.sacadas),
+        })
+        # El primer ganador queda también como ganador principal (compatibilidad).
+        if partida.ganador is None:
+            partida.ganador = jugador
+            partida.carton_ganador = carton_id
+        if partida.completa:
+            partida.estado = "terminada"
+            partida.terminada = time.time()
         return {
             "partida": partida_id,
             "ganador": jugador,
             "carton": carton_id,
+            "puesto": puesto,
+            "plazas": partida.plazas,
+            "ganadores": list(partida.ganadores),
             "bolas": len(partida.bombo.sacadas),
         }
 
