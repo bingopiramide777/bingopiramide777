@@ -18,6 +18,8 @@ from nucleo.salas import (
     PREMIO_CASA,
     SALA_CASA_ID,
     SALA_CASA_NOMBRE,
+    SALA_CASA_PRECIO,
+    SALA_CASA_PRECIO_ANTIGUO,
     SALAS_INICIALES_ANTIGUAS,
     ErrorDeSalas,
     Salas,
@@ -78,7 +80,7 @@ class SalasTest(unittest.TestCase):
         self.assertEqual(sala.nombre, SALA_CASA_NOMBRE)
         self.assertEqual(sala.modo, "carton_lleno")
         self.assertEqual(sala.tipo_juego, "carton_lleno")
-        self.assertEqual(sala.precio_carton, 50_00)
+        self.assertEqual(sala.precio_carton, 2_00)
         self.assertEqual(sala.max_cartones, 6)
         self.assertFalse(sala.es_de_jugador)
 
@@ -94,13 +96,13 @@ class SalasTest(unittest.TestCase):
         """Los precios que fijó la administración, de la más barata a la más cara."""
         precios = {s.nombre: s.precio_carton for s in self.salas.de_la_casa()}
         self.assertEqual(precios, {
-            "Zulia": 2_000_00,
-            "Lara": 1_000_00,
-            "Carabobo": 500_00,
-            "Mérida": 200_00,
-            "Táchira": 100_00,
-            "Nueva Esparta": 50_00,
-            SALA_CASA_NOMBRE: 50_00,
+            "Zulia": 10_00,
+            "Lara": 5_00,
+            "Carabobo": 3_00,
+            "Mérida": 2_00,
+            "Táchira": 1_00,
+            "Nueva Esparta": 1_00,
+            SALA_CASA_NOMBRE: 2_00,
         })
         modos = {s.nombre: s.modo for s in self.salas.de_la_casa()}
         self.assertEqual(modos["Carabobo"], "carton_lleno")
@@ -191,7 +193,7 @@ class ConfigurarSalasTest(unittest.TestCase):
         self.assertEqual(sala.nombre, "Mérida")
 
     def test_la_sala_de_la_casa_admite_precios_altos(self):
-        """Bs 2.000 no cabe en el tope de las salas de jugador, pero sí aquí."""
+        """$ 50.000 no cabe en el tope de las salas de jugador, pero sí aquí."""
         sala = self.salas.configurar_sala("sala-zulia", precio="50000,00")
         self.assertEqual(sala.precio_carton, 5_000_000)
 
@@ -242,7 +244,7 @@ class MigracionPreciosTest(unittest.TestCase):
 
     def test_los_precios_viejos_se_actualizan(self):
         almacen = Almacen(":memory:")
-        # Una base como la de antes: precios bajos y la sala llamada Miranda.
+        # Una base como la de antes: precios en bolívares y la sala llamada Miranda.
         for id_, viejo in SALAS_INICIALES_ANTIGUAS.items():
             almacen.guardar_sala({
                 "id": id_, "nombre": "Miranda" if id_ == "sala-miranda" else id_,
@@ -250,10 +252,20 @@ class MigracionPreciosTest(unittest.TestCase):
                 "creada": 0.0, "activa": 1, "es_evento": 0, "aforo": 0, "premios_pct": "",
             })
         salas = Salas(almacen)
-        self.assertEqual(salas.de("sala-zulia").precio_carton, 2_000_00)
-        self.assertEqual(salas.de("sala-tachira").precio_carton, 100_00)
+        self.assertEqual(salas.de("sala-zulia").precio_carton, 10_00)
+        self.assertEqual(salas.de("sala-tachira").precio_carton, 1_00)
         self.assertEqual(salas.de("sala-miranda").nombre, "Mérida")
-        self.assertEqual(salas.de("sala-miranda").precio_carton, 200_00)
+        self.assertEqual(salas.de("sala-miranda").precio_carton, 2_00)
+
+    def test_la_sala_de_casa_baja_de_bolivares_a_dolares(self):
+        almacen = Almacen(":memory:")
+        almacen.guardar_sala({
+            "id": SALA_CASA_ID, "nombre": SALA_CASA_NOMBRE, "modo": "carton_lleno",
+            "precio_carton": SALA_CASA_PRECIO_ANTIGUO, "dueno": "", "publica": 1,
+            "creada": 0.0, "activa": 1, "es_evento": 0, "aforo": 0, "premios_pct": "",
+        })
+        salas = Salas(almacen)
+        self.assertEqual(salas.de(SALA_CASA_ID).precio_carton, SALA_CASA_PRECIO)
 
     def test_no_se_pisa_un_precio_que_cambio_el_admin(self):
         almacen = Almacen(":memory:")
@@ -321,11 +333,11 @@ class EconomiaTest(unittest.TestCase):
 
     def test_sala_de_la_casa_reparte_80_20(self):
         res = self._jugar("sala-lara", ["ana@correo.com", "luis@correo.com"])
-        # 2 cartones x Bs 1.000 = Bs 2.000 de bote
-        self.assertEqual(res["bote"], 200_000)
-        self.assertEqual(res["premio"], 160_000)
+        # 2 cartones x $ 5 = $ 10 de bote
+        self.assertEqual(res["bote"], 1_000)
+        self.assertEqual(res["premio"], 800)
         self.assertEqual(res["anfitrion"], 0)
-        self.assertEqual(res["app"], 40_000)
+        self.assertEqual(res["app"], 200)
 
     def test_sala_de_jugador_paga_al_anfitrion(self):
         sala = self.salas.crear("duena@correo.com", "La de la dueña", "normal", "10,00")
@@ -362,11 +374,12 @@ class EconomiaTest(unittest.TestCase):
         self._jugar(sala.id, ["ana@correo.com", "luis@correo.com"])
         e = self.salas.economia()
         self.assertEqual(e["partidas"], 2)
-        # Lara (Bs 1.000 el cartón) + la sala de la dueña (Bs 10): 202.000 céntimos.
-        self.assertEqual(e["botes"], 202_000)
-        self.assertEqual(e["premios"], 161_600)
+        # Lara ($ 5 el cartón, 2 cartones = $ 10) + la sala de la dueña ($ 10 el
+        # cartón, 2 cartones = $ 20): 3.000 céntimos.
+        self.assertEqual(e["botes"], 3_000)
+        self.assertEqual(e["premios"], 2_400)
         self.assertEqual(e["comisiones"], 200)
-        self.assertEqual(e["app"], 40_200)
+        self.assertEqual(e["app"], 400)
         # Y el reparto siempre cuadra.
         self.assertEqual(e["premios"] + e["comisiones"] + e["app"], e["botes"])
 
@@ -374,7 +387,7 @@ class EconomiaTest(unittest.TestCase):
         e = self.salas.economia()
         self.assertEqual(e["app"], 0)
         self.assertEqual(e["botes"], 0)
-        self.assertEqual(a_texto(e["app"]), "Bs 0,00")
+        self.assertEqual(a_texto(e["app"]), "$ 0,00")
 
     def test_los_porcentajes_son_los_documentados(self):
         # El ganador siempre cobra el 80 %; el 20 % restante se reparte a partes
@@ -486,8 +499,8 @@ class EventoJuegoTest(unittest.TestCase):
             self.monedero.recargar(j, 100_000, "prueba")
             cartones[j], _ = mesa.comprar_carton(partida.id, j)
         bingo.empezar(partida.id)
-        bote = partida.precio_carton * len(partida.cartones)   # 3 x Bs 50 = Bs 150
-        self.assertEqual(bote, 15_000)
+        bote = partida.precio_carton * len(partida.cartones)   # 3 x $ 2 = $ 6
+        self.assertEqual(bote, 600)
 
         pagados = {}
         for j in jugadores:
@@ -496,10 +509,10 @@ class EventoJuegoTest(unittest.TestCase):
             res = mesa.resolver_cantada(partida.id, j, cartones[j])
             pagados[j] = res["premio"]
 
-        # 60% de 15.000 = 9.000, 15% = 2.250, 5% = 750.
-        self.assertEqual(pagados["a@correo.com"], 9_000)
-        self.assertEqual(pagados["b@correo.com"], 2_250)
-        self.assertEqual(pagados["c@correo.com"], 750)
+        # 60% de 600 = 360, 15% = 90, 5% = 30.
+        self.assertEqual(pagados["a@correo.com"], 360)
+        self.assertEqual(pagados["b@correo.com"], 90)
+        self.assertEqual(pagados["c@correo.com"], 30)
         self.assertEqual(partida.estado, "terminada", "con los 3 puestos cubiertos, cierra")
 
     def test_un_jugador_no_puede_llevarse_dos_puestos(self):

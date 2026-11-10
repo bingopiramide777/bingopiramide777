@@ -16,16 +16,16 @@ class DineroTest(unittest.TestCase):
 
     def test_el_error_de_float_no_aparece(self):
         self.assertEqual(a_centimos("0.1") + a_centimos("0.2"), a_centimos("0.3"))
-        self.assertEqual(a_texto(30), "Bs 0,30")
+        self.assertEqual(a_texto(30), "$ 0,30")
 
     def test_importes_invalidos(self):
         for malo in ("", "abc", "-5", None, True, float("nan"), float("inf")):
             with self.assertRaises(ValueError):
                 a_centimos(malo)
 
-    def test_formato_venezolano(self):
-        self.assertEqual(a_texto(123_450), "Bs 1.234,50")
-        self.assertEqual(a_texto(0), "Bs 0,00")
+    def test_formato_en_dolares(self):
+        self.assertEqual(a_texto(123_450), "$ 1.234,50")
+        self.assertEqual(a_texto(0), "$ 0,00")
 
 
 class MonederoTest(unittest.TestCase):

@@ -18,7 +18,7 @@ from .almacen import Almacen
 from .monedero import ErrorDeMonedero, Monedero
 from .money import a_centimos, a_texto
 
-METODOS = ("transferencia", "pago_movil", "zelle", "paypal", "cripto")
+METODOS = ("paypal", "cripto")
 
 
 class ErrorDeRetiro(ValueError):
@@ -27,8 +27,8 @@ class ErrorDeRetiro(ValueError):
 
 @dataclass
 class ConfigRetiro:
-    minimo: int = 5_000          # Bs 50,00
-    tope_diario: int = 2_000_000  # Bs 20.000,00
+    minimo: int = 100            # $ 1,00
+    tope_diario: int = 200_000   # $ 2.000,00
     metodos: tuple[str, ...] = METODOS
 
 

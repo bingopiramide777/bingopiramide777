@@ -8,8 +8,7 @@ let jugadores = [];
 
 // Métodos de pago de todos los países y su bandera, para la cola de depósitos.
 const NOMBRES_METODO = {
-  pago_movil: "Pago Móvil", transferencia: "Transferencia",
-  nequi: "Nequi", mach: "MACH", cashapp: "Cash App",
+  paypal: "PayPal", cripto: "USDT (cripto)",
 };
 const BANDERAS_PAIS = { VE: "🇻🇪", CO: "🇨🇴", CL: "🇨🇱", US: "🇺🇸" };
 const banderaPais = (code) => BANDERAS_PAIS[code] || "🏳️";
@@ -38,7 +37,7 @@ function avisar(mensaje, tipo = "") {
 function formatear(centimos) {
   const n = Math.abs(centimos);
   const entero = Math.floor(n / 100).toLocaleString("es-VE");
-  return (centimos < 0 ? "-" : "") + "Bs " + entero + "," + String(n % 100).padStart(2, "0");
+  return (centimos < 0 ? "-" : "") + "$ " + entero + "," + String(n % 100).padStart(2, "0");
 }
 
 function fecha(ts) {
@@ -165,7 +164,7 @@ function resolverRetiro(id, accion) {
   abrirDialogo(`
     <h2>${esPago ? "Marcar como pagado" : "Rechazar retiro"}</h2>
     <p style="color:var(--gris);font-size:.9rem">
-      ${esPago ? "Confirma que ya has hecho la transferencia al jugador."
+      ${esPago ? "Confirma que ya has hecho el pago al jugador (PayPal o USDT)."
                : "El dinero se devolverá al saldo del jugador."}
     </p>
     <form id="form-retiro">
@@ -199,10 +198,10 @@ async function refrescarDepositos() {
     <div class="panel__cabecera">
       <div class="pastilla">${res.depositos.length} por revisar</div>
     </div>
-    <p class="entrada">Pagos declarados por los jugadores (Pago Móvil, transferencia, Nequi,
-       MACH o Cash App). Comprueba la referencia antes de acreditar.</p>
+    <p class="entrada">Pagos declarados por los jugadores (PayPal o USDT (cripto)).
+       Comprueba la referencia antes de acreditar.</p>
     <div class="tabla-scroll"><table class="tabla">
-      <thead><tr><th>Jugador</th><th>Monto</th><th>País</th><th>Método</th><th>Banco</th><th>Referencia</th>
+      <thead><tr><th>Jugador</th><th>Monto</th><th>País</th><th>Método</th><th>Referencia</th>
         <th>Día</th><th>Acciones</th></tr></thead>
       <tbody>${res.depositos.length ? res.depositos.map((d) => `
         <tr>
@@ -210,7 +209,6 @@ async function refrescarDepositos() {
           <td><strong>${d.importe_texto}</strong></td>
           <td>${banderaPais(d.pais)} ${d.pais || "VE"}</td>
           <td>${NOMBRES_METODO[d.metodo] || d.metodo}</td>
-          <td>${d.banco || "—"}</td>
           <td class="mono">${d.referencia}</td>
           <td>${d.dia}</td>
           <td class="acciones-celda">
@@ -550,7 +548,7 @@ async function editarTorneo(evento) {
     <form id="form-torneo">
       <label>Nombre<input type="text" name="nombre" value="${evento.nombre || "Torneo del día"}" maxlength="40"></label>
       <label>Precio del cartón (Bs)
-        <input type="text" name="precio" value="${(evento.precio_texto || "").replace("Bs ", "")}" required>
+        <input type="text" name="precio" value="${(evento.precio_texto || "").replace("$ ", "")}" required>
       </label>
       <label>Aforo (0 = sin límite)
         <input type="number" name="aforo" min="0" step="1" value="${evento.aforo || 0}">
@@ -819,7 +817,7 @@ async function editarSala(sala) {
     <form id="form-sala">
       <label>Nombre<input type="text" name="nombre" value="${sala.nombre}" required maxlength="60"></label>
       <label>Precio del cartón (Bs)
-        <input type="text" name="precio" value="${sala.precio_texto.replace("Bs ", "")}" required>
+        <input type="text" name="precio" value="${sala.precio_texto.replace("$ ", "")}" required>
       </label>
       <label>Tipo de juego<select name="tipo_juego">${opciones}</select></label>
       <label>Cartones a la venta (0 = sin tope)

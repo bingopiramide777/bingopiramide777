@@ -1,7 +1,7 @@
-"""Depósitos por Pago Móvil y transferencia, como en Juegoactivo.
+"""Depósitos por PayPal y USDT (cripto).
 
-El jugador hace el pago por fuera (desde su banco), y aquí **declara** lo que
-pagó: monto, referencia, banco y día. El dinero NO se acredita solo.
+El jugador hace el pago por fuera (desde su PayPal o su billetera) y aquí
+**declara** lo que pagó: monto, referencia y día. El dinero NO se acredita solo.
 
 Quién acredita:
 - **Glenis IA** deja el depósito en cola, con los datos leídos. No acredita sola.
@@ -26,50 +26,14 @@ from .almacen import Almacen
 from .monedero import Monedero
 from .money import a_centimos, a_texto
 
-METODOS = ("pago_movil", "transferencia", "nequi", "mach", "cashapp", "wise")
+METODOS = ("paypal", "cripto")
 
-# Los métodos que no son de banco no piden banco: se cobran por teléfono/cashtag.
-METODOS_SIN_BANCO = frozenset({"nequi", "mach", "cashapp", "wise"})
+# PayPal y USDT no son de banco: no piden banco de la lista.
+METODOS_SIN_BANCO = frozenset({"paypal", "cripto"})
 
-# Cuenta a la que el jugador manda el dinero. Los datos del Pago Móvil van aquí
-# y no repartidos por el código, para poder cambiarlos desde Render sin desplegar.
-@dataclass
-class CuentaDePago:
-    banco: str = "Banco de Venezuela"
-    telefono: str = "0416-7677264"
-    cedula: str = "12.256.618"
-    titular: str = ""
-
-    @classmethod
-    def desde_entorno(cls) -> "CuentaDePago":
-        # Si la variable no está puesta, vale el valor por defecto de arriba.
-        base = cls()
-        return cls(
-            banco=os.environ.get("BINGO_PAGO_BANCO") or base.banco,
-            telefono=os.environ.get("BINGO_PAGO_TELEFONO") or base.telefono,
-            cedula=os.environ.get("BINGO_PAGO_CEDULA") or base.cedula,
-            titular=os.environ.get("BINGO_PAGO_TITULAR") or base.titular,
-        )
-
-    @property
-    def configurada(self) -> bool:
-        return bool(self.telefono or self.cedula)
-
-    def a_dict(self) -> dict:
-        return {"banco": self.banco, "telefono": self.telefono,
-                "cedula": self.cedula, "titular": self.titular,
-                "configurada": self.configurada}
-
-
-BANCOS = (
-    "Banco de Venezuela", "Banesco", "Mercantil", "BBVA Provincial", "Banco Nacional de Crédito",
-    "Bancaribe", "Banco Exterior", "Banco del Tesoro", "Banco Bicentenario", "Banco Plaza",
-    "Banco Sofitasa", "Banco Fondo Común", "Banco Activo", "Banco Caroní", "Banco del Sur",
-    "Otro",
-)
-
-# Una referencia bancaria venezolana suele ser un número de 4 a 20 dígitos.
-REFERENCIA_VALIDA = re.compile(r"^\d{4,20}$")
+# La referencia de un pago de PayPal o de USDT no es solo números: puede traer
+# letras y guiones (el id de transacción de PayPal, o el hash de la red).
+REFERENCIA_VALIDA = re.compile(r"^[A-Za-z0-9\-]{4,80}$")
 FECHA_VALIDA = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -79,10 +43,9 @@ class ErrorDeDeposito(ValueError):
 
 @dataclass
 class ConfigDeposito:
-    minimo: int = 1_000            # Bs 10,00
-    tope_diario: int = 2_000_000   # Bs 20.000,00
+    minimo: int = 100              # $ 1,00
+    tope_diario: int = 200_000     # $ 2.000,00
     dias_atras: int = 3            # cuántos días atrás se admite declarar el pago
-    cuenta: CuentaDePago = field(default_factory=CuentaDePago.desde_entorno)
 
 
 @dataclass
@@ -126,7 +89,7 @@ class Depositos:
     # -- declarar --
 
     def declarar(self, correo: str, importe: object, referencia: str, banco: str,
-                 dia: str, metodo: str = "pago_movil", nota: str = "",
+                 dia: str, metodo: str = "paypal", nota: str = "",
                  pais: str = "") -> Deposito:
         """El jugador dice que ha pagado. Queda en cola, sin acreditar todavía."""
         correo = (correo or "").strip().lower()
@@ -134,12 +97,6 @@ class Depositos:
             raise ErrorDeDeposito("Esa cuenta no existe.")
         if metodo not in METODOS:
             raise ErrorDeDeposito(f"Método no válido. Los permitidos: {', '.join(METODOS)}.")
-        banco = (banco or "").strip()
-        # Los métodos de banco (Pago Móvil, transferencia) exigen banco de la lista.
-        # Los de teléfono/cashtag (Nequi, MACH, Cash App, Wise) no lo usan.
-        if metodo not in METODOS_SIN_BANCO:
-            if banco not in BANCOS:
-                raise ErrorDeDeposito("Ese banco no está en la lista.")
 
         from .paises import a_base, es_pais_valido
 
@@ -150,7 +107,7 @@ class Depositos:
 
         referencia = (referencia or "").strip()
         if not REFERENCIA_VALIDA.match(referencia):
-            raise ErrorDeDeposito("La referencia son solo números (entre 4 y 20 cifras).")
+            raise ErrorDeDeposito("La referencia son de 4 a 80 letras o números (id o hash del pago).")
 
         dia = (dia or "").strip()
         if not FECHA_VALIDA.match(dia):
@@ -158,8 +115,7 @@ class Depositos:
         self._comprobar_fecha(dia)
 
         try:
-            # El importe llega en la moneda del país del jugador; dentro se guarda
-            # en la moneda base, para que la contabilidad sea una sola.
+            # Todo el dinero es en dólares; no hay conversión.
             centimos = a_base(a_centimos(importe), pais)
         except ValueError as exc:
             raise ErrorDeDeposito(str(exc)) from None

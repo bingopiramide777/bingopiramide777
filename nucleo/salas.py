@@ -48,9 +48,9 @@ COMISION_ANFITRION = Decimal("0.10")    # el anfitrión cobra un 10 %; la app el
 # Límites del precio del cartón, en céntimos. Ni regalado ni abusivo.
 # Las salas de la casa y el evento los pone la administración desde el panel, así
 # que su tope es más alto que el de las salas de jugador.
-PRECIO_MINIMO = 1_00        # Bs 1,00
-PRECIO_MAXIMO = 500_00      # Bs 500,00 (salas de jugador)
-PRECIO_MAXIMO_CASA = 100_000_00  # Bs 100.000,00 (salas de la casa y el evento)
+PRECIO_MINIMO = 1_00        # $ 1,00
+PRECIO_MAXIMO = 500_00      # $ 500,00 (salas de jugador)
+PRECIO_MAXIMO_CASA = 100_000_00  # $ 100.000,00 (salas de la casa y el evento)
 
 MODOS_VALIDOS = ("normal", "carton_lleno", "competencia")
 
@@ -68,14 +68,14 @@ NOMBRE_MAXIMO_JUGADOR = 30
 NOMBRE_MAXIMO_CASA = 60
 
 # Las salas de la casa llevan nombre de estado de Venezuela. El último dato es
-# el tipo de juego que premia la sala. Todas nacen en Venezuela (moneda base).
+# el tipo de juego que premia la sala. El precio es en dólares (céntimos).
 SALAS_INICIALES = (
-    ("sala-zulia", "Zulia", "normal", 2_000_00, "linea_h1", "VE"),
-    ("sala-lara", "Lara", "competencia", 1_000_00, "cuatro_esquinas", "VE"),
-    ("sala-carabobo", "Carabobo", "carton_lleno", 500_00, "carton_lleno", "VE"),
-    ("sala-miranda", "Mérida", "normal", 200_00, "cruz_grande", "VE"),
-    ("sala-tachira", "Táchira", "competencia", 100_00, "cruz_pequena", "VE"),
-    ("sala-nueva-esparta", "Nueva Esparta", "carton_lleno", 50_00, "diagonal", "VE"),
+    ("sala-zulia", "Zulia", "normal", 10_00, "linea_h1", "VE"),
+    ("sala-lara", "Lara", "competencia", 5_00, "cuatro_esquinas", "VE"),
+    ("sala-carabobo", "Carabobo", "carton_lleno", 3_00, "carton_lleno", "VE"),
+    ("sala-miranda", "Mérida", "normal", 2_00, "cruz_grande", "VE"),
+    ("sala-tachira", "Táchira", "competencia", 1_00, "cruz_pequena", "VE"),
+    ("sala-nueva-esparta", "Nueva Esparta", "carton_lleno", 1_00, "diagonal", "VE"),
 )
 
 # La sala para jugar desde casa. Es una sala de la casa (no de un anfitrión),
@@ -84,29 +84,32 @@ SALAS_INICIALES = (
 SALA_CASA_ID = "sala-ganar-desde-casa"
 SALA_CASA_NOMBRE = "Ganar Dinero Desde Casa con BingoPiramide777"
 SALA_CASA_MODO = "carton_lleno"
-SALA_CASA_PRECIO = 50_00           # Bs 50,00 por cartón
+SALA_CASA_PRECIO = 2_00           # $ 2,00 por cartón
 SALA_CASA_TIPO = "carton_lleno"
 SALA_CASA_MAX_CARTONES = 6         # cartones por jugador
 
-# Precios que traían las salas antes de que la administración pudiera cambiarlos.
-# Se usan una sola vez, para subir la base de datos de quien ya tenía el programa
-# funcionando. Si un precio no coincide con el viejo, es que lo cambió el admin y
-# no se toca.
+# Precios que traían las salas antes del cambio a dólares (en céntimos de
+# bolívar). Se usan una sola vez, para convertir la base de datos de quien ya
+# tenía el programa funcionando. Si un precio no coincide con el viejo, es que lo
+# cambió la administración y no se toca.
 SALAS_INICIALES_ANTIGUAS = {
-    "sala-zulia": 5_00,
-    "sala-lara": 10_00,
-    "sala-carabobo": 20_00,
-    "sala-miranda": 50_00,
+    "sala-zulia": 2_000_00,
+    "sala-lara": 1_000_00,
+    "sala-carabobo": 500_00,
+    "sala-miranda": 200_00,
     "sala-tachira": 100_00,
-    "sala-nueva-esparta": 200_00,
+    "sala-nueva-esparta": 50_00,
 }
+
+# El precio en bolívares que traía la sala de jugar desde casa.
+SALA_CASA_PRECIO_ANTIGUO = 50_00
 
 # Nombre viejo de la sala de Mérida, cuando era "Miranda".
 NOMBRE_VIEJO_MIRANDA = "Miranda"
 
 # Marca de "los precios nuevos ya se aplicaron". Sube solo si hay que volver a
-# tocar los precios de las bases ya existentes.
-VERSION_PRECIOS = 1
+# tocar los precios de las bases ya existentes. La 2 es el cambio a dólares.
+VERSION_PRECIOS = 2
 
 # Sala de eventos: la maneja la administración. Ella pone el aforo, el precio del
 # cartón y el porcentaje del bote que se lleva cada puesto.
@@ -114,7 +117,7 @@ SALA_EVENTO_ID = "sala-evento-lago"
 SALA_EVENTO_NOMBRE = "Sala de Eventos Lago de Maracaibo"
 SALA_EVENTO_MODO = "competencia"
 SALA_EVENTO_TIPO = "cruz_grande"           # tipo de juego por defecto del evento
-SALA_EVENTO_PRECIO = 50_00                 # Bs 50,00 por cartón
+SALA_EVENTO_PRECIO = 2_00                 # $ 2,00 por cartón
 SALA_EVENTO_AFORO = 50                     # jugadores como máximo (0 = sin límite)
 SALA_EVENTO_CUPO = 0                       # cartones como máximo (0 = sin tope)
 PREMIO_EVENTO_POR_DEFECTO = (60, 15, 5)    # % del bote para 1º, 2º y 3º
@@ -304,6 +307,15 @@ class Salas:
                 campos["nombre"] = "Mérida"
             if campos:
                 self.almacen.actualizar_sala(id_, campos)
+        # La sala de jugar desde casa y el evento también bajan de bolívares a
+        # dólares, si siguen con el precio viejo.
+        for id_, nuevo in ((SALA_CASA_ID, SALA_CASA_PRECIO),
+                           (SALA_EVENTO_ID, SALA_EVENTO_PRECIO)):
+            fila = self.almacen.sala(id_)
+            if fila is None:
+                continue
+            if fila["precio_carton"] == SALA_CASA_PRECIO_ANTIGUO:
+                self.almacen.actualizar_sala(id_, {"precio_carton": nuevo})
         self.almacen.guardar_meta("precios_v", str(VERSION_PRECIOS))
 
     def _asegurar_iniciales(self) -> None:

@@ -84,13 +84,13 @@ class HerramientasTest(unittest.TestCase):
         r = self.h.ejecutar("resumen", {})
         self.assertEqual(r["jugadores"], 1)
         self.assertEqual(r["administradores"], 0)
-        self.assertEqual(r["dinero_en_cuentas"], "Bs 0,00")
+        self.assertEqual(r["dinero_en_cuentas"], "$ 0,00")
         self.assertEqual(r["depositos_pendientes"], 0)
 
     def test_buscar_jugador(self):
         r = self.h.ejecutar("buscar_jugador", {"correo": "ana@correo.com"})
         self.assertEqual(r["correo"], "ana@correo.com")
-        self.assertEqual(r["saldo"], "Bs 0,00")
+        self.assertEqual(r["saldo"], "$ 0,00")
 
     def test_buscar_jugador_que_no_existe(self):
         r = self.h.ejecutar("buscar_jugador", {"correo": "nadie@correo.com"})
@@ -158,31 +158,26 @@ class HerramientasTest(unittest.TestCase):
 
     # -- cuentas de la administración (la casa) --
 
-    def test_cuentas_admin_lista_los_cuatro_paises(self):
+    def test_cuentas_admin_es_una_sola_para_todos(self):
         r = self.h.ejecutar("cuentas_admin", {})
-        self.assertEqual([c["pais"] for c in r["cuentas"]], ["VE", "CO", "CL", "US"])
-        self.assertEqual(r["cuentas"][0]["nombre_pais"], "Venezuela")
-
-    def test_cuentas_admin_filtra_por_pais(self):
-        r = self.h.ejecutar("cuentas_admin", {"pais": "co"})
         self.assertEqual(len(r["cuentas"]), 1)
-        self.assertEqual(r["cuentas"][0]["pais"], "CO")
-        self.assertEqual(r["cuentas"][0]["moneda"], "COP")
+        self.assertEqual(r["cuentas"][0]["moneda"], "USD")
+        self.assertEqual(r["cuentas"][0]["banco"], "PayPal / USDT")
 
     def test_cuentas_admin_pais_invalido(self):
         r = self.h.ejecutar("cuentas_admin", {"pais": "XX"})
         self.assertIn("error", r)
 
-    def test_cuentas_admin_avisa_de_las_que_faltan(self):
-        """Sin variables de entorno, las cuentas salen sin configurar y se avisa."""
+    def test_cuentas_admin_sale_configurada(self):
+        """Con los datos por defecto, la cuenta de la casa ya está lista."""
         r = self.h.ejecutar("cuentas_admin", {})
-        self.assertEqual(r["sin_configurar"], ["VE", "CO", "CL", "US"])
+        self.assertEqual(r["sin_configurar"], [])
         self.assertIn("CASA", r["aviso"])
 
     def test_cuentas_admin_tolera_pais_nulo(self):
         """La IA manda null cuando no usa el filtro: no debe reventar."""
         r = self.h.ejecutar("cuentas_admin", {"pais": None})
-        self.assertEqual(len(r["cuentas"]), 4)
+        self.assertEqual(len(r["cuentas"]), 1)
 
     # -- el premio se paga por el instrumento que el ganador registró --
 
@@ -203,14 +198,13 @@ class HerramientasTest(unittest.TestCase):
 
     def test_acreditacion_muestra_el_instrumento_registrado(self):
         self._partida_con_ganador()
-        self.juego.fichas.guardar("ana@correo.com", "pago_movil", {
-            "titular": "Ana Pérez", "banco": "Banesco",
-            "telefono": "04161234567", "cedula": "V-12345678"})
+        self.juego.fichas.guardar("ana@correo.com", "paypal", {
+            "titular": "Ana Pérez", "correo": "ana@correo.com"})
         r = self.h.ejecutar("datos_de_acreditacion", {"correo": "ana@correo.com"})
         fila = r["acreditaciones"][0]
         self.assertTrue(fila["instrumento_registrado"])
-        self.assertEqual(fila["metodo_de_pago"], "pago_movil")
-        self.assertEqual(fila["datos_de_pago"]["Teléfono"], "04161234567")
+        self.assertEqual(fila["metodo_de_pago"], "paypal")
+        self.assertEqual(fila["datos_de_pago"]["Correo de PayPal"], "ana@correo.com")
 
     def test_acreditacion_sin_partidas_no_revienta(self):
         r = self.h.ejecutar("datos_de_acreditacion", {})
@@ -252,7 +246,7 @@ class GlenisTest(unittest.TestCase):
         pasos = [
             self._respuesta({"content": None, "tool_calls": [
                 {"id": "1", "function": {"name": "resumen", "arguments": "{}"}}]}),
-            self._respuesta({"content": "Hay 1 jugador y Bs 0,00."}),
+            self._respuesta({"content": "Hay 1 jugador y $ 0,00."}),
         ]
         with patch.object(self.glenis, "_pedir", side_effect=pasos):
             r = self.glenis.conversar([{"role": "user", "content": "resumen"}])

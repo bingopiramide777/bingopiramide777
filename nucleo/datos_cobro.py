@@ -4,13 +4,12 @@ El problema que resuelve: hoy, para pagarle un premio o un retiro a alguien, la
 administración tiene que pedirle los datos por chat cada vez. Y Glenis IA, que
 prepara los pagos, no tiene de dónde sacarlos.
 
-Con la ficha, el jugador los deja puestos una vez y ya están ahí. Se guardan
-**cifrados** (ver ``nucleo.secretos``): quien abra la base de datos no ve un
-número de cuenta, ve un paquete cifrado.
+Con la ficha, el jugador los deja puestos una vez (al registrarse) y ya están
+ahí. Se guardan **cifrados** (ver ``nucleo.secretos``): quien abra la base de
+datos no ve un número de cuenta, ve un paquete cifrado.
 
-Métodos soportados: los mismos que la app ya usa para cobrar, sin pasarelas de
-terceros. Pago Móvil (VE), Nequi (CO), MACH (CL), Cash App (US) y transferencia
-bancaria. Nada de PayPal.
+Métodos soportados: los mismos que la app usa para cobrar. PayPal (correo) y
+USDT en una billetera de cripto. Nada de bancos.
 
 Qué NO hace este módulo: mover dinero. Guarda y devuelve los datos de cobro. El
 pago real lo confirma una persona; Glenis solo lo prepara.
@@ -24,25 +23,20 @@ from dataclasses import dataclass, field
 
 from . import secretos
 
-# Métodos de cobro. Coinciden con los de depósito (nucleo.depositos.METODOS)
-# más la transferencia bancaria clásica.
-METODOS = ("pago_movil", "nequi", "mach", "cashapp", "transferencia")
+# Métodos de cobro. Coinciden con los de depósito (nucleo.depositos.METODOS).
+METODOS = ("paypal", "cripto")
 
 # Qué campos pide cada método. El orden es el que se muestra en el formulario.
 CAMPOS: dict[str, tuple[tuple[str, str], ...]] = {
-    "pago_movil": (("titular", "Titular"), ("banco", "Banco"),
-                   ("telefono", "Teléfono"), ("cedula", "Cédula / RIF")),
-    "nequi": (("titular", "Titular"), ("telefono", "Número Nequi")),
-    "mach": (("titular", "Titular"), ("telefono", "Número MACH"), ("rut", "RUT (opcional)")),
-    "cashapp": (("titular", "Titular"), ("cashtag", "Cashtag o teléfono")),
-    "transferencia": (("titular", "Titular"), ("banco", "Banco"),
-                      ("cuenta", "Número de cuenta"), ("tipo_cuenta", "Tipo de cuenta")),
+    "paypal": (("titular", "Titular"), ("correo", "Correo de PayPal")),
+    "cripto": (("titular", "Titular"), ("red", "Red"),
+               ("direccion", "Dirección de la billetera")),
 }
 
-# Un teléfono/cuenta: dígitos con guiones, puntos y un + inicial.
-_DIGITOS = re.compile(r"^[+]?[\d\s.\-()]{5,30}$")
-# La cédula/RIF lleva una letra delante en varios países (V-12345678, J-400...).
-_DOCUMENTO = re.compile(r"^[A-Za-z]{0,2}[\-.\s]?[\d.\-\s]{5,30}$")
+# Un correo con la forma mínima de correo.
+_CORREO = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# Una dirección de billetera: letras y números (TRON empieza por T, Ethereum por 0x).
+_DIRECCION = re.compile(r"^[A-Za-z0-9]{16,120}$")
 _LARGO_MAXIMO = 120
 
 
@@ -78,8 +72,7 @@ def _limpiar(valor: object) -> str:
 def validar(metodo: str, campos: dict) -> dict[str, str]:
     """Comprueba el método y los campos. Devuelve solo los campos que aplican.
 
-    No se inventa nada: si un campo obligatorio falta, se avisa. El campo
-    "rut" de MACH es el único opcional, y así se declara en CAMPOS.
+    No se inventa nada: si un campo obligatorio falta, se avisa.
     """
     metodo = (metodo or "").strip().lower()
     if metodo not in METODOS:
@@ -94,9 +87,9 @@ def validar(metodo: str, campos: dict) -> dict[str, str]:
             if opcional:
                 continue
             raise ErrorDeDatosCobro(f"Falta el dato de cobro: {etiqueta}.")
-        if clave in ("cedula", "rut") and not _DOCUMENTO.match(valor):
+        if clave == "correo" and not _CORREO.match(valor):
             raise ErrorDeDatosCobro(f"El dato «{etiqueta}» no tiene buena pinta.")
-        if clave in ("telefono", "cuenta") and not _DIGITOS.match(valor):
+        if clave == "direccion" and not _DIRECCION.match(valor):
             raise ErrorDeDatosCobro(f"El dato «{etiqueta}» no tiene buena pinta.")
         limpios[clave] = valor
     return limpios
@@ -137,7 +130,9 @@ def resumen_publico(ficha: FichaCobro) -> str:
         valor = ficha.campos.get(clave, "")
         if not valor:
             continue
-        if clave in ("telefono", "cuenta", "cashtag"):
+        if clave == "correo":
+            partes.append(valor)
+        elif clave == "direccion":
             visible = valor[-4:] if len(valor) > 4 else valor
             partes.append(f"{etiqueta} ···{visible}")
         elif clave == "titular":

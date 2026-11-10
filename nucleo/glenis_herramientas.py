@@ -89,10 +89,10 @@ class Herramientas:
                "partida": {"type": "string", "description": "Id de la partida, si se sabe"}},
               ["correo", "premio"]),
             f("anotar_pago_manual", "Anota que la administración ya pagó un premio por fuera "
-                                    "(transferencia o Pago Móvil hecho a mano).",
+                                    "(por PayPal o USDT, hecho a mano).",
               {"correo": {"type": "string", "description": "Correo del jugador"},
                "importe": {"type": "string", "description": "Cantidad pagada"},
-               "referencia": {"type": "string", "description": "Referencia de la transferencia"}},
+               "referencia": {"type": "string", "description": "Referencia del pago (ID de PayPal o hash de USDT)"}},
               ["correo", "importe"]),
             f("estado_de_cuenta", "Estado de cuenta de un jugador: saldo, total apostado, total "
                                   "ganado, neto, cuántos cartones y premios lleva, y sus últimos "
@@ -113,8 +113,8 @@ class Herramientas:
                                   "pendientes y depósitos por acreditar.",
               {}),
             f("ver_datos_cobro", "Datos de cobro de un jugador: por dónde y a qué cuenta "
-                                 "quiere que le paguen (Pago Móvil, Nequi, MACH, Cash App o "
-                                 "transferencia). Úsalo para saber a dónde mandarle un premio o "
+                                 "quiere que le paguen (PayPal o USDT). Úsalo para saber a dónde "
+                                 "mandarle un premio o "
                                  "un retiro. No es un pago: solo dice dónde pagarle.",
               {"correo": {"type": "string", "description": "Correo del jugador"}}, ["correo"]),
             f("preparar_pago_ganador", "Prepara el pago de un premio: busca al ganador, mira su "
@@ -126,13 +126,13 @@ class Herramientas:
                "partida": {"type": "string", "description": "Id de la partida (opcional)"}},
               ["correo", "importe"]),
             f("marcar_premio_pagado", "Deja constancia de que un premio ya se le acreditó al "
-                                      "ganador (por transferencia o Pago Móvil). No mueve el saldo "
+                                      "ganador (por PayPal o USDT). No mueve el saldo "
                                       "del juego: solo anota el pago.",
               {"correo": {"type": "string", "description": "Correo del ganador"},
                "importe": {"type": "string", "description": "Cantidad pagada"},
                "referencia": {"type": "string", "description": "Referencia o comprobante del pago"}},
               ["correo", "importe"]),
-            f("cuentas_admin", "Las cuentas de la administración, una por país, que son donde "
+            f("cuentas_admin", "La cuenta de la administración, que es donde "
                                "cae el dinero de los depósitos de los jugadores (Venezuela, "
                                "Colombia, Chile y Estados Unidos): banco, titular y datos de la "
                                "cuenta. Úsalo cuando pregunten a qué cuenta llega el dinero de un "
@@ -430,14 +430,15 @@ class Herramientas:
         }
 
     def _h_cuentas_admin(self, pais: str = "") -> dict:
-        """Las cuentas de la administración por país, donde cae el dinero de los depósitos."""
+        """La cuenta de la CASA (PayPal y USDT): donde cae el dinero de los depósitos."""
         from . import paises as _paises
 
         code = (pais or "").strip().upper()
         if code and not _paises.es_pais_valido(code):
             return {"error": f"No hay cuenta de administración para el país {code!r}. "
-                             "Los que hay: VE, CO, CL y US."}
-        cuentas = [_paises.cuenta_admin(code)] if code else _paises.cuentas_admin()
+                             "Los países que hay: VE, CO, CL y US."}
+        # La cuenta es la misma en todo el mundo: PayPal y la billetera USDT.
+        cuentas = _paises.cuentas_admin()
         lista = []
         for c in cuentas:
             lista.append({
@@ -451,8 +452,9 @@ class Herramientas:
             })
         return {
             "cuentas": lista,
-            "aviso": ("Son las cuentas de la CASA (la administración), no de los jugadores. "
-                      "Aquí es donde cae el dinero que depositan los jugadores de cada país."),
+            "aviso": ("Es la cuenta de la CASA (la administración), no de los jugadores. "
+                      "Aquí es donde cae el dinero que depositan los jugadores, con PayPal "
+                      "o con USDT (cripto). Es la misma para todos los países."),
             "sin_configurar": [c["pais"] for c in lista if not c["configurada"]],
         }
 

@@ -1,15 +1,14 @@
 """Configuración multi-país de pagos.
 
-Adaptado de ``config/payments.ts``. El dinero se guarda en céntimos enteros: el
-país no cambia las cuentas, solo **cómo se muestra** (moneda y símbolo) y **por
-dónde se cobra** (Pago Móvil, Nequi, MACH o Cash App).
+El dinero se guarda en céntimos enteros y en una sola moneda: el dólar. El país
+ya no cambia la moneda; solo **cómo se muestra** (nombre y símbolo) y el idioma.
+Se cobra siempre igual en todo el mundo: **PayPal o USDT (cripto)**.
 
 El país activo vive en una variable de contexto por petición, así ``a_texto``
 muestra la moneda correcta sin tener que pasarla por cada llamada.
 
-Los datos de cobro (teléfono, cédula, cashtag) salen de variables de entorno para
-poder cambiarlos en Render sin tocar el código. Los valores por defecto son
-marcadores de posición: hay que reemplazarlos por los reales.
+La cuenta de la casa (PayPal y billetera USDT) sale de variables de entorno para
+poder cambiarla en Render sin tocar el código.
 """
 
 from __future__ import annotations
@@ -17,28 +16,22 @@ from __future__ import annotations
 import contextvars
 import os
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal
 
 PAIS_POR_DEFECTO = "VE"
 
-# La moneda BASE: todo el dinero de dentro (saldos, botes, premios) se guarda en
-# céntimos de esta moneda. Los demás países se convierten a/desde ella. Se elige
-# Venezuela porque los saldos que ya existen están en bolívares, así la mejora no
-# cambia ni un céntimo de lo que la gente ya tiene.
-PAIS_BASE = "VE"
+# Una sola moneda para todos: el dólar. Los países se mantienen solo para el
+# idioma y la bandera; el dinero es siempre en dólares y no hay conversión.
+PAIS_BASE = "US"
 
 
-# Tasa por defecto: cuántas unidades de la moneda BASE vale 1 unidad de la moneda
-# del país. Por ejemplo, US = 40 significa "1 dólar = 40 bolívares".
-#
-# OJO: son valores de ejemplo. Las tasas reales cambian todos los días y hay que
-# ponerlas con las variables BINGO_TASA_CO, BINGO_TASA_CL y BINGO_TASA_US en
-# Render. Si no se pone ninguna, valen estos números y los precios saldrán mal.
+# Todo el dinero está en dólares, así que la tasa es siempre 1: no se convierte
+# nada. Se deja la función para no tocar a quien la llama.
 TASAS_POR_DEFECTO: dict[str, Decimal] = {
     "VE": Decimal("1"),
-    "CO": Decimal("0.01"),    # 1 peso = 0,01 Bs
-    "CL": Decimal("0.04"),    # 1 peso chileno = 0,04 Bs
-    "US": Decimal("40"),      # 1 dólar = 40 Bs
+    "CO": Decimal("1"),
+    "CL": Decimal("1"),
+    "US": Decimal("1"),
 }
 
 
@@ -50,7 +43,7 @@ class Pais:
     simbolo: str
     bandera: str
     locale: str
-    # Nombre de la moneda en plural y minúscula, para textos: "bolívares", "pesos".
+    # Nombre de la moneda en plural y minúscula, para textos: "dólares".
     moneda_nombre: str = ""
 
     def a_dict(self) -> dict:
@@ -109,9 +102,9 @@ class MetodoPago:
 # ---------------------------------------------------------------------------
 
 PAISES: tuple[Pais, ...] = (
-    Pais("VE", "Venezuela", "VES", "Bs", "🇻🇪", "es-VE", "bolívares"),
-    Pais("CO", "Colombia", "COP", "$", "🇨🇴", "es-CO", "pesos"),
-    Pais("CL", "Chile", "CLP", "$", "🇨🇱", "es-CL", "pesos"),
+    Pais("VE", "Venezuela", "USD", "$", "🇻🇪", "es-VE", "dólares"),
+    Pais("CO", "Colombia", "USD", "$", "🇨🇴", "es-CO", "dólares"),
+    Pais("CL", "Chile", "USD", "$", "🇨🇱", "es-CL", "dólares"),
     Pais("US", "Estados Unidos", "USD", "$", "🇺🇸", "en-US", "dólares"),
 )
 
@@ -123,88 +116,45 @@ def _env(clave: str, por_defecto: str) -> str:
     return os.environ.get(clave) or por_defecto
 
 
-def _cuenta_venezuela() -> tuple[DatoCuenta, ...]:
-    """La cuenta de Pago Móvil. Reutiliza la que ya usa el módulo de depósitos."""
-    from .depositos import CuentaDePago
-
-    c = CuentaDePago.desde_entorno()
-    datos = [DatoCuenta("Banco", c.banco, "Realiza el Pago Móvil a los siguientes datos"),
-             DatoCuenta("Teléfono", c.telefono)]
-    if c.cedula:
-        datos.append(DatoCuenta("Cédula / RIF", c.cedula))
-    if c.titular:
-        datos.append(DatoCuenta("Titular", c.titular))
-    return tuple(datos)
-
-
 # ---------------------------------------------------------------------------
-# Métodos de pago por país
+# Métodos de pago
 # ---------------------------------------------------------------------------
 
-def _cuenta_colombia() -> tuple[DatoCuenta, ...]:
-    return (DatoCuenta("Número Nequi", _env("BINGO_PAGO_NEQUI_TELEFONO", "3000000000"),
-                       "Envía el dinero a este número de Nequi"),)
+def _cuenta_paypal() -> tuple[DatoCuenta, ...]:
+    """La cuenta PayPal de la casa: donde se recibe el dinero y se paga."""
+    return (DatoCuenta("PayPal", _env("BINGO_PAGO_PAYPAL", "taktak.messenger@gmail.com"),
+                       "Envía el dinero a este correo de PayPal (amigos y familiares)"),)
 
 
-def _cuenta_chile() -> tuple[DatoCuenta, ...]:
-    return (DatoCuenta("Número MACH", _env("BINGO_PAGO_MACH_TELEFONO", "900000000"),
-                       "Envía el dinero a este número de MACH"),)
-
-
-def _cuenta_estados_unidos() -> tuple[DatoCuenta, ...]:
-    return (DatoCuenta("Cash App", _env("BINGO_PAGO_CASHAPP_CASHTAG", "$TuCashtag"),
-                       "Envía el dinero a este $Cashtag de Cash App"),)
-
-
-def _cuenta_wise() -> tuple[DatoCuenta, ...]:
+def _cuenta_cripto() -> tuple[DatoCuenta, ...]:
+    """La billetera USDT de la casa. La dirección se puede cambiar en Render."""
     return (
-        DatoCuenta("Tipo de cuenta", _env("BINGO_PAGO_WISE_TIPO", "Checking"),
-                   "Solo se usa para transferencias nacionales"),
-        DatoCuenta("Número de ruta (para wire y ACH)", _env("BINGO_PAGO_WISE_RUTA", "Por configurar"),
-                   "Proporcionado a Wise por Lead Bank, nuestro socio"),
-        DatoCuenta("Número de cuenta", _env("BINGO_PAGO_WISE_CUENTA", "Por configurar"),
-                   "Envía el dinero a esta cuenta de Wise"),
+        DatoCuenta("Moneda", "USDT (Tether)", "Manda la cantidad exacta en USDT"),
+        DatoCuenta("Red", _env("BINGO_PAGO_CRIPTO_RED", "ERC-20 (Ethereum)"),
+                   "Usa SOLO esta red, o el dinero se pierde"),
+        DatoCuenta("Billetera",
+                   _env("BINGO_PAGO_CRIPTO_DIRECCION",
+                        "0xbffd97a8e2ea154ca42aeea0fbb7990fa153ca48"),
+                   "Copia la dirección y manda el USDT aquí"),
     )
 
 
 METODOS_PAGO: tuple[MetodoPago, ...] = (
     MetodoPago(
-        id="pago_movil_ve", nombre="Pago Móvil", country="VE", moneda="VES",
+        id="paypal", nombre="PayPal", country="*", moneda="USD",
         fields=(
-            CampoPago("phone", "Número de teléfono", "04141234567", True, "tel"),
-            CampoPago("cedula", "Cédula de identidad", "V-12345678", True, "text"),
-        ),
-        _cuentas=_cuenta_venezuela,
-    ),
-    MetodoPago(
-        id="nequi_co", nombre="Nequi", country="CO", moneda="COP",
-        fields=(
-            CampoPago("phone", "Número de Nequi", "3001234567", True, "tel"),
-        ),
-        _cuentas=_cuenta_colombia,
-    ),
-    MetodoPago(
-        id="mach_cl", nombre="MACH", country="CL", moneda="CLP",
-        fields=(
-            CampoPago("phone", "Número de teléfono MACH", "912345678", True, "tel"),
-            CampoPago("rut", "RUT (recomendado)", "12.345.678-9", False, "text"),
-        ),
-        _cuentas=_cuenta_chile,
-    ),
-    MetodoPago(
-        id="cashapp_us", nombre="Cash App", country="US", moneda="USD",
-        fields=(
-            CampoPago("cashtag", "$Cashtag o teléfono", "$tuusuario o +1234567890", True, "text"),
-        ),
-        _cuentas=_cuenta_estados_unidos,
-    ),
-    MetodoPago(
-        id="wise_us", nombre="Wise", country="US", moneda="USD",
-        fields=(
-            CampoPago("correo", "Correo de Wise", "tu@correo.com", True, "email"),
+            CampoPago("correo", "Correo de PayPal", "tu@correo.com", True, "email"),
             CampoPago("titular", "Nombre del titular", "Nombre y apellido", True, "text"),
         ),
-        _cuentas=_cuenta_wise,
+        _cuentas=_cuenta_paypal,
+    ),
+    MetodoPago(
+        id="cripto", nombre="USDT (cripto)", country="*", moneda="USD",
+        fields=(
+            CampoPago("red", "Red", "TRC-20 (Tron)", True, "text"),
+            CampoPago("direccion", "Dirección de la billetera", "T...", True, "text"),
+        ),
+        _cuentas=_cuenta_cripto,
     ),
 )
 
@@ -232,16 +182,14 @@ def es_pais_valido(code: str | None) -> bool:
 def metodo_de_pais(code: str | None) -> MetodoPago | None:
     if not code:
         return None
-    code = str(code).strip().upper()
-    return next((m for m in METODOS_PAGO if m.country == code), None)
+    return METODOS_PAGO[0]
 
 
 def metodos_de_pais(code: str | None) -> list[MetodoPago]:
-    """Todos los métodos de cobro de un país (EE. UU. tiene Cash App y Wise)."""
+    """Los métodos de cobro. Son los mismos en todos los países: PayPal y USDT."""
     if not code:
         return []
-    code = str(code).strip().upper()
-    return [m for m in METODOS_PAGO if m.country == code]
+    return list(METODOS_PAGO)
 
 
 def metodo_por_id(id_: str | None) -> MetodoPago | None:
@@ -309,36 +257,18 @@ def simbolo_actual() -> str:
 # ---------------------------------------------------------------------------
 #
 # Todo el dinero de dentro (saldos, botes, premios, retiros) se guarda en
-# céntimos de la moneda BASE (bolívares). Cuando un jugador de otro país entra,
-# se convierte:
-#
-#   importe_en_base = importe_local * tasa             (al entrar dinero)
-#   importe_local   = importe_en_base / tasa           (al mostrar / al pagar)
-#
-# La tasa dice cuántas unidades de la moneda base vale 1 unidad local. Así la
-# contabilidad interna es única y cuadra siempre, y el jugador ve su moneda.
+# céntimos de dólar, que es la única moneda. La conversión quedó en 1 (no hay
+# nada que convertir), pero se conservan las funciones por compatibilidad.
 
 
 def tasa_de(code: str | None) -> Decimal:
-    """Cuántas unidades de la moneda base vale 1 unidad del país indicado.
+    """La tasa de conversión. Siempre 1: todo el dinero está en dólares.
 
-    Se lee de las variables de entorno (BINGO_TASA_XX) para poder cambiar las
-    tasas en Render sin desplegar. Venezuela es siempre 1: es la moneda base.
+    Se mantiene la función para no tocar a quien la llama, pero ya no lee nada
+    del entorno. Así, aunque quede una variable BINGO_TASA_XX vieja puesta en
+    Render, no puede mover ni un céntimo.
     """
-    code = (code or PAIS_BASE).strip().upper()
-    if code == PAIS_BASE:
-        return Decimal("1")
-    if not es_pais_valido(code):
-        return Decimal("1")
-    crudo = os.environ.get(f"BINGO_TASA_{code}")
-    if crudo:
-        try:
-            valor = Decimal(str(crudo).replace(",", "."))
-            if valor.is_finite() and valor > 0:
-                return valor
-        except (InvalidOperation, ValueError):
-            pass
-    return TASAS_POR_DEFECTO.get(code, Decimal("1"))
+    return Decimal("1")
 
 
 def a_base(centimos_locales: int, code: str | None) -> int:
@@ -378,13 +308,9 @@ def tasas() -> dict[str, str]:
 # Cuentas de cobro del administrador, por país
 # ---------------------------------------------------------------------------
 #
-# La ganancia de la app se cobra en la cuenta que corresponda al país donde se
-# jugó. Cada país tiene la suya y se configura por variables de entorno, para
-# poder cambiarla en Render sin tocar el código.
-#
-# Los números de cuenta NO viven en el repositorio: se ponen en Render con
-# `sync: false`. Aquí solo queda la forma (qué datos pide cada país) y el
-# marcador de posición, para que el panel avise de lo que falta.
+# La ganancia de la app cae en una sola cuenta para todo el mundo: el PayPal de
+# la casa y su billetera USDT. Se configuran por variables de entorno, para poder
+# cambiarlas en Render sin tocar el código.
 
 
 @dataclass(frozen=True)
@@ -416,37 +342,37 @@ class CuentaAdmin:
                 "lineas": [l.a_dict() for l in self.lineas], "configurada": self.configurada}
 
 
-# Qué datos de cuenta pide cada país, además del banco/entidad y el titular.
-_FORMAS_ADMIN: dict[str, tuple[str, ...]] = {
-    "VE": ("Teléfono", "Cédula / RIF"),
-    "CO": ("Número de cuenta",),
-    "CL": ("Número de cuenta", "RUT"),
-    "US": ("Tipo de cuenta", "Número de ruta (para wire y ACH)", "Número de cuenta"),
-}
+# La cuenta de administración es la misma para todos: PayPal y la billetera
+# USDT donde cae el dinero de la casa.
 
 
-def _lineas_admin(code: str) -> tuple[LineaCuenta, ...]:
-    """Los datos de la cuenta de administración de un país, leídos del entorno."""
-    forma = _FORMAS_ADMIN.get(code, ("Número de cuenta",))
-    return tuple(
-        LineaCuenta(etiqueta, _env(f"BINGO_ADMIN_CUENTA_{code}_DATO{i + 1}", "Por configurar"))
-        for i, etiqueta in enumerate(forma)
+def _lineas_admin() -> tuple[LineaCuenta, ...]:
+    """El PayPal y la billetera USDT de la casa. Son los mismos en todo el mundo,
+    así que se leen de dos variables compartidas (no una por país)."""
+    return (
+        LineaCuenta("PayPal", _env("BINGO_ADMIN_PAYPAL",
+                                   _env("BINGO_PAGO_PAYPAL", "taktak.messenger@gmail.com"))),
+        LineaCuenta("Billetera USDT",
+                    _env("BINGO_ADMIN_CRIPTO",
+                         _env("BINGO_PAGO_CRIPTO_DIRECCION",
+                              "0xbffd97a8e2ea154ca42aeea0fbb7990fa153ca48"))),
     )
 
 
 def cuenta_admin(code: str) -> CuentaAdmin:
-    """La cuenta donde se cobra la ganancia de la app en un país."""
+    """La cuenta donde se cobra la ganancia de la app. Es la misma en todo el mundo."""
     code = (code or PAIS_POR_DEFECTO).strip().upper()
     if not es_pais_valido(code):
         code = PAIS_POR_DEFECTO
     return CuentaAdmin(
         pais=code,
-        banco=_env(f"BINGO_ADMIN_CUENTA_{code}_BANCO", "Por configurar"),
-        titular=_env(f"BINGO_ADMIN_CUENTA_{code}_TITULAR", "BingoPiramide777"),
+        banco="PayPal / USDT",
+        titular=_env("BINGO_ADMIN_TITULAR", "BingoPiramide777"),
         moneda=moneda_de(code),
-        lineas=_lineas_admin(code),
+        lineas=_lineas_admin(),
     )
 
 
 def cuentas_admin() -> list[CuentaAdmin]:
-    return [cuenta_admin(p.code) for p in PAISES]
+    """La cuenta de la casa. Es una sola para todo el mundo: PayPal y USDT."""
+    return [cuenta_admin(PAIS_POR_DEFECTO)]

@@ -233,8 +233,8 @@ class Almacen:
                 with self.transaccion() as c:
                     c.execute(f"ALTER TABLE salas ADD COLUMN {nombre} {definicion}")
 
-        # Cada sala nació sin país. Las que ya existen son de la casa y sus precios
-        # están en bolívares, así que se marcan Venezuela (la moneda base).
+        # Cada sala nació sin país. Las que ya existen son de la casa, así que se
+        # marcan Venezuela (el país por defecto).
         columnas_s2 = {f["name"] for f in self._todos("PRAGMA table_info(salas)")}
         if "pais" not in columnas_s2:
             with self.transaccion() as c:
@@ -246,7 +246,7 @@ class Almacen:
             with self.transaccion() as c:
                 c.execute("ALTER TABLE codigos ADD COLUMN tipo TEXT NOT NULL DEFAULT 'recuperacion'")
 
-        # Los depósitos aprendieron de qué país vienen (Pago Móvil, Nequi, MACH…).
+        # Los depósitos aprendieron a guardar de qué país viene el jugador.
         columnas_d = {f["name"] for f in self._todos("PRAGMA table_info(depositos)")}
         if "pais" not in columnas_d:
             with self.transaccion() as c:

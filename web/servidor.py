@@ -22,7 +22,8 @@ from nucleo.almacen_pg import abrir_almacen
 from nucleo.correo import Correo, ErrorDeCorreo
 from nucleo.datos_cobro import CAMPOS as _CAMPOS_COBRO
 from nucleo.datos_cobro import METODOS as _METODOS_COBRO
-from nucleo.depositos import BANCOS, ErrorDeDeposito, Depositos
+from nucleo.depositos import METODOS as METODOS_DEPOSITO
+from nucleo.depositos import ErrorDeDeposito, Depositos
 from nucleo.fichas import ErrorDeFicha, FichasCobro
 from nucleo.glenis import ErrorDeGlenis, Glenis
 from nucleo.glenis_herramientas import Herramientas
@@ -623,9 +624,7 @@ class Manejador(BaseHTTPRequestHandler):
                 "preguntas": list(PREGUNTAS),
                 "modos": list(MODOS),
                 "tipos_juego": [{"id": i, "nombre": n} for i, n in TIPOS_JUEGO],
-                "bancos": list(BANCOS),
-                "cuenta_pago": self.juego.depositos.config.cuenta.a_dict(),
-                "metodos_deposito": ["pago_movil", "transferencia"],
+                "metodos_deposito": list(METODOS_DEPOSITO),
                 "deposito_minimo_texto": a_texto(self.juego.depositos.config.minimo),
                 "deposito_tope_texto": a_texto(self.juego.depositos.config.tope_diario),
                 "retiro_minimo": self.juego.retiros.config.minimo,
@@ -1154,7 +1153,7 @@ class Manejador(BaseHTTPRequestHandler):
                     d = self.juego.depositos.declarar(
                         jugador, datos.get("importe", ""), datos.get("referencia", ""),
                         datos.get("banco", ""), datos.get("dia", ""),
-                        datos.get("metodo", "pago_movil"), datos.get("nota", ""),
+                        datos.get("metodo", "paypal"), datos.get("nota", ""),
                         datos.get("pais", ""))
                 self._json({"ok": True, "deposito": self._deposito_json(d),
                             "mensaje": "Depósito declarado. Lo revisamos y te lo acreditamos."})

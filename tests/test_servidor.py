@@ -102,10 +102,10 @@ class ServidorTest(unittest.TestCase):
 
     def test_flujo_completo_de_juego(self):
         token = self.usuario("ana@correo.com", recarga="5000,00")
-        # Se juega en la sala Lara (Bs 1.000 el cartón).
+        # Se juega en la sala Lara ($ 5 el cartón).
         _, c = self.pedir("/api/carton", {"sala": "sala-lara"}, token)
-        self.assertEqual(c["precio"], 100_000)
-        self.assertEqual(c["saldo"], 400_000)
+        self.assertEqual(c["precio"], 500)
+        self.assertEqual(c["saldo"], 499_500)
         estado, b = self.pedir("/api/bola", {}, token)
         self.assertEqual(estado, 200)
         self.assertTrue(1 <= b["bola"] <= 75)
@@ -123,8 +123,8 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(estado, 200)
         self.assertEqual(r["cantidad"], 3)
         self.assertEqual(len(r["cartones"]), 3)
-        # Tres cartones de Bs 1.000: cobra 3.000 y el saldo baja en consecuencia.
-        self.assertEqual(r["saldo"], 200_000)
+        # Tres cartones de $ 5: cobra $ 15 y el saldo baja en consecuencia.
+        self.assertEqual(r["saldo"], 498_500)
         ids = {c["carton"] for c in r["cartones"]}
         self.assertEqual(len(ids), 3)  # cada uno con su id
 
@@ -182,8 +182,8 @@ class ServidorTest(unittest.TestCase):
     def test_flujo_de_retiro_completo(self):
         token = self.usuario("ana@correo.com", recarga="1000,00")
         _, r = self.pedir("/api/retiro",
-                          {"importe": "500,00", "metodo": "transferencia",
-                           "detalles": "Banco de Venezuela, cuenta 0102..."}, token)
+                          {"importe": "500,00", "metodo": "paypal",
+                           "detalles": "ana@correo.com"}, token)
         self.assertEqual(r["retiro"]["estado"], "pendiente")
         _, s = self.pedir("/api/saldo", token=token)
         self.assertEqual(s["saldo"], 50_000)   # se descontó al pedir
@@ -203,8 +203,8 @@ class ServidorTest(unittest.TestCase):
 
     def test_rechazar_retiro_devuelve_el_saldo(self):
         token = self.usuario("ana@correo.com", recarga="1000,00")
-        _, r = self.pedir("/api/retiro", {"importe": "500,00", "metodo": "pago_movil",
-                                          "detalles": "0414-1234567"}, token)
+        _, r = self.pedir("/api/retiro", {"importe": "500,00", "metodo": "paypal",
+                                          "detalles": "ana@correo.com"}, token)
         at = self.admin()
         self.pedir("/api/admin/retiro", {"id": r["retiro"]["id"], "accion": "rechazar", "nota": "mal"}, at)
         _, s = self.pedir("/api/saldo", token=token)
@@ -212,8 +212,8 @@ class ServidorTest(unittest.TestCase):
 
     def test_retiro_sin_saldo(self):
         token = self.usuario("ana@correo.com")
-        estado, _ = self.pedir("/api/retiro", {"importe": "500,00", "metodo": "transferencia",
-                                               "detalles": "Banco X 123456"}, token)
+        estado, _ = self.pedir("/api/retiro", {"importe": "500,00", "metodo": "paypal",
+                                               "detalles": "ana@correo.com"}, token)
         self.assertEqual(estado, 400)
 
     # -- recuperación de cuenta --
@@ -288,7 +288,7 @@ class ServidorTest(unittest.TestCase):
         sala = next(s for s in r["salas"] if s["id"] == "sala-ganar-desde-casa")
         self.assertEqual(sala["modo"], "carton_lleno")
         self.assertEqual(sala["max_cartones"], 6)
-        self.assertEqual(sala["precio_texto"], "Bs 50,00")
+        self.assertEqual(sala["precio_texto"], "$ 2,00")
 
     def test_no_se_pueden_comprar_mas_de_seis_cartones_en_la_sala_de_casa(self):
         """El tope por jugador es lo que impide acaparar el bote."""
@@ -304,7 +304,7 @@ class ServidorTest(unittest.TestCase):
         self.assertIn("6 cartones", err["error"])
         # Se cobraron los seis cartones, ni uno más.
         _, saldo = self.pedir("/api/saldo", token=token)
-        self.assertEqual(saldo["saldo"], 500_000 - 6 * 5_000)
+        self.assertEqual(saldo["saldo"], 500_000 - 6 * 200)
 
     def test_pasarse_del_tope_no_deja_media_compra_hecha(self):
         """Si pide 5 y solo le caben 2, no se le cobra nada."""
@@ -314,14 +314,14 @@ class ServidorTest(unittest.TestCase):
                                  {"sala": "sala-ganar-desde-casa", "cantidad": 4}, token)
         self.assertEqual(estado, 400)
         _, saldo = self.pedir("/api/saldo", token=token)
-        self.assertEqual(saldo["saldo"], 500_000 - 4 * 5_000)
+        self.assertEqual(saldo["saldo"], 500_000 - 4 * 200)
 
     def test_un_jugador_crea_su_sala(self):
         token = self.usuario("ana@correo.com")
         estado, r = self.pedir("/api/sala/crear", {
             "nombre": "La de Ana", "modo": "normal", "precio": "25,00", "publica": True}, token)
         self.assertEqual(estado, 200)
-        self.assertEqual(r["sala"]["precio_texto"], "Bs 25,00")
+        self.assertEqual(r["sala"]["precio_texto"], "$ 25,00")
         self.assertEqual(r["sala"]["dueno"], "ana@correo.com")
         self.assertIn("10%", r["mensaje"])
 
@@ -368,12 +368,12 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(estado, 200)
         self.assertEqual(len(r["salas"]), 1)
         self.assertEqual(r["ganancias"]["anfitrion"], 0)
-        self.assertEqual(r["ganancias"]["anfitrion_texto"], "Bs 0,00")
+        self.assertEqual(r["ganancias"]["anfitrion_texto"], "$ 0,00")
 
     def test_el_jugador_juega_en_la_sala_que_elige(self):
         token = self.usuario("ana@correo.com", recarga="5000,00")
         _, r = self.pedir("/api/carton", {"sala": "sala-zulia"}, token)
-        self.assertEqual(r["precio"], 200_000)   # Zulia: Bs 2.000
+        self.assertEqual(r["precio"], 1_000)   # Zulia: $ 10
 
     def test_entrar_a_una_sala_da_su_modo_y_reparto(self):
         token = self.usuario("ana@correo.com")
@@ -409,7 +409,7 @@ class ServidorTest(unittest.TestCase):
         estado, r = self.pedir("/api/admin/evento",
                                {"precio": "100,00", "aforo": 2, "premios_pct": "70,20,10"}, at)
         self.assertEqual(estado, 200)
-        self.assertEqual(r["evento"]["precio_texto"], "Bs 100,00")
+        self.assertEqual(r["evento"]["precio_texto"], "$ 100,00")
         self.assertEqual(r["evento"]["aforo"], 2)
         self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [70, 20, 10])
 
@@ -518,8 +518,8 @@ class ServidorTest(unittest.TestCase):
     def test_el_jugador_declara_un_deposito(self):
         token = self.usuario("ana@correo.com")
         estado, r = self.pedir("/api/deposito", {
-            "importe": "150,00", "referencia": "123456789", "banco": "Banco de Venezuela",
-            "dia": time.strftime("%Y-%m-%d"), "metodo": "pago_movil"}, token)
+            "importe": "150,00", "referencia": "123456789", "banco": "",
+            "dia": time.strftime("%Y-%m-%d"), "metodo": "paypal"}, token)
         self.assertEqual(estado, 200)
         self.assertEqual(r["deposito"]["estado"], "pendiente")
         # Y todavía no hay dinero.
@@ -527,21 +527,21 @@ class ServidorTest(unittest.TestCase):
 
     def test_declarar_deposito_necesita_entrar(self):
         estado, _ = self.pedir("/api/deposito", {"importe": "100,00", "referencia": "123456",
-                                                 "banco": "Banco de Venezuela",
+                                                 "banco": "",
                                                  "dia": time.strftime("%Y-%m-%d")})
         self.assertEqual(estado, 401)
 
     def test_la_misma_referencia_se_rechaza(self):
         token = self.usuario("ana@correo.com")
         hoy = time.strftime("%Y-%m-%d")
-        base = {"importe": "100,00", "referencia": "555555", "banco": "Banesco", "dia": hoy}
+        base = {"importe": "100,00", "referencia": "555555", "banco": "", "dia": hoy}
         self.assertEqual(self.pedir("/api/deposito", base, token)[0], 200)
         self.assertEqual(self.pedir("/api/deposito", base, token)[0], 400)
 
     def test_el_admin_acredita_el_deposito(self):
         token = self.usuario("ana@correo.com")
         _, r = self.pedir("/api/deposito", {"importe": "150,00", "referencia": "999888",
-                                            "banco": "Banesco",
+                                            "banco": "",
                                             "dia": time.strftime("%Y-%m-%d")}, token)
         at = self.admin()
         estado, res = self.pedir("/api/admin/deposito",
@@ -553,7 +553,7 @@ class ServidorTest(unittest.TestCase):
     def test_solo_el_admin_acredita(self):
         token = self.usuario("ana@correo.com")
         _, r = self.pedir("/api/deposito", {"importe": "100,00", "referencia": "777777",
-                                            "banco": "Banesco",
+                                            "banco": "",
                                             "dia": time.strftime("%Y-%m-%d")}, token)
         estado, _ = self.pedir("/api/admin/deposito",
                                {"id": r["deposito"]["id"], "accion": "acreditar"}, token)
@@ -563,7 +563,7 @@ class ServidorTest(unittest.TestCase):
     def test_el_jugador_ve_sus_depositos(self):
         token = self.usuario("ana@correo.com")
         self.pedir("/api/deposito", {"importe": "100,00", "referencia": "444444",
-                                     "banco": "Banesco", "dia": time.strftime("%Y-%m-%d")}, token)
+                                     "banco": "", "dia": time.strftime("%Y-%m-%d")}, token)
         estado, r = self.pedir("/api/depositos", token=token)
         self.assertEqual(estado, 200)
         self.assertEqual(len(r["depositos"]), 1)
@@ -590,7 +590,7 @@ class ServidorTest(unittest.TestCase):
     def test_el_resumen_cuenta_los_depositos(self):
         token = self.usuario("ana@correo.com")
         self.pedir("/api/deposito", {"importe": "100,00", "referencia": "333333",
-                                     "banco": "Banesco", "dia": time.strftime("%Y-%m-%d")}, token)
+                                     "banco": "", "dia": time.strftime("%Y-%m-%d")}, token)
         at = self.admin()
         _, r = self.pedir("/api/admin/resumen", token=at)
         self.assertEqual(r["depositos_pendientes"], 1)
@@ -635,28 +635,23 @@ class ServidorTest(unittest.TestCase):
         estado, _ = self.pedir("/api/admin/usuario", {"correo": ADMIN, "activo": False}, at)
         self.assertEqual(estado, 400)
 
-    # -- cuenta a la que el jugador manda el dinero --
+    # -- a dónde manda el jugador el dinero --
 
-    def test_config_trae_la_cuenta_de_pago(self):
+    def test_config_trae_los_metodos_para_pagar(self):
         estado, r = self.pedir("/api/config")
         self.assertEqual(estado, 200)
-        cuenta = r["cuenta_pago"]
-        self.assertTrue(cuenta["configurada"])
-        self.assertEqual(cuenta["banco"], "Banco de Venezuela")
-        self.assertEqual(cuenta["telefono"], "0416-7677264")
-        self.assertEqual(cuenta["cedula"], "12.256.618")
+        # Solo PayPal y USDT, y con la cuenta de la casa a la vista.
+        self.assertEqual([m["id"] for m in r["metodos_pago"]], ["paypal", "cripto"])
+        paypal = next(m for m in r["metodos_pago"] if m["id"] == "paypal")
+        self.assertTrue(paypal["platformAccount"])
+        valores = {d["value"] for d in paypal["platformAccount"]}
+        self.assertIn("taktak.messenger@gmail.com", valores)
 
-    def test_la_cuenta_de_pago_se_ve_sin_entrar(self):
-        """El jugador tiene que verla para poder pagar."""
-        estado, r = self.pedir("/api/config")
-        self.assertEqual(estado, 200)
-        self.assertIn("cuenta_pago", r)
-
-    def test_el_jugador_tambien_ve_la_cuenta(self):
+    def test_el_jugador_tambien_ve_los_metodos(self):
         token = self.usuario("ana@correo.com")
         estado, r = self.pedir("/api/config", token=token)
         self.assertEqual(estado, 200)
-        self.assertEqual(r["cuenta_pago"]["telefono"], "0416-7677264")
+        self.assertEqual([m["id"] for m in r["metodos_pago"]], ["paypal", "cripto"])
 
     # -- multi-país --
 
@@ -664,32 +659,33 @@ class ServidorTest(unittest.TestCase):
         estado, r = self.pedir("/api/paises")
         self.assertEqual(estado, 200)
         self.assertEqual([p["code"] for p in r["paises"]], ["VE", "CO", "CL", "US"])
-        # 5 métodos: EE. UU. tiene Cash App y Wise; los demás países, uno cada uno.
-        self.assertEqual(len(r["metodos_pago"]), 5)
+        # Dos métodos, iguales para todos: PayPal y cripto (USDT).
+        self.assertEqual(len(r["metodos_pago"]), 2)
 
     def test_config_trae_los_metodos_del_pais_y_las_cuentas_admin(self):
         estado, r = self.pedir("/api/config")
         self.assertEqual(estado, 200)
-        # En Venezuela solo hay un método, pero la lista siempre viene.
-        self.assertEqual([m["id"] for m in r["metodos_pago"]], ["pago_movil_ve"])
-        # Las cuentas de administración van una por país, para el desglose.
-        self.assertEqual([c["pais"] for c in r["cuentas_admin"]], ["VE", "CO", "CL", "US"])
+        # Los métodos son los mismos en todos los países.
+        self.assertEqual([m["id"] for m in r["metodos_pago"]], ["paypal", "cripto"])
+        # La cuenta de administración es una sola para todo el mundo.
+        self.assertEqual(len(r["cuentas_admin"]), 1)
 
     def test_config_trae_el_pais_y_la_moneda(self):
         estado, r = self.pedir("/api/config")
         self.assertEqual(estado, 200)
         self.assertEqual(r["pais"], "VE")
-        self.assertEqual(r["moneda"], "VES")
-        self.assertEqual(r["simbolo"], "Bs")
-        self.assertEqual(r["metodo_pago"]["id"], "pago_movil_ve")
+        self.assertEqual(r["moneda"], "USD")
+        self.assertEqual(r["simbolo"], "$")
+        self.assertEqual(r["metodo_pago"]["id"], "paypal")
 
     def test_la_cabecera_de_pais_cambia_la_moneda(self):
         estado, r = self.pedir("/api/config", cabeceras_extra={"X-Pais": "CO"})
         self.assertEqual(estado, 200)
         self.assertEqual(r["pais"], "CO")
-        self.assertEqual(r["moneda"], "COP")
+        # El país cambia el idioma, pero el dinero es siempre el dólar.
+        self.assertEqual(r["moneda"], "USD")
         self.assertEqual(r["simbolo"], "$")
-        self.assertEqual(r["metodo_pago"]["id"], "nequi_co")
+        self.assertEqual(r["metodo_pago"]["id"], "paypal")
 
     def test_el_idioma_detecta_el_pais(self):
         estado, r = self.pedir("/api/config", cabeceras_extra={"Accept-Language": "es-CO,es"})
@@ -710,7 +706,7 @@ class ServidorTest(unittest.TestCase):
         token = self.usuario("ana@correo.com")
         estado, r = self.pedir("/api/deposito", {
             "importe": "100,00", "referencia": "123456", "banco": "",
-            "dia": time.strftime("%Y-%m-%d"), "metodo": "cashapp", "pais": "US"}, token)
+            "dia": time.strftime("%Y-%m-%d"), "metodo": "cripto", "pais": "US"}, token)
         self.assertEqual(estado, 200, r)
         self.assertEqual(r["deposito"]["pais"], "US")
 
@@ -721,10 +717,10 @@ class ServidorTest(unittest.TestCase):
         estado, r = self.pedir("/api/admin/sala/editar",
                                {"sala": "sala-zulia", "precio": "3000,00"}, at)
         self.assertEqual(estado, 200)
-        self.assertEqual(r["sala"]["precio_texto"], "Bs 3.000,00")
+        self.assertEqual(r["sala"]["precio_texto"], "$ 3.000,00")
         _, salas = self.pedir("/api/salas")
         zulia = [s for s in salas["salas"] if s["id"] == "sala-zulia"][0]
-        self.assertEqual(zulia["precio_texto"], "Bs 3.000,00")
+        self.assertEqual(zulia["precio_texto"], "$ 3.000,00")
 
     def test_el_precio_nuevo_lo_paga_el_jugador(self):
         at = self.admin()
@@ -748,7 +744,7 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(estado, 403)
         _, salas = self.pedir("/api/salas")
         zulia = [s for s in salas["salas"] if s["id"] == "sala-zulia"][0]
-        self.assertEqual(zulia["precio_texto"], "Bs 2.000,00", "el precio no debió cambiar")
+        self.assertEqual(zulia["precio_texto"], "$ 10,00", "el precio no debió cambiar")
 
     def test_un_precio_desmedido_se_rechaza(self):
         at = self.admin()

@@ -32,9 +32,9 @@ function localeMoneda() {
   return (paisInfo && paisInfo.locale) || "es-VE";
 }
 
-/* Nombre de la moneda en plural para los textos: "bolívares", "pesos". */
+/* Nombre de la moneda para los textos. Siempre el dólar. */
 function nombreMoneda() {
-  return (paisInfo && paisInfo.currencyName) || "bolívares";
+  return (paisInfo && paisInfo.currencyName) || "dólares";
 }
 
 /* --- peticiones --- */
@@ -450,61 +450,41 @@ async function refrescarDepositos() {
   } catch (err) { /* sin sesión: no se muestra nada */ }
 }
 
-/* Recargar saldo ya no se hace a mano: el jugador declara un pago y la
-   administración lo revisa y lo acredita. */
+/* Recargar saldo ya no se hace a mano: el jugador declara un pago (PayPal o
+   USDT) y la administración lo revisa y lo acredita. */
 function abrirDeposito() {
-  const bancos = (configRetiro && configRetiro.bancos) || [];
-  const cuenta = (configRetiro && configRetiro.cuenta_pago) || {};
-  const metodoPais = configRetiro && configRetiro.metodo_pago;
   const sim = simboloMoneda();
   const hoy = new Date().toISOString().slice(0, 10);
-  // En cada país se cobra por su método (Pago Móvil, Nequi, MACH, Cash App) y a
-  // su cuenta. El bloque de cuenta sale del catálogo multi-país.
-  const cuentas = metodoPais ? metodoPais.platformAccount : [];
-  const bloqueCuenta = cuentas.length
-    ? `<div class="cuenta-pago">
-         <p class="cuenta-pago__titulo">${metodoPais
-           ? t("deposito.paga_a_metodo", { metodo: metodoPais.name })
-           : t("deposito.paga_a")}</p>
-         ${cuentas.map((c) => `<p class="cuenta-pago__linea"><span>${c.label}</span>
-           <strong class="mono">${c.value}</strong>
-           <button type="button" class="boton boton--fantasma boton--mini"
-                   data-copiar="${c.value}">${t("deposito.copiar")}</button></p>`).join("")}
-       </div>`
-    : (cuenta.configurada
-      ? `<div class="cuenta-pago">
-           <p class="cuenta-pago__titulo">${t("deposito.paga_a")}</p>
-           <p class="cuenta-pago__linea"><span>${t("deposito.banco")}</span><strong>${cuenta.banco}</strong></p>
-           <p class="cuenta-pago__linea"><span>${t("deposito.telefono")}</span>
-             <strong class="mono">${cuenta.telefono}</strong>
-             <button type="button" class="boton boton--fantasma boton--mini"
-                     data-copiar="${cuenta.telefono}">${t("deposito.copiar")}</button></p>
-         </div>`
-      : "");
-  const metodos = [
-    ["pago_movil", t("metodo.pago_movil")], ["transferencia", t("metodo.transferencia")],
-    ["nequi", t("metodo.nequi")], ["mach", t("metodo.mach")], ["cashapp", t("metodo.cashapp")],
+  const metodos = (configRetiro && configRetiro.metodos_pago) || [];
+  const opciones = metodos.length ? metodos : [
+    { id: "paypal", name: "PayPal", platformAccount: [] },
+    { id: "cripto", name: "USDT (cripto)", platformAccount: [] },
   ];
-  const metodosUsados = metodoPais
-    ? { pago_movil_ve: "pago_movil", nequi_co: "nequi", mach_cl: "mach", cashapp_us: "cashapp" }[metodoPais.id]
-    : "pago_movil";
+  // El bloque de a dónde pagar cambia según el método elegido.
+  const bloqueDe = (m) => {
+    const cuentas = (m && m.platformAccount) || [];
+    if (!cuentas.length) return "";
+    return `<div class="cuenta-pago">
+      <p class="cuenta-pago__titulo">${t("deposito.paga_a_metodo", { metodo: m.name })}</p>
+      ${cuentas.map((c) => `<p class="cuenta-pago__linea"><span>${c.label}</span>
+        <strong class="mono">${c.value}</strong>
+        <button type="button" class="boton boton--fantasma boton--mini"
+                data-copiar="${c.value}">${t("deposito.copiar")}</button></p>`).join("")}
+    </div>`;
+  };
   $("#dialogo-contenido").innerHTML = `
     <h2>${t("deposito.titulo")}</h2>
-    ${bloqueCuenta}
+    <div id="deposito-cuenta">${bloqueDe(opciones[0])}</div>
     <p style="color:var(--gris);font-size:.9rem">
       ${t("deposito.instrucciones", { minimo: configRetiro ? configRetiro.deposito_minimo_texto : "" })}</p>
     <form id="form-deposito">
-      <label>${t("deposito.monto", { moneda: sim })}
-        <input type="text" name="importe" inputmode="decimal" placeholder="${sim} 100,00" required>
-      </label>
       <label>${t("deposito.metodo")}
         <select name="metodo">
-          ${metodos.map(([v, texto]) => `<option value="${v}"
-            ${v === metodosUsados ? "selected" : ""}>${texto}</option>`).join("")}
+          ${opciones.map((m) => `<option value="${m.id}">${m.name}</option>`).join("")}
         </select>
       </label>
-      <label>${t("deposito.banco")}
-        <select name="banco">${bancos.map((b) => `<option value="${b}">${b}</option>`).join("")}</select>
+      <label>${t("deposito.monto", { moneda: sim })}
+        <input type="text" name="importe" inputmode="decimal" placeholder="${sim} 100,00" required>
       </label>
       <label>${t("deposito.referencia")}
         <input type="text" name="referencia" placeholder="${t("deposito.referencia_ph")}" required>
@@ -516,11 +496,19 @@ function abrirDeposito() {
     </form>`;
   $("#dialogo").hidden = false;
   $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
-  $("#dialogo-contenido").querySelectorAll("[data-copiar]").forEach((b) =>
-    (b.onclick = async () => {
-      try { await navigator.clipboard.writeText(b.dataset.copiar); avisar(t("deposito.copiado"), "bien"); }
-      catch (err) { avisar(t("deposito.copiar_manual"), "error"); }
-    }));
+  const conectarCopiar = () =>
+    $("#dialogo-contenido").querySelectorAll("[data-copiar]").forEach((b) =>
+      (b.onclick = async () => {
+        try { await navigator.clipboard.writeText(b.dataset.copiar); avisar(t("deposito.copiado"), "bien"); }
+        catch (err) { avisar(t("deposito.copiar_manual"), "error"); }
+      }));
+  conectarCopiar();
+  const sel = $("#form-deposito select[name=metodo]");
+  sel.onchange = () => {
+    const m = opciones.find((x) => x.id === sel.value) || opciones[0];
+    $("#deposito-cuenta").innerHTML = bloqueDe(m);
+    conectarCopiar();
+  };
   $("#form-deposito").onsubmit = async (e) => {
     e.preventDefault();
     const datos = Object.fromEntries(new FormData(e.target));
@@ -1182,7 +1170,7 @@ async function cargarPaises() {
     }
     paisInfo = catalogoPaises.find((p) => p.code === paisActual) || catalogoPaises[0] || null;
     pintarSelectorPais();
-  } catch (err) { /* sin catálogo se queda en bolívares */ }
+  } catch (err) { /* sin catálogo se queda en dólares */ }
 }
 
 function pintarSelectorPais() {
