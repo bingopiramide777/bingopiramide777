@@ -130,6 +130,13 @@ class Herramientas:
                "importe": {"type": "string", "description": "Cantidad pagada"},
                "referencia": {"type": "string", "description": "Referencia o comprobante del pago"}},
               ["correo", "importe"]),
+            f("cuentas_admin", "Las cuentas de la administración, una por país, que son donde "
+                               "cae el dinero de los depósitos de los jugadores (Venezuela, "
+                               "Colombia, Chile y Estados Unidos): banco, titular y datos de la "
+                               "cuenta. Úsalo cuando pregunten a qué cuenta llega el dinero de un "
+                               "país. No son cuentas de jugadores: son las de la casa.",
+              {"pais": {"type": "string", "enum": ["VE", "CO", "CL", "US"],
+                        "description": "Filtra por país. Si se omite, las de todos."}}),
         ]
 
     # -- ejecución --
@@ -404,6 +411,33 @@ class Herramientas:
             "depositos_por_acreditar_monto": a_texto(sum(d.centimos for d in depositos)),
             "pagos_manuales_anotados": [
                 {"texto": f["texto"], "cuando": f["cuando"]} for f in reversed(pagos_manuales[:20])],
+        }
+
+    def _h_cuentas_admin(self, pais: str = "") -> dict:
+        """Las cuentas de la administración por país, donde cae el dinero de los depósitos."""
+        from . import paises as _paises
+
+        code = (pais or "").strip().upper()
+        if code and not _paises.es_pais_valido(code):
+            return {"error": f"No hay cuenta de administración para el país {code!r}. "
+                             "Los que hay: VE, CO, CL y US."}
+        cuentas = [_paises.cuenta_admin(code)] if code else _paises.cuentas_admin()
+        lista = []
+        for c in cuentas:
+            lista.append({
+                "pais": c.pais,
+                "nombre_pais": (_paises.pais(c.pais).nombre if _paises.pais(c.pais) else c.pais),
+                "moneda": c.moneda,
+                "banco": c.banco,
+                "titular": c.titular,
+                "configurada": c.configurada,
+                "datos": [l.a_dict() for l in c.lineas],
+            })
+        return {
+            "cuentas": lista,
+            "aviso": ("Son las cuentas de la CASA (la administración), no de los jugadores. "
+                      "Aquí es donde cae el dinero que depositan los jugadores de cada país."),
+            "sin_configurar": [c["pais"] for c in lista if not c["configurada"]],
         }
 
     def _h_ver_datos_cobro(self, correo: str) -> dict:

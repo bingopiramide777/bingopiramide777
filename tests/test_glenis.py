@@ -154,6 +154,34 @@ class HerramientasTest(unittest.TestCase):
         nombres = [a["herramienta"] for a in self.h.registro]
         self.assertEqual(nombres, ["buscar_jugador", "resumen"])
 
+    # -- cuentas de la administración (la casa) --
+
+    def test_cuentas_admin_lista_los_cuatro_paises(self):
+        r = self.h.ejecutar("cuentas_admin", {})
+        self.assertEqual([c["pais"] for c in r["cuentas"]], ["VE", "CO", "CL", "US"])
+        self.assertEqual(r["cuentas"][0]["nombre_pais"], "Venezuela")
+
+    def test_cuentas_admin_filtra_por_pais(self):
+        r = self.h.ejecutar("cuentas_admin", {"pais": "co"})
+        self.assertEqual(len(r["cuentas"]), 1)
+        self.assertEqual(r["cuentas"][0]["pais"], "CO")
+        self.assertEqual(r["cuentas"][0]["moneda"], "COP")
+
+    def test_cuentas_admin_pais_invalido(self):
+        r = self.h.ejecutar("cuentas_admin", {"pais": "XX"})
+        self.assertIn("error", r)
+
+    def test_cuentas_admin_avisa_de_las_que_faltan(self):
+        """Sin variables de entorno, las cuentas salen sin configurar y se avisa."""
+        r = self.h.ejecutar("cuentas_admin", {})
+        self.assertEqual(r["sin_configurar"], ["VE", "CO", "CL", "US"])
+        self.assertIn("CASA", r["aviso"])
+
+    def test_cuentas_admin_tolera_pais_nulo(self):
+        """La IA manda null cuando no usa el filtro: no debe reventar."""
+        r = self.h.ejecutar("cuentas_admin", {"pais": None})
+        self.assertEqual(len(r["cuentas"]), 4)
+
 
 class GlenisTest(unittest.TestCase):
     def setUp(self):
