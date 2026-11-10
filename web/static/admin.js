@@ -77,6 +77,7 @@ function abrirAcceso() {
       <button class="boton boton--principal" type="submit">Entrar</button>
     </form>`;
   $("#dialogo").hidden = false;
+  asegurarCapa();
   $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
   $("#form-acceso").onsubmit = async (e) => {
     e.preventDefault();
@@ -707,6 +708,31 @@ const VENTANAS = {
 
 const abiertas = new Set();
 
+/* --- botón "atrás" del móvil ---
+   El panel es su propia página. Sin esto, la flecha del móvil abandonaba el
+   panel (y a veces cerraba la app). Se deja una entrada propia en el historial:
+   mientras haya algo abierto, "atrás" cierra lo último; si no hay nada, vuelve
+   al juego en vez de salir del panel. */
+let capaPropia = false;
+
+function asegurarCapa() {
+  if (capaPropia) return;
+  try { history.pushState({ panel: true }, ""); capaPropia = true; } catch (e) { /* antiguo */ }
+}
+
+function cerrarUltimo() {
+  if (!$("#dialogo").hidden) { $("#dialogo").hidden = true; return; }
+  const ventanas = document.querySelectorAll(".ventana");
+  if (ventanas.length) cerrarVentana(ventanas[ventanas.length - 1].id.replace("ventana-", ""));
+}
+
+window.addEventListener("popstate", () => {
+  capaPropia = false;
+  const hayAlgo = !$("#dialogo").hidden || document.querySelectorAll(".ventana").length;
+  if (hayAlgo) { cerrarUltimo(); asegurarCapa(); return; }
+  location.href = "/";
+});
+
 function abrirVentana(clave) {
   const cfg = VENTANAS[clave];
   if (!cfg) return;
@@ -719,6 +745,7 @@ function abrirVentana(clave) {
     return;
   }
   abiertas.add(clave);
+  asegurarCapa();
   const v = document.createElement("section");
   v.className = "ventana";
   v.id = "ventana-" + clave;

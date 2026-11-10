@@ -818,6 +818,40 @@ function refrescarTodo() {
   cargarReferidos();
   cargarEstadisticas();
   cargarTorneo();
+  cargarGanadores();
+}
+
+/* --- escaparate de ganadores recientes (portada) --- */
+
+function haceCuanto(segundos) {
+  if (!segundos) return t("ganadores.ahora");
+  const s = Math.max(0, Math.floor(Date.now() / 1000 - segundos));
+  if (s < 60) return t("ganadores.ahora");
+  const m = Math.floor(s / 60);
+  if (m < 60) return t("ganadores.hace_min", { n: m });
+  const h = Math.floor(m / 60);
+  if (h < 24) return t("ganadores.hace_hora", { n: h });
+  return t("ganadores.hace_dia", { n: Math.floor(h / 24) });
+}
+
+async function cargarGanadores() {
+  const caja = $("#portada-ganadores");
+  const lista = $("#lista-ganadores");
+  if (!caja || !lista) return;
+  try {
+    const d = await get("/api/ganadores");
+    const filas = d.ganadores || [];
+    if (!filas.length) { caja.hidden = true; return; }
+    lista.innerHTML = filas.map((g) => `
+      <li class="ganador">
+        <span class="ganador__medalla" aria-hidden="true">🏆</span>
+        <span class="ganador__quien">${g.nombre}</span>
+        <span class="ganador__sala">${g.sala ? t("ganadores.en_sala", { sala: g.sala }) : ""}</span>
+        <span class="ganador__premio">${g.premio_texto}</span>
+        <span class="ganador__cuando">${haceCuanto(g.cuando)}</span>
+      </li>`).join("");
+    caja.hidden = false;
+  } catch (err) { /* si falla, el escaparate no se muestra */ }
 }
 
 /* --- billetera de cripto: se conecta y se firma un mensaje --- */
@@ -1544,3 +1578,6 @@ if (formTrabajo) {
 }
 comprobarSesion().then(refrescarTodo);
 setInterval(refrescarPartida, 5000);
+// El escaparate se refresca de vez en cuando: los tiempos ("hace 2 min") se
+// quedan al día y aparece un ganador nuevo sin recargar la página.
+setInterval(cargarGanadores, 30000);

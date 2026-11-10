@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS partidas (
     ganadores      TEXT NOT NULL DEFAULT '',
     plazas         INTEGER NOT NULL DEFAULT 1
 );
+CREATE INDEX IF NOT EXISTS idx_partidas_terminada ON partidas(estado, terminada);
 
 CREATE TABLE IF NOT EXISTS depositos (
     id            TEXT PRIMARY KEY,
