@@ -103,7 +103,9 @@ class Herramientas:
               {"limite": {"type": "integer", "description": "Cuántas partidas mirar (por defecto 10)"}}),
             f("datos_de_acreditacion", "Datos que hacen falta para acreditarle un premio a un "
                                        "ganador: correo, nombre, monto del premio, partida y "
-                                       "referencia. Úsalo para preparar el pago.",
+                                       "referencia, más el instrumento financiero que el ganador "
+                                       "tiene registrado (a dónde se le paga) o el aviso de que "
+                                       "aún no lo ha registrado. Úsalo para preparar el pago.",
               {"partida": {"type": "string", "description": "Id de la partida (opcional)"},
                "correo": {"type": "string", "description": "Correo del ganador (opcional)"}}),
             f("reporte_de_pagos", "Resumen de lo que hay que pagar y lo ya pagado: premios "
@@ -376,20 +378,34 @@ class Herramientas:
                 if correo and f["ganador"] != correo:
                     continue
                 u = self.juego.usuarios.usuario(f["ganador"])
-                datos.append({
+                ficha = self.juego.fichas.de_seguro(f["ganador"])
+                fila_pago = {
                     "partida": f["id"],
                     "a_acreditar": f["ganador"],
                     "nombre": (u.nombre if u and u.nombre else "(sin nombre)"),
                     "monto": a_texto(f["premio"]),
                     "referencia_sugerida": f"PREMIO-{f['id']}",
                     "sala": f["sala"] or "(por defecto)",
-                })
+                    # El premio se paga por el instrumento que el ganador tenga
+                    # registrado. Sin ficha, no hay a dónde mandarle el dinero.
+                    "instrumento_registrado": bool(ficha.configurada),
+                }
+                if ficha.configurada:
+                    fila_pago["metodo_de_pago"] = ficha.metodo
+                    fila_pago["datos_de_pago"] = {c["label"]: c["value"]
+                                                  for c in ficha.a_dict()["campos"]}
+                else:
+                    fila_pago["falta"] = ("El ganador no ha registrado dónde recibir el "
+                                          "dinero. Hay que pedirle que lo ponga en su perfil "
+                                          "antes de poder pagarle.")
+                datos.append(fila_pago)
         if not datos:
             return {"aviso": "No hay premios pendientes con esos datos.",
                     "nota": "Para acreditar hacen falta: correo del ganador, monto y referencia."}
         return {"acreditaciones": datos,
-                "nota": "Cada pago necesita correo, monto y referencia. Anótalo con "
-                        "marcar_premio_pagado."}
+                "nota": ("El premio se le acredita al ganador por el instrumento financiero "
+                         "que tenga registrado en su perfil. Si no lo ha puesto, no se le "
+                         "puede pagar: pídeselo primero. Anota el pago con marcar_premio_pagado.")}
 
     def _h_reporte_de_pagos(self) -> dict:
         with self.juego.candado:
