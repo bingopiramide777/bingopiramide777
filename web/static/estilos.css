@@ -76,6 +76,12 @@ a { color: inherit; }
   backdrop-filter: blur(12px);
   border-bottom: 1px solid rgba(247, 201, 72, .22);
 }
+/* Botón de regreso del panel de administración: en el móvil va primero para
+   que se vea sin desplazarse. */
+.volver-juego { padding: .4rem 1rem; font-size: .9rem; }
+@media (max-width: 900px) {
+  .volver-juego { order: -1; margin-right: auto; }
+}
 
 .marca { display: flex; align-items: center; gap: .6rem; text-decoration: none; }
 .marca__icono { width: 34px; height: 34px; color: var(--dorado); }
@@ -370,6 +376,47 @@ input:focus { outline: 2px solid var(--dorado); outline-offset: 1px; }
 .portada__credito {
   position: absolute; right: .8rem; bottom: .5rem; z-index: 2;
   font-size: .68rem; color: rgba(253, 246, 227, .55);
+}
+
+/* ===== Escaparate de ganadores recientes ===== */
+
+.ganadores {
+  max-width: 1100px; margin: 0 auto; padding: 1rem clamp(1rem, 4vw, 3rem) 0;
+}
+.ganadores__titulo {
+  display: flex; align-items: center; gap: .5rem;
+  font-size: .82rem; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--texto-suave); margin: 0 0 .6rem;
+}
+/* Punto que late: da la sensación de que está pasando ahora mismo. */
+.ganadores__punto {
+  width: .55rem; height: .55rem; border-radius: 50%; background: var(--verde);
+  box-shadow: 0 0 0 0 rgba(0, 200, 83, .55); animation: latido 2s infinite;
+}
+@keyframes latido {
+  0%   { box-shadow: 0 0 0 0 rgba(0, 200, 83, .55); }
+  70%  { box-shadow: 0 0 0 .5rem rgba(0, 200, 83, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 200, 83, 0); }
+}
+.ganadores__lista {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; gap: .7rem; overflow-x: auto; -webkit-overflow-scrolling: touch;
+}
+.ganadores__lista::-webkit-scrollbar { display: none; }
+.ganador {
+  flex: 0 0 auto; display: flex; align-items: center; gap: .45rem;
+  padding: .5rem .8rem; border-radius: 999px;
+  background: var(--tarjeta); border: 1px solid var(--borde);
+  font-size: .86rem; white-space: nowrap;
+}
+.ganador__medalla { font-size: 1rem; }
+.ganador__quien { font-weight: 700; color: var(--texto); }
+.ganador__sala { color: var(--texto-suave); }
+.ganador__premio { font-weight: 800; color: var(--dorado); }
+.ganador__cuando { color: var(--texto-suave); font-size: .78rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ganadores__punto { animation: none; }
 }
 
 /* Acceso desde la portada: dos botones grandes, uno debajo del otro en el móvil. */

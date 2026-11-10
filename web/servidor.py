@@ -638,6 +638,18 @@ class Manejador(BaseHTTPRequestHandler):
                 self._json(self.juego.info_evento())
             return
 
+        if ruta == "/api/ganadores":
+            # Escaparate público: los últimos que cantaron bingo. Se muestran
+            # sin sesión, así que solo sale el nombre corto, nunca el correo.
+            with self.juego.candado:
+                filas = self.juego.almacen.ganadores_recientes(12)
+            self._json({"ganadores": [
+                {"nombre": f["nombre"], "sala": f["sala"],
+                 "premio": f["premio"], "premio_texto": a_texto(f["premio"]),
+                 "cuando": f["cuando"]}
+                for f in filas]})
+            return
+
         if ruta == "/api/mis-salas":
             jugador = self._jugador()
             if not jugador:

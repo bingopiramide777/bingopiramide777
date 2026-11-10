@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS partidas (
     ganadores      TEXT NOT NULL DEFAULT '',
     plazas         INTEGER NOT NULL DEFAULT 1
 );
+CREATE INDEX IF NOT EXISTS idx_partidas_terminada ON partidas(estado, terminada);
 
 CREATE TABLE IF NOT EXISTS depositos (
     id            TEXT PRIMARY KEY,
@@ -695,6 +696,37 @@ class Almacen:
             return self._todos("SELECT * FROM partidas ORDER BY rowid DESC LIMIT ?", (limite,))
         return self._todos(
             "SELECT * FROM partidas WHERE sala = ? ORDER BY rowid DESC LIMIT ?", (sala, limite))
+
+    def ganadores_recientes(self, limite: int = 12) -> list[dict]:
+        """Los últimos que cantaron bingo, para el escaparate de la portada.
+
+        Se junta la partida terminada con su sala (para el nombre) y con el
+        jugador (para mostrar solo el nombre, nunca el correo entero). La lista
+        va de lo más reciente a lo más viejo.
+        """
+        filas = self._todos(
+            "SELECT p.terminada, p.premio, p.ganador, p.sala,"
+            " s.nombre AS sala_nombre, u.nombre AS jugador_nombre"
+            " FROM partidas p"
+            " LEFT JOIN salas s ON s.id = p.sala"
+            " LEFT JOIN usuarios u ON u.correo = p.ganador"
+            " WHERE p.estado = 'terminada' AND p.ganador IS NOT NULL AND p.ganador != ''"
+            " ORDER BY p.terminada DESC LIMIT ?", (limite,))
+        return [{"cuando": f["terminada"], "premio": f["premio"] or 0,
+                 "sala": f["sala_nombre"] or f["sala"] or "",
+                 "nombre": self._nombre_publico(f["jugador_nombre"], f["ganador"])}
+                for f in filas]
+
+    @staticmethod
+    def _nombre_publico(nombre: str | None, correo: str | None) -> str:
+        """Nombre a mostrar sin destapar el correo: 'Ana P.' o la parte de antes
+        de la arroba con la inicial del apellido si el nombre viene vacío."""
+        limpio = (nombre or "").strip()
+        if limpio:
+            partes = limpio.split()
+            return partes[0] + (" " + partes[1][0] + "." if len(partes) > 1 else "")
+        antes = (correo or "").split("@")[0].replace(".", " ").replace("_", " ").strip()
+        return antes.title() if antes else "Jugador"
 
     # -- salas --
 

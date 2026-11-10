@@ -90,6 +90,42 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(r.status, 200)
         self.assertIn("administración", html.lower())
 
+    def test_el_panel_tiene_boton_para_volver_al_juego(self):
+        # El panel es otra página: en el móvil, sin este botón la única salida
+        # era la flecha del navegador (y a veces cierra la app).
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.puerto}/admin", timeout=10) as r:
+            html = r.read().decode()
+        self.assertIn("volver-juego", html)
+        self.assertIn("Volver al juego", html)
+
+    def test_la_portada_tiene_el_escaparate_de_ganadores(self):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.puerto}/", timeout=10) as r:
+            html = r.read().decode()
+        self.assertIn("portada-ganadores", html)
+
+    def test_el_escaparate_de_ganadores_es_publico(self):
+        # Sin sesión: se ven los últimos que cantaron bingo, con el nombre corto.
+        self.almacen.crear_usuario("ana@correo.com", "x", "Ana Pérez", "jugador", time.time())
+        self.almacen.guardar_sala({"id": "sala-roma", "nombre": "Sala Roma", "modo": "normal",
+                                   "precio_carton": 100, "creada": time.time()})
+        self.almacen.guardar_partida({
+            "id": "p1", "sala": "sala-roma", "patron": "linea_h1", "precio_carton": 100,
+            "estado": "terminada", "ganador": "ana@correo.com", "premio": 150_000,
+            "terminada": time.time(), "ganadores": "[]", "plazas": 1})
+        estado, datos = self.pedir("/api/ganadores")
+        self.assertEqual(estado, 200)
+        self.assertEqual(len(datos["ganadores"]), 1)
+        g = datos["ganadores"][0]
+        self.assertEqual(g["nombre"], "Ana P.")
+        self.assertEqual(g["sala"], "Sala Roma")
+        self.assertEqual(g["premio_texto"], "$ 1.500,00")
+        self.assertNotIn("@", g["nombre"])
+
+    def test_sin_ganadores_la_lista_viene_vacia(self):
+        estado, datos = self.pedir("/api/ganadores")
+        self.assertEqual(estado, 200)
+        self.assertEqual(datos["ganadores"], [])
+
     def test_no_se_puede_salir_de_la_carpeta_web(self):
         estado, _ = self.pedir("/../servidor.py")
         self.assertIn(estado, (400, 404))

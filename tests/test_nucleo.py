@@ -88,5 +88,60 @@ class MonederoTest(unittest.TestCase):
         a2.cerrar()
 
 
+class GanadoresRecientesTest(unittest.TestCase):
+    """El escaparate de la portada: últimos que cantaron bingo."""
+
+    def setUp(self):
+        import os, tempfile, time
+        self.almacen = Almacen(os.path.join(tempfile.mkdtemp(), "prueba.db"))
+        self.t = time.time()
+
+    def tearDown(self):
+        self.almacen.cerrar()
+
+    def _usuario(self, correo, nombre):
+        self.almacen.crear_usuario(correo, "x", nombre, "jugador", self.t)
+
+    def _partida(self, pid, sala, ganador, premio, terminada, estado="terminada"):
+        self.almacen.guardar_partida({
+            "id": pid, "sala": sala, "patron": "linea_h1", "precio_carton": 100,
+            "estado": estado, "ganador": ganador, "premio": premio,
+            "terminada": terminada, "ganadores": "[]", "plazas": 1})
+
+    def test_salen_de_la_mas_reciente_a_la_mas_vieja(self):
+        self._usuario("ana@x.com", "Ana Pérez")
+        self._usuario("luis@x.com", "Luis Gómez")
+        self.almacen.guardar_sala({"id": "s1", "nombre": "Sala Roma", "modo": "normal",
+                                   "precio_carton": 100, "creada": self.t})
+        self._partida("p1", "s1", "ana@x.com", 1000, self.t - 500)
+        self._partida("p2", "s1", "luis@x.com", 2000, self.t - 100)
+        lista = self.almacen.ganadores_recientes()
+        self.assertEqual([g["premio"] for g in lista], [2000, 1000])
+
+    def test_nunca_expone_el_correo_completo(self):
+        self._usuario("ana@x.com", "Ana Pérez")
+        self._partida("p1", "", "ana@x.com", 1000, self.t)
+        g = self.almacen.ganadores_recientes()[0]
+        self.assertEqual(g["nombre"], "Ana P.")
+        self.assertNotIn("@", g["nombre"])
+
+    def test_sin_nombre_usa_la_parte_del_correo(self):
+        self._usuario("juan.perez@x.com", "")
+        self._partida("p1", "", "juan.perez@x.com", 1000, self.t)
+        self.assertEqual(self.almacen.ganadores_recientes()[0]["nombre"], "Juan Perez")
+
+    def test_las_partidas_sin_terminar_o_sin_ganador_no_salen(self):
+        self._usuario("ana@x.com", "Ana Pérez")
+        self._partida("p1", "", "ana@x.com", 1000, self.t, estado="jugando")
+        self._partida("p2", "", None, 0, self.t)
+        self.assertEqual(self.almacen.ganadores_recientes(), [])
+
+    def test_el_limite_se_respeta(self):
+        self._usuario("ana@x.com", "Ana Pérez")
+        for i in range(5):
+            self._partida(f"p{i}", "", "ana@x.com", 100 * i, self.t + i)
+        self.assertEqual(len(self.almacen.ganadores_recientes(limite=3)), 3)
+
+
 if __name__ == "__main__":
     unittest.main()
