@@ -9,6 +9,7 @@ correo configurado. Nadie puede darse de alta como admin por su cuenta.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import re
@@ -69,6 +70,31 @@ def validar_clave(clave: str) -> None:
         raise ErrorDeUsuario("Esa contraseña es demasiado común.")
 
 
+# La foto de perfil viaja como data URL en base64. Se admiten solo imágenes
+# pequeñas (una cara, no un póster) para no llenar la base de datos.
+FOTO_MAX_BYTES = 300_000
+_FOTO_VALIDA = re.compile(
+    r"^data:image/(png|jpeg|jpg|webp|gif);base64,([A-Za-z0-9+/]+={0,2})$")
+
+
+def validar_foto(foto: str) -> str:
+    """Devuelve la foto limpia o lanza si no vale. Vacío = quitarla."""
+    foto = (foto or "").strip()
+    if not foto:
+        return ""
+    coincidencia = _FOTO_VALIDA.match(foto)
+    if not coincidencia:
+        raise ErrorDeUsuario("La foto tiene que ser una imagen (PNG, JPG, WEBP o GIF).")
+    datos = coincidencia.group(2)
+    if len(datos) * 3 // 4 > FOTO_MAX_BYTES:
+        raise ErrorDeUsuario("La foto es demasiado grande (máximo 300 KB).")
+    try:
+        base64.b64decode(datos, validate=True)
+    except (ValueError, base64.binascii.Error):
+        raise ErrorDeUsuario("La foto no se pudo leer.") from None
+    return foto
+
+
 @dataclass
 class Usuario:
     correo: str
@@ -78,6 +104,7 @@ class Usuario:
     creado: float
     comision_pct: int = -1     # % de comisión de anfitrión; -1 = el de por defecto
     verificado: bool = True    # False = falta confirmar el correo
+    foto: str = ""             # foto de perfil (data URL) o vacío
 
 
 @dataclass
@@ -106,7 +133,8 @@ def _usuario(fila) -> Usuario:
     return Usuario(correo=fila["correo"], nombre=fila["nombre"], rol=fila["rol"],
                    activo=bool(fila["activo"]), creado=fila["creado"],
                    comision_pct=int(fila["comision_pct"]) if "comision_pct" in claves else -1,
-                   verificado=bool(fila["verificado"]) if "verificado" in claves else True)
+                   verificado=bool(fila["verificado"]) if "verificado" in claves else True,
+                   foto=(fila["foto"] if "foto" in claves else "") or "")
 
 
 class Usuarios:
@@ -219,6 +247,18 @@ class Usuarios:
     def restablecer_por_admin(self, correo: str, nueva: str) -> None:
         """El administrador pone una contraseña nueva. Se cierran las sesiones."""
         self.cambiar_clave(correo, nueva)
+
+    def cambiar_foto(self, correo: str, foto: str) -> str:
+        """Guarda la foto de perfil de una cuenta. Devuelve la foto guardada."""
+        correo = (correo or "").strip().lower()
+        if not self.almacen.usuario(correo):
+            raise ErrorDeUsuario("Esa cuenta no existe.")
+        limpia = validar_foto(foto)
+        self.almacen.cambiar_foto(correo, limpia)
+        return limpia
+
+    def foto_de(self, correo: str) -> str:
+        return self.almacen.foto_de(correo)
 
     # -- recuperación: pregunta secreta --
 

@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
     verificado INTEGER NOT NULL DEFAULT 1,
     datos_cobro TEXT NOT NULL DEFAULT '',
     codigo_amigo TEXT NOT NULL DEFAULT '',
-    referido_por TEXT NOT NULL DEFAULT ''
+    referido_por TEXT NOT NULL DEFAULT '',
+    foto TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_codigo ON usuarios(codigo_amigo)
     WHERE codigo_amigo <> '';
@@ -198,7 +199,8 @@ class Almacen:
                   ("verificado", "INTEGER NOT NULL DEFAULT 1"),
                   ("datos_cobro", "TEXT NOT NULL DEFAULT ''"),
                   ("codigo_amigo", "TEXT NOT NULL DEFAULT ''"),
-                  ("referido_por", "TEXT NOT NULL DEFAULT ''"))
+                  ("referido_por", "TEXT NOT NULL DEFAULT ''"),
+                  ("foto", "TEXT NOT NULL DEFAULT ''"))
         for nombre, definicion in nuevas:
             if nombre not in columnas:
                 with self.transaccion() as c:
@@ -350,6 +352,15 @@ class Almacen:
         """Asigna el código de amigo de una cuenta que aún no lo tenía."""
         with self.transaccion() as c:
             c.execute("UPDATE usuarios SET codigo_amigo = ? WHERE correo = ?", (codigo, correo))
+
+    def cambiar_foto(self, correo: str, foto: str) -> None:
+        """Guarda la foto de perfil (vacío = quitarla)."""
+        with self.transaccion() as c:
+            c.execute("UPDATE usuarios SET foto = ? WHERE correo = ?", (foto or "", correo))
+
+    def foto_de(self, correo: str) -> str:
+        fila = self._uno("SELECT foto FROM usuarios WHERE correo = ?", (correo,))
+        return (fila["foto"] if fila else "") or ""
 
     def usuarios(self) -> list[sqlite3.Row]:
         return self._todos("SELECT * FROM usuarios ORDER BY creado")

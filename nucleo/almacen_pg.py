@@ -40,7 +40,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
     respuesta_huella TEXT NOT NULL DEFAULT '',
     datos_cobro TEXT NOT NULL DEFAULT '',
     codigo_amigo TEXT NOT NULL DEFAULT '',
-    referido_por TEXT NOT NULL DEFAULT ''
+    referido_por TEXT NOT NULL DEFAULT '',
+    foto TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_codigo ON usuarios(codigo_amigo)
     WHERE codigo_amigo <> '';
@@ -269,7 +270,8 @@ class AlmacenPG(Almacen):
                          ("verificado", "INTEGER NOT NULL DEFAULT 1"),
                          ("datos_cobro", "TEXT NOT NULL DEFAULT ''"),
                          ("codigo_amigo", "TEXT NOT NULL DEFAULT ''"),
-                         ("referido_por", "TEXT NOT NULL DEFAULT ''")),
+                         ("referido_por", "TEXT NOT NULL DEFAULT ''"),
+                         ("foto", "TEXT NOT NULL DEFAULT ''")),
             "codigos": (("tipo", "TEXT NOT NULL DEFAULT 'recuperacion'"),),
             "partidas": (("sala", "TEXT NOT NULL DEFAULT ''"),
                          ("ganadores", "TEXT NOT NULL DEFAULT ''"),

@@ -6,6 +6,7 @@ Sirve la interfaz del jugador, el panel de administración y la API.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -13,7 +14,7 @@ import secrets
 import time
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 from bingo import MesaBingo, Sala
 from nucleo import Almacen, ErrorDeDinero, ErrorDeMonedero, Monedero, Usuarios, a_centimos, a_texto
@@ -410,8 +411,10 @@ class Manejador(BaseHTTPRequestHandler):
         self._json({"error": mensaje}, codigo)
 
     def _leer_json(self) -> dict:
+        # El tope cubre la foto de perfil: 300 KB en claro son ~400 KB en base64
+        # más el envoltorio JSON. Un cuerpo mayor que esto se ignora.
         largo = int(self.headers.get("Content-Length") or 0)
-        if largo <= 0 or largo > 100_000:
+        if largo <= 0 or largo > 600_000:
             return {}
         try:
             return json.loads(self.rfile.read(largo).decode("utf-8"))
@@ -492,6 +495,23 @@ class Manejador(BaseHTTPRequestHandler):
         d["precio_texto"] = a_texto(s.precio_carton)
         return d
 
+    def _jugador_json(self, correo: str) -> dict:
+        """Datos públicos de un jugador para la mesa: nombre, foto y correo."""
+        fila = self.juego.almacen.usuario(correo)
+        nombre = (fila["nombre"] if fila and fila["nombre"] else "") or correo.split("@")[0]
+        tiene_foto = bool(fila and (fila["foto"] or ""))
+        return {
+            "correo": correo,
+            "nombre": nombre,
+            "foto_url": f"/api/foto?correo={quote(correo)}" if tiene_foto else "",
+        }
+
+    def _enriquecer_mesa(self, vista: dict) -> dict:
+        """Añade nombre y foto a la lista 'a cuánto están' de la mesa."""
+        for fila in vista.get("a_cuanto_estan", []):
+            fila.update(self._jugador_json(fila["jugador"]))
+        return vista
+
     def _retiro_json(self, r) -> dict:
         return {"id": r.id, "correo": r.correo, "centimos": r.centimos,
                 "importe_texto": a_texto(r.centimos), "metodo": r.metodo,
@@ -515,13 +535,41 @@ class Manejador(BaseHTTPRequestHandler):
             if not jugador:
                 self._error("Sin sesión.", 401)
                 return
+            datos_jugador = self._jugador_json(jugador)
             self._json({"correo": jugador,
+                        "nombre": datos_jugador["nombre"],
+                        "foto_url": datos_jugador["foto_url"],
                         "admin": self.juego.usuarios.es_admin(jugador)})
+            return
+
+        if ruta == "/api/foto":
+            # Foto de perfil pública: se sirve como imagen desde la base de datos.
+            correo = (parse_qs(urlparse(self.path).query).get("correo") or [""])[0]
+            correo = correo.strip().lower()
+            foto = self.juego.usuarios.foto_de(correo) if correo else ""
+            if not foto:
+                self._error("Ese jugador no tiene foto.", 404)
+                return
+            try:
+                cabecera, datos_b64 = foto.split(",", 1)
+                contenido = base64.b64decode(datos_b64)
+                tipo = cabecera.split(";")[0].replace("data:", "") or "image/png"
+            except (ValueError, IndexError):
+                self._error("La foto está dañada.", 500)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", tipo)
+            self.send_header("Content-Length", str(len(contenido)))
+            self.send_header("Cache-Control", "public, max-age=60")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            self.wfile.write(contenido)
             return
 
         if ruta == "/api/partida":
             with self.juego.candado:
                 vista = self.juego.mesa.partida_publica(self.juego.partida().id)
+                self._enriquecer_mesa(vista)
                 try:
                     vista["fecha_partida"] = self.juego.salas.de(vista.get("sala") or None).fecha_partida
                 except Exception:  # noqa: BLE001
@@ -724,7 +772,6 @@ class Manejador(BaseHTTPRequestHandler):
             if not self._admin():
                 self._error("Solo para administración.", 403)
                 return
-            from urllib.parse import parse_qs
             qs = parse_qs(urlparse(self.path).query)
             sala_id = qs["sala"][0] if qs.get("sala") else ""
             if not sala_id:
@@ -791,7 +838,6 @@ class Manejador(BaseHTTPRequestHandler):
             if not self._admin():
                 self._error("Solo para administración.", 403)
                 return
-            from urllib.parse import parse_qs
             qs = parse_qs(urlparse(self.path).query)
             estado = qs["estado"][0] if qs.get("estado") else None
             with self.juego.candado:
@@ -817,7 +863,6 @@ class Manejador(BaseHTTPRequestHandler):
                 self._error("Solo para administración.", 403)
                 return
             estado = None
-            from urllib.parse import parse_qs
             qs = parse_qs(urlparse(self.path).query)
             if qs.get("estado"):
                 estado = qs["estado"][0]
@@ -997,6 +1042,7 @@ class Manejador(BaseHTTPRequestHandler):
                         raise ErrorDeSalas("Esa sala está cerrada.")
                     partida = self.juego.partida(sala.id)
                     vista = self.juego.mesa.partida_publica(partida.id)
+                    self._enriquecer_mesa(vista)
                     vista["sala_nombre"] = sala.nombre
                     vista["modo"] = sala.modo
                     vista["es_evento"] = sala.es_evento
@@ -1142,6 +1188,25 @@ class Manejador(BaseHTTPRequestHandler):
                     ficha = self.juego.fichas.guardar(
                         jugador, datos.get("metodo", ""), datos.get("campos", {}))
                 self._json({"ok": True, "ficha": ficha.a_dict()})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/foto":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            if "foto" not in datos:
+                # Si el cuerpo llegó vacío o demasiado grande, mejor avisar que
+                # borrar la foto sin querer.
+                self._error("No llegó la imagen. Prueba con una foto más pequeña.")
+                return
+            try:
+                with self.juego.candado:
+                    guardada = self.juego.usuarios.cambiar_foto(jugador, datos.get("foto", ""))
+                self._json({"ok": True, "foto_url": self._jugador_json(jugador)["foto_url"],
+                            "mensaje": "Foto guardada." if guardada else "Foto quitada."})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
             return
@@ -1356,7 +1421,6 @@ class Manejador(BaseHTTPRequestHandler):
             if not admin:
                 self._error("Solo para administración.", 403)
                 return
-            from urllib.parse import parse_qs
             qs = parse_qs(urlparse(self.path).query)
             correo = (qs.get("correo") or [""])[0].strip().lower()
             if not correo:
