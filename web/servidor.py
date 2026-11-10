@@ -86,7 +86,8 @@ class Juego:
             return reparto
         from nucleo.salas import reparto_del_bote
         dueno = fila["dueno"] if fila else ""
-        comision = self.salas.comision_de(dueno) if dueno else None
+        # La comisión la decide la sala: 15 % si es sala de trabajo, 10 % si no.
+        comision = self.salas.comision_de_sala(sala_id) if dueno else None
         reparto = reparto_del_bote(bote, con_anfitrion=bool(dueno), comision_pct=comision)
         reparto["anfitrion_correo"] = self.anfitrion_de(partida_id)
         return reparto
@@ -300,6 +301,22 @@ class Juego:
                 self._partida_id = partida.id
             return partida
 
+    def reabrir_partida(self, sala_id: str) -> None:
+        """Tira la partida abierta de una sala para que coja el juego/precio nuevos.
+
+        Se usa cuando el anfitrión cambia el tipo de juego o el precio de su sala
+        de trabajo. Solo se descarta si todavía no se ha vendido ningún cartón, para
+        no borrar una partida que ya está en marcha.
+        """
+        with self.candado:
+            partida = self._partida_de_sala(sala_id)
+            if partida is None or partida.cartones:
+                return
+            self.mesa.sala.partidas.pop(partida.id, None)
+            if self._partida_id == partida.id:
+                self._partida = None
+                self._partida_id = ""
+
     def _nueva_partida(self, sala_id: str | None = None) -> object:
         """Abre una partida nueva en la sala indicada (o la de por defecto)."""
         sala = self.salas.de(sala_id or self._partida_sala)
@@ -380,13 +397,25 @@ class Juego:
             "total_pendiente": self.retiros.total_pendiente(),
             "depositos_pendientes": len(self.depositos.pendientes()),
             "depositos_pendiente_centimos": self.depositos.total_pendiente(),
+            "depositos_comision": self.depositos.comision_total(),
+            "depositos_comision_texto": a_texto(self.depositos.comision_total()),
             "partidas": len(partidas),
             "apostado": apostado,
             "pagado": pagado,
             "margen": apostado - pagado,
-            "economia": self.salas.economia(),
+            "economia": self._economia(),
             "salas": len(self.salas.todas()),
         }
+
+    def _economia(self) -> dict:
+        """La economía del bingo más lo que deja la comisión de depósitos."""
+        eco = self.salas.economia()
+        dep = self.depositos.comision_total()
+        eco["depositos_comision"] = dep
+        eco["depositos_comision_texto"] = a_texto(dep)
+        eco["app_total"] = eco["app"] + dep
+        eco["app_total_texto"] = a_texto(eco["app_total"])
+        return eco
 
 
 class Manejador(BaseHTTPRequestHandler):
@@ -489,7 +518,11 @@ class Manejador(BaseHTTPRequestHandler):
                 "referencia": d.referencia, "banco": d.banco, "dia": d.dia,
                 "estado": d.estado, "nota": d.nota, "pedido": d.pedido,
                 "revisado": d.revisado, "revisado_por": d.revisado_por,
-                "pais": getattr(d, "pais", "VE")}
+                "pais": getattr(d, "pais", "VE"),
+                "comision": getattr(d, "comision", 0),
+                "comision_texto": a_texto(getattr(d, "comision", 0)),
+                "acreditado": getattr(d, "acreditado", 0),
+                "acreditado_texto": a_texto(getattr(d, "acreditado", 0))}
 
     def _sala_json(self, s) -> dict:
         d = s.a_dict()
@@ -1006,11 +1039,17 @@ class Manejador(BaseHTTPRequestHandler):
                 return
             try:
                 with self.juego.candado:
+                    es_trabajo = bool(datos.get("es_trabajo"))
                     sala = self.juego.salas.crear(
                         jugador, datos.get("nombre", ""), datos.get("modo", ""),
-                        datos.get("precio", ""), datos.get("publica", True))
-                self._json({"ok": True, "sala": self._sala_json(sala),
-                            "mensaje": f"Sala {sala.nombre} creada. Cobras el 10% de los botes."})
+                        datos.get("precio", ""), datos.get("publica", True),
+                        es_trabajo=es_trabajo)
+                if sala.es_trabajo:
+                    mensaje = (f"Sala de trabajo {sala.nombre} creada. Tú pones el juego y el "
+                               "precio de cada partida y cobras el 15% de los botes.")
+                else:
+                    mensaje = f"Sala {sala.nombre} creada. Cobras el 10% de los botes."
+                self._json({"ok": True, "sala": self._sala_json(sala), "mensaje": mensaje})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
             return
@@ -1045,13 +1084,39 @@ class Manejador(BaseHTTPRequestHandler):
                     vista["sala_nombre"] = sala.nombre
                     vista["modo"] = sala.modo
                     vista["es_evento"] = sala.es_evento
+                    vista["es_trabajo"] = sala.es_trabajo
+                    vista["dueno"] = sala.dueno
+                    vista["soy_dueno"] = bool(sala.dueno and sala.dueno == jugador)
                     vista["max_cartones"] = sala.max_cartones
                     vista["reparto"] = sala.reparto(
                         partida.precio_carton * len(partida.cartones),
-                        comision_pct=self.juego.salas.comision_de(sala.dueno) if sala.dueno else None)
+                        comision_pct=self.juego.salas.comision_de_sala(sala.id)
+                        if sala.dueno else None)
                     if sala.es_evento:
                         vista["evento"] = self.juego.info_evento()
                 self._json({"ok": True, "partida": vista})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/sala/trabajo":
+            # El anfitrión de una sala de trabajo decide el juego y el precio del
+            # cartón. Solo él (el dueño) puede tocar su sala.
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            try:
+                with self.juego.candado:
+                    sala = self.juego.salas.configurar_trabajo(
+                        datos.get("sala", ""), jugador,
+                        precio=datos.get("precio"),
+                        tipo_juego=datos.get("tipo_juego"),
+                        fecha_partida=datos.get("fecha_partida"))
+                    # La partida abierta coge el juego y el precio nuevos.
+                    self.juego.reabrir_partida(sala.id)
+                self._json({"ok": True, "sala": self._sala_json(sala),
+                            "mensaje": f"Sala {sala.nombre} actualizada."})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
             return

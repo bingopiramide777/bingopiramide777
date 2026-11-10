@@ -544,13 +544,17 @@ async function cargarSalas() {
            <div class="sala-tarjeta__precio">${t("mesa.carton_precio", { precio: s.precio_texto })}</div>
            <div class="sala-tarjeta__dueno">${t("salas.evento_pie")}</div>
          </button>`
-      : `<button class="sala-tarjeta ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
+      : `<button class="sala-tarjeta ${s.es_trabajo ? "sala-tarjeta--trabajo" : ""} ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
                  data-sala="${s.id}">
+           ${s.es_trabajo ? `<span class="sala-tarjeta__etiqueta sala-tarjeta__etiqueta--trabajo">${t("salas.trabajo_etiqueta")}</span>` : ""}
            <div class="sala-tarjeta__nombre">${s.nombre}</div>
            <div class="sala-tarjeta__modo">${nombreModo(s.modo)}</div>
            <div class="sala-tarjeta__precio">${t("mesa.carton_precio", { precio: s.precio_texto })}</div>
            ${s.es_de_jugador ? `<div class="sala-tarjeta__dueno">${t("salas.de_jugador", { dueno: s.dueno })}</div>`
                              : `<div class="sala-tarjeta__dueno">${t("salas.de_casa")}</div>`}
+           ${s.tipo_juego === "carton_lleno"
+             ? `<div class="sala-tarjeta__carton-lleno">${t("salas.carton_lleno_etiqueta")}</div>` : ""}
+           ${s.es_trabajo ? `<div class="sala-tarjeta__dueno">${t("salas.trabajo_pie")}</div>` : ""}
            ${s.max_cartones > 0
              ? `<div class="sala-tarjeta__dueno">${t("salas.max_cartones", { n: s.max_cartones })}</div>`
              : ""}
@@ -682,12 +686,16 @@ async function cargarMisSalas() {
         <thead><tr><th>${t("salas.tabla_sala")}</th><th>${t("salas.tabla_modo")}</th><th>${t("salas.tabla_carton")}</th><th>${t("salas.tabla_partidas")}</th>
           <th>${t("salas.tabla_botes")}</th><th>${t("salas.tabla_ganado")}</th><th></th></tr></thead>
         <tbody>${res.salas.map((s) => `
-          <tr><td><strong>${s.nombre}</strong><br>
+          <tr><td><strong>${s.nombre}</strong>${s.es_trabajo
+                ? `<br><span class="sala-tarjeta__etiqueta sala-tarjeta__etiqueta--trabajo">${t("salas.trabajo_etiqueta")}</span>` : ""}<br>
                 <span class="ayuda">${s.publica ? t("salas.publica_corta") : t("salas.privada_corta")}</span></td>
           <td>${nombreModo(s.modo)}</td>
           <td>${s.precio_texto}</td><td>${g.partidas}</td><td>${g.botes_texto}</td>
           <td><strong>${g.anfitrion_texto}</strong></td>
           <td class="acciones-celda">
+            ${s.es_trabajo ? `<button class="boton boton--fantasma boton--mini"
+                    data-trabajo="${s.id}" data-tipo="${s.tipo_juego}"
+                    data-precio="${s.precio_texto}">${t("salas.trabajo_config")}</button>` : ""}
             <button class="boton boton--fantasma boton--mini"
                     data-enlace="${s.id}">${t("salas.copiar_enlace")}</button>
             <button class="boton boton--fantasma boton--mini"
@@ -696,6 +704,8 @@ async function cargarMisSalas() {
       <p class="ayuda">${t("salas.pie", { pct: g.comision_pct, ganado: g.anfitrion_texto, botes: g.botes_texto })}</p>`;
     caja.querySelectorAll("[data-enlace]").forEach((b) =>
       (b.onclick = () => copiarEnlaceSala(b.dataset.enlace)));
+    caja.querySelectorAll("[data-trabajo]").forEach((b) =>
+      (b.onclick = () => abrirTrabajo(b.dataset.trabajo, b.dataset.tipo, b.dataset.precio)));
     caja.querySelectorAll("[data-cerrar]").forEach((b) =>
       (b.onclick = async () => {
         if (!confirm(t("salas.confirmar_cerrar"))) return;
@@ -709,6 +719,17 @@ async function cargarMisSalas() {
   } catch (err) { /* sin sesión */ }
 }
 
+/* El dueño de una sala de trabajo decide el juego y el precio del cartón. */
+function abrirTrabajo(id, tipo, precio) {
+  const caja = $("#dialogo-trabajo");
+  if (!caja) return;
+  const form = $("#form-trabajo");
+  form.sala.value = id;
+  if (tipo) form.tipo_juego.value = tipo;
+  if (precio) form.precio.value = precio;
+  caja.hidden = false;
+}
+
 /* --- juego --- */
 
 async function refrescarPartida() {
@@ -719,6 +740,8 @@ async function refrescarPartida() {
       : p.estado === "jugando" ? t("mesa.en_juego") : t("mesa.terminada");
     $("#precio-carton").textContent = t("mesa.carton_precio", { precio: formatear(p.precio_carton) });
     $("#contador-bolas").textContent = t("mesa.bolas_sacadas", { n: p.bolas_sacadas.length });
+    const aviso = $("#aviso-carton-lleno");
+    if (aviso) aviso.hidden = p.tipo_juego !== "carton_lleno";
     pintarBolas(p.bolas_sacadas);
     pintarOponentes(p.a_cuanto_estan);
     const mio = (p.a_cuanto_estan || []).find(
@@ -1342,6 +1365,7 @@ if (formSala) {
     try {
       const res = await post("/api/sala/crear", {
         nombre: d.nombre, modo: d.modo, precio: d.precio, publica: d.publica === "si",
+        es_trabajo: !!d.es_trabajo,
       });
       avisar(res.mensaje, "bien");
       formSala.reset();
@@ -1349,6 +1373,25 @@ if (formSala) {
       cargarMisSalas();
     } catch (err) { avisar(err.message, "error"); }
   };
+}
+
+const formTrabajo = $("#form-trabajo");
+if (formTrabajo) {
+  formTrabajo.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!token) return abrirAcceso("entrar");
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      const res = await post("/api/sala/trabajo", {
+        sala: d.sala, tipo_juego: d.tipo_juego, precio: d.precio,
+      });
+      avisar(res.mensaje || t("salas.trabajo_guardado"), "bien");
+      $("#dialogo-trabajo").hidden = true;
+      cargarSalas();
+      cargarMisSalas();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+  $("#trabajo-cerrar").onclick = () => ($("#dialogo-trabajo").hidden = true);
 }
 comprobarSesion().then(refrescarTodo);
 setInterval(refrescarPartida, 5000);

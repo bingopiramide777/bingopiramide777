@@ -92,6 +92,8 @@
 
     <div id="evento-info"></div>
 
+    <p class="aviso-carton-lleno" id="aviso-carton-lleno" hidden data-i18n="salas.trabajo_carton_lleno">Cartón lleno: hay que completar los 25 números</p>
+
     <div class="mesa">
       <div class="mesa__izq">
         <div class="bombo">
@@ -190,11 +192,37 @@
           <option value="no" data-i18n="salas.privada">Privada (solo con el enlace)</option>
         </select>
       </label>
+      <label class="interruptor">
+        <input type="checkbox" name="es_trabajo" id="sala-es-trabajo">
+        <span data-i18n="salas.es_trabajo">Sala de trabajo (tú pones el juego y el precio de cada partida)</span>
+      </label>
       <button class="boton boton--brillo boton--alto" type="submit" data-i18n="salas.crear">Crear mi sala</button>
     </form>
 
     <div id="tabla-mis-salas"></div>
   </section>
+
+  <div class="dialogo" id="dialogo-trabajo" hidden>
+    <div class="dialogo__caja" role="dialog" aria-modal="true">
+      <button class="dialogo__cerrar" id="trabajo-cerrar" aria-label="Cerrar">×</button>
+      <h2 data-i18n="salas.trabajo_titulo">Tu sala de trabajo</h2>
+      <p class="ayuda" data-i18n="salas.trabajo_ayuda"></p>
+      <form id="form-trabajo">
+        <input type="hidden" name="sala">
+        <label><span data-i18n="salas.modo">Modo de juego</span>
+          <select name="tipo_juego" id="trabajo-modo">
+            <option value="normal" data-i18n="modo.normal_largo">Normal (línea, columna o diagonal)</option>
+            <option value="carton_lleno" data-i18n="modo.carton_lleno_largo">Cartón lleno (los 25 números)</option>
+            <option value="competencia" data-i18n="modo.competencia_largo">Competencia (también 4 esquinas)</option>
+          </select>
+        </label>
+        <label><span data-i18n="salas.precio">Precio del cartón ({moneda})</span>
+          <input type="text" name="precio" inputmode="decimal" placeholder="$ 10,00" data-moneda-placeholder required>
+        </label>
+        <button class="boton boton--principal boton--alto" type="submit" data-i18n="salas.trabajo_guardar">Guardar juego y precio</button>
+      </form>
+    </div>
+  </div>
 
   <section class="panel panel--suave" id="referidos">
     <div class="panel__cabecera">

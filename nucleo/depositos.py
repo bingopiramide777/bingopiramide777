@@ -7,6 +7,11 @@ Quién acredita:
 - **Glenis IA** deja el depósito en cola, con los datos leídos. No acredita sola.
 - **El administrador** confirma. Ahí sí entra el dinero.
 
+Al acreditar, la app retiene de una vez su comisión (10 % por defecto) y le pasa
+al jugador el resto. Se hace en el mismo paso del depósito para frenar el lavado
+de dinero: quien mete cripto y la saca enseguida ya deja su parte, así que la
+app no sirve de puente para mover dinero sucio de un lado a otro.
+
 Tres frenos, porque aquí es donde se pierde el dinero en estas webs:
 1. **Una referencia no vale dos veces el mismo día.** Si alguien reenvía la misma
    captura, se rechaza.
@@ -46,6 +51,29 @@ class ConfigDeposito:
     minimo: int = 100              # $ 1,00
     tope_diario: int = 200_000     # $ 2.000,00
     dias_atras: int = 3            # cuántos días atrás se admite declarar el pago
+    comision_pct: int = 10         # % que retiene la app al acreditar (anti-lavado)
+
+
+# La comisión anti-lavado se puede ajustar por entorno (0 a 100 %).
+def comision_porcentaje() -> int:
+    try:
+        valor = int(os.environ.get("BINGO_DEPOSITO_COMISION_PCT", "") or 10)
+    except ValueError:
+        return 10
+    return valor if 0 <= valor <= 100 else 10
+
+
+def reparto_deposito(centimos: int, pct: int) -> tuple[int, int]:
+    """Parte un depósito en (comisión de la app, lo que le queda al jugador).
+
+    La comisión se trunca al céntimo y el resto es del jugador, así que nunca se
+    pierde un céntimo y la app nunca cobra de más.
+    """
+    if centimos < 0:
+        raise ErrorDeDeposito("El depósito no puede ser negativo.")
+    pct = max(0, min(100, int(pct)))
+    comision = centimos * pct // 100
+    return comision, centimos - comision
 
 
 @dataclass
@@ -63,6 +91,8 @@ class Deposito:
     revisado: float | None = None
     revisado_por: str | None = None
     pais: str = "VE"
+    comision: int = 0          # céntimos que se quedó la app al acreditar
+    acreditado: int = 0        # céntimos que entraron al saldo del jugador
 
 
 def _deposito(fila) -> Deposito:
@@ -72,7 +102,9 @@ def _deposito(fila) -> Deposito:
                     dia=fila["dia"], estado=fila["estado"], nota=fila["nota"],
                     pedido=fila["pedido"], revisado=fila["revisado"],
                     revisado_por=fila["revisado_por"],
-                    pais=fila["pais"] if "pais" in claves else "VE")
+                    pais=fila["pais"] if "pais" in claves else "VE",
+                    comision=int(fila["comision"]) if "comision" in claves else 0,
+                    acreditado=int(fila["acreditado"]) if "acreditado" in claves else 0)
 
 
 def hoy() -> str:
@@ -168,14 +200,12 @@ class Depositos:
         return self.listar(estado="pendiente")
 
     def acreditar(self, id_: str, admin: str, nota: str = "") -> Deposito:
-        """Da el dinero por bueno y lo suma al saldo. Solo se puede hacer una vez."""
-        return self._resolver(id_, "acreditado", admin, nota, acreditar=True)
+        """Da el dinero por bueno, retiene la comisión de la app y abona el resto.
 
-    def rechazar(self, id_: str, admin: str, nota: str = "") -> Deposito:
-        return self._resolver(id_, "rechazado", admin, nota)
-
-    def _resolver(self, id_: str, estado: str, admin: str, nota: str,
-                  acreditar: bool = False) -> Deposito:
+        La app se queda su comisión (10 % por defecto) en el mismo paso: así el
+        jugador no puede meter dinero y sacarlo entero enseguida, que es el
+        agujero por el que se cuela el lavado con cripto.
+        """
         fila = self.almacen.deposito(id_)
         if fila is None:
             raise ErrorDeDeposito(f"No existe el depósito {id_!r}.")
@@ -183,20 +213,37 @@ class Depositos:
         if antes.estado != "pendiente":
             raise ErrorDeDeposito(f"Ese depósito ya está {antes.estado}.")
 
-        # Primero se marca el depósito; después se abona. Si el abono falla, se
-        # deshace la marca para que no quede un depósito acreditado sin dinero.
-        if self.almacen.resolver_deposito(id_, estado, time.time(), admin, nota) == 0:
+        comision, neto = reparto_deposito(antes.centimos, self.config.comision_pct)
+        # Primero se marca el depósito con lo retenido y lo abonado; después se
+        # abona. Si el abono falla, se deshace la marca para que no quede un
+        # depósito acreditado sin dinero.
+        if self.almacen.resolver_deposito(id_, "acreditado", time.time(), admin, nota,
+                                          comision=comision, acreditado=neto) == 0:
             raise ErrorDeDeposito("Otro administrador se adelantó con ese depósito.")
-
-        if acreditar:
-            try:
-                self.monedero.recargar(antes.correo, antes.centimos,
-                                       f"depósito {antes.referencia} ({antes.banco})")
-            except Exception as exc:  # noqa: BLE001
-                self.almacen.resolver_deposito(id_, "pendiente", time.time(), admin,
-                                               f"falló el abono: {exc}")
-                raise ErrorDeDeposito(f"No se pudo abonar: {exc}") from None
+        try:
+            self.monedero.recargar(
+                antes.correo, neto,
+                f"depósito {antes.referencia} ({antes.banco}); comisión {comision} céntimos")
+        except Exception as exc:  # noqa: BLE001
+            self.almacen.resolver_deposito(id_, "pendiente", time.time(), admin,
+                                           f"falló el abono: {exc}", comision=0, acreditado=0)
+            raise ErrorDeDeposito(f"No se pudo abonar: {exc}") from None
         return _deposito(self.almacen.deposito(id_))
+
+    def rechazar(self, id_: str, admin: str, nota: str = "") -> Deposito:
+        fila = self.almacen.deposito(id_)
+        if fila is None:
+            raise ErrorDeDeposito(f"No existe el depósito {id_!r}.")
+        antes = _deposito(fila)
+        if antes.estado != "pendiente":
+            raise ErrorDeDeposito(f"Ese depósito ya está {antes.estado}.")
+        if self.almacen.resolver_deposito(id_, "rechazado", time.time(), admin, nota) == 0:
+            raise ErrorDeDeposito("Otro administrador se adelantó con ese depósito.")
+        return _deposito(self.almacen.deposito(id_))
+
+    def comision_total(self) -> int:
+        """Lo que se ha quedado la app con los depósitos acreditados."""
+        return sum(d.comision for d in self.listar(estado="acreditado"))
 
     def total_pendiente(self) -> int:
         return sum(d.centimos for d in self.pendientes())

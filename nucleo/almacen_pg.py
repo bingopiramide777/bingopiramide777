@@ -124,7 +124,9 @@ CREATE TABLE IF NOT EXISTS depositos (
     pedido        DOUBLE PRECISION NOT NULL,
     revisado      DOUBLE PRECISION,
     revisado_por  TEXT,
-    pais          TEXT NOT NULL DEFAULT 'VE'
+    pais          TEXT NOT NULL DEFAULT 'VE',
+    comision      BIGINT NOT NULL DEFAULT 0,
+    acreditado    BIGINT NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_depositos ON depositos(estado, pedido);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_depositos_ref
@@ -167,7 +169,9 @@ CREATE TABLE IF NOT EXISTS salas (
     tipo_juego     TEXT NOT NULL DEFAULT '',
     cupo_cartones  INTEGER NOT NULL DEFAULT 0,
     max_cartones   INTEGER NOT NULL DEFAULT 0,
-    fecha_partida  TEXT NOT NULL DEFAULT ''
+    fecha_partida  TEXT NOT NULL DEFAULT '',
+    pais           TEXT NOT NULL DEFAULT 'VE',
+    es_trabajo     INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_salas_dueno ON salas(dueno);
 
@@ -282,8 +286,12 @@ class AlmacenPG(Almacen):
                       ("tipo_juego", "TEXT NOT NULL DEFAULT ''"),
                       ("cupo_cartones", "INTEGER NOT NULL DEFAULT 0"),
                       ("max_cartones", "INTEGER NOT NULL DEFAULT 0"),
-                      ("fecha_partida", "TEXT NOT NULL DEFAULT ''")),
-            "depositos": (("pais", "TEXT NOT NULL DEFAULT 'VE'"),),
+                      ("fecha_partida", "TEXT NOT NULL DEFAULT ''"),
+                      ("pais", "TEXT NOT NULL DEFAULT 'VE'"),
+                      ("es_trabajo", "INTEGER NOT NULL DEFAULT 0")),
+            "depositos": (("pais", "TEXT NOT NULL DEFAULT 'VE'"),
+                          ("comision", "BIGINT NOT NULL DEFAULT 0"),
+                          ("acreditado", "BIGINT NOT NULL DEFAULT 0")),
         }
         for tabla, columnas in pendientes.items():
             existentes = self._columnas(tabla)

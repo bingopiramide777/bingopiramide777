@@ -548,7 +548,9 @@ class ServidorTest(unittest.TestCase):
                                  {"id": r["deposito"]["id"], "accion": "acreditar"}, at)
         self.assertEqual(estado, 200)
         self.assertEqual(res["deposito"]["estado"], "acreditado")
-        self.assertEqual(self.pedir("/api/saldo", token=token)[1]["saldo"], 15_000)
+        # De $ 150 la app retiene su 10 %: entran $ 135 al saldo.
+        self.assertEqual(res["deposito"]["comision"], 1_500)
+        self.assertEqual(self.pedir("/api/saldo", token=token)[1]["saldo"], 13_500)
 
     def test_solo_el_admin_acredita(self):
         token = self.usuario("ana@correo.com")
@@ -762,6 +764,85 @@ class ServidorTest(unittest.TestCase):
                                {"sala": s["sala"]["id"], "precio": "20,00"}, at)
         self.assertEqual(estado, 400)
         self.assertIn("jugador", r["error"])
+
+    # -- sala de trabajo --
+
+    def test_crear_sala_de_trabajo(self):
+        token = self.usuario("ana@correo.com")
+        estado, r = self.pedir("/api/sala/crear",
+                               {"nombre": "Mi trabajo", "modo": "normal", "precio": "10,00",
+                                "es_trabajo": True}, token)
+        self.assertEqual(estado, 200)
+        self.assertTrue(r["sala"]["es_trabajo"])
+        self.assertEqual(r["sala"]["comision_anfitrion"], 15)
+        self.assertIn("15", r["mensaje"])
+
+    def test_una_sala_normal_cobra_10(self):
+        token = self.usuario("ana@correo.com")
+        _, r = self.pedir("/api/sala/crear",
+                          {"nombre": "Normal", "modo": "normal", "precio": "10,00"}, token)
+        self.assertFalse(r["sala"]["es_trabajo"])
+        self.assertEqual(r["sala"]["comision_anfitrion"], 10)
+
+    def test_el_dueno_pone_el_juego_y_el_precio_de_su_sala_de_trabajo(self):
+        token = self.usuario("ana@correo.com")
+        _, s = self.pedir("/api/sala/crear",
+                          {"nombre": "Mi trabajo", "modo": "normal", "precio": "10,00",
+                           "es_trabajo": True}, token)
+        sid = s["sala"]["id"]
+        estado, r = self.pedir("/api/sala/trabajo",
+                               {"sala": sid, "precio": "25,00", "tipo_juego": "diagonal"}, token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["sala"]["precio_texto"], "$ 25,00")
+        self.assertEqual(r["sala"]["tipo_juego"], "diagonal")
+
+    def test_el_precio_nuevo_de_trabajo_lo_paga_el_jugador(self):
+        dueno = self.usuario("ana@correo.com")
+        _, s = self.pedir("/api/sala/crear",
+                          {"nombre": "Mi trabajo", "modo": "normal", "precio": "10,00",
+                           "es_trabajo": True}, dueno)
+        sid = s["sala"]["id"]
+        self.pedir("/api/sala/trabajo", {"sala": sid, "precio": "25,00"}, dueno)
+        jugador = self.usuario("luis@correo.com", recarga="100,00")
+        _, c = self.pedir("/api/carton", {"sala": sid}, jugador)
+        self.assertEqual(c["precio"], 2_500)
+        self.assertEqual(c["saldo"], 7_500)
+
+    def test_solo_el_dueno_toca_su_sala_de_trabajo(self):
+        dueno = self.usuario("ana@correo.com")
+        _, s = self.pedir("/api/sala/crear",
+                          {"nombre": "Mi trabajo", "modo": "normal", "precio": "10,00",
+                           "es_trabajo": True}, dueno)
+        sid = s["sala"]["id"]
+        otro = self.usuario("luis@correo.com")
+        estado, _ = self.pedir("/api/sala/trabajo", {"sala": sid, "precio": "25,00"}, otro)
+        self.assertEqual(estado, 400)
+
+    def test_al_entrar_a_la_sala_de_trabajo_el_dueno_se_reconoce(self):
+        dueno = self.usuario("ana@correo.com")
+        _, s = self.pedir("/api/sala/crear",
+                          {"nombre": "Mi trabajo", "modo": "normal", "precio": "10,00",
+                           "es_trabajo": True}, dueno)
+        sid = s["sala"]["id"]
+        _, r = self.pedir("/api/sala/entrar", {"sala": sid}, dueno)
+        self.assertTrue(r["partida"]["es_trabajo"])
+        self.assertTrue(r["partida"]["soy_dueno"])
+        self.assertEqual(r["partida"]["reparto"]["comision_pct"], 15)
+
+    def test_la_sala_de_trabajo_reparte_15_5(self):
+        dueno = self.usuario("ana@correo.com")
+        _, s = self.pedir("/api/sala/crear",
+                          {"nombre": "Mi trabajo", "modo": "normal", "precio": "10,00",
+                           "es_trabajo": True}, dueno)
+        sid = s["sala"]["id"]
+        jugador = self.usuario("luis@correo.com", recarga="100,00")
+        self.pedir("/api/carton", {"sala": sid}, jugador)
+        _, r = self.pedir("/api/sala/entrar", {"sala": sid}, dueno)
+        reparto = r["partida"]["reparto"]
+        self.assertEqual(reparto["bote"], 1_000)
+        self.assertEqual(reparto["premio"], 800)
+        self.assertEqual(reparto["anfitrion"], 150)
+        self.assertEqual(reparto["app"], 50)
 
     # -- referidos --
 

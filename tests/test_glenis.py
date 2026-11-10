@@ -109,7 +109,8 @@ class HerramientasTest(unittest.TestCase):
                                           "Banco de Venezuela", hoy())
         r = self.h.ejecutar("acreditar_deposito", {"id": d.id, "nota": "verificado"})
         self.assertTrue(r["ok"])
-        self.assertEqual(self.juego.monedero.saldo("ana@correo.com"), 10_000)
+        # La app retiene su 10 % anti-lavado: de $ 100 entran $ 90 al saldo.
+        self.assertEqual(self.juego.monedero.saldo("ana@correo.com"), 9_000)
 
     def test_no_acredita_dos_veces(self):
         d = self.juego.depositos.declarar("ana@correo.com", "100,00", "123456",
@@ -117,7 +118,7 @@ class HerramientasTest(unittest.TestCase):
         self.h.ejecutar("acreditar_deposito", {"id": d.id})
         r = self.h.ejecutar("acreditar_deposito", {"id": d.id})
         self.assertIn("error", r)
-        self.assertEqual(self.juego.monedero.saldo("ana@correo.com"), 10_000)
+        self.assertEqual(self.juego.monedero.saldo("ana@correo.com"), 9_000)
 
     def test_ajustar_saldo_exige_motivo(self):
         r = self.h.ejecutar("ajustar_saldo", {"correo": "ana@correo.com",

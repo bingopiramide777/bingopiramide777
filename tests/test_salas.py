@@ -13,6 +13,7 @@ from bingo import MesaBingo, Sala as SalaBingo
 from nucleo.almacen import Almacen
 from nucleo.monedero import Monedero
 from nucleo.money import a_texto
+from nucleo.usuarios import Usuarios
 from nucleo.salas import (
     COMISION_ANFITRION,
     PREMIO_CASA,
@@ -106,7 +107,9 @@ class SalasTest(unittest.TestCase):
         })
         modos = {s.nombre: s.modo for s in self.salas.de_la_casa()}
         self.assertEqual(modos["Carabobo"], "carton_lleno")
-        self.assertEqual(modos["Lara"], "competencia")
+        # Zulia y Lara son de cartón lleno: sus partidas duran más.
+        self.assertEqual(modos["Zulia"], "carton_lleno")
+        self.assertEqual(modos["Lara"], "carton_lleno")
 
     def test_un_jugador_crea_su_sala(self):
         s = self.salas.crear("ana@correo.com", "La de Ana", "normal", "25,00")
@@ -237,6 +240,118 @@ class ConfigurarSalasTest(unittest.TestCase):
         self.salas.configurar_sala(SALA_CASA_ID, max_cartones=4)
         otra = Salas(self.almacen)
         self.assertEqual(otra.de(SALA_CASA_ID).max_cartones, 4)
+
+
+class SalaTrabajoTest(unittest.TestCase):
+    """La sala de trabajo: el anfitrión pone juego y precio y cobra el 15 %."""
+
+    def setUp(self):
+        self.almacen = Almacen(":memory:")
+        self.usuarios = Usuarios(self.almacen)
+        self.salas = Salas(self.almacen, usuarios=self.usuarios)
+
+    def _trabajo(self, correo="ana@correo.com"):
+        return self.salas.crear(correo, "Mi sala de trabajo", "normal", "10,00",
+                                es_trabajo=True)
+
+    def test_la_sala_de_trabajo_cobra_15_por_ciento(self):
+        s = self._trabajo()
+        self.assertTrue(s.es_trabajo)
+        self.assertEqual(s.comision_anfitrion, 15)
+        r = s.reparto(10_000)
+        self.assertEqual(r["premio"], 8_000)
+        self.assertEqual(r["anfitrion"], 1_500)
+        self.assertEqual(r["app"], 500)
+
+    def test_una_sala_normal_sigue_cobrando_10_por_ciento(self):
+        s = self.salas.crear("ana@correo.com", "Normal", "normal", "10,00")
+        self.assertFalse(s.es_trabajo)
+        self.assertEqual(s.comision_anfitrion, 10)
+        r = s.reparto(10_000)
+        self.assertEqual(r["anfitrion"], 1_000)
+        self.assertEqual(r["app"], 1_000)
+
+    def test_el_reparto_de_trabajo_nunca_pierde_un_centimo(self):
+        s = self._trabajo()
+        for bote in range(0, 5_000):
+            r = s.reparto(bote)
+            self.assertEqual(r["premio"] + r["anfitrion"] + r["app"], bote)
+
+    def test_el_dueno_pone_el_juego_y_el_precio(self):
+        s = self._trabajo()
+        nueva = self.salas.configurar_trabajo(s.id, "ana@correo.com",
+                                              precio="25,00", tipo_juego="diagonal")
+        self.assertEqual(nueva.precio_carton, 2_500)
+        self.assertEqual(nueva.tipo_juego, "diagonal")
+
+    def test_solo_el_dueno_toca_su_sala_de_trabajo(self):
+        s = self._trabajo()
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_trabajo(s.id, "otro@correo.com", precio="25,00")
+
+    def test_no_se_configura_una_sala_que_no_es_de_trabajo(self):
+        s = self.salas.crear("ana@correo.com", "Normal", "normal", "10,00")
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_trabajo(s.id, "ana@correo.com", precio="25,00")
+
+    def test_el_precio_de_trabajo_respeta_los_limites_de_jugador(self):
+        s = self._trabajo()
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_trabajo(s.id, "ana@correo.com", precio="1000,00")
+
+    def test_el_juego_inventado_se_rechaza(self):
+        s = self._trabajo()
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_trabajo(s.id, "ana@correo.com", tipo_juego="inventado")
+
+    def test_la_comision_de_la_sala_de_trabajo_llega_al_monedero(self):
+        s = self._trabajo()
+        self.assertEqual(self.salas.comision_de_sala(s.id), 15)
+
+    def test_la_sala_de_trabajo_sobrevive_al_reinicio(self):
+        s = self._trabajo()
+        otra = Salas(self.almacen, usuarios=self.usuarios)
+        self.assertTrue(otra.de(s.id).es_trabajo)
+
+
+class MigracionJuegosTest(unittest.TestCase):
+    """Bases de datos viejas: Zulia y Lara pasan a cartón lleno una vez."""
+
+    def test_zulia_y_lara_pasan_a_carton_lleno(self):
+        almacen = Almacen(":memory:")
+        almacen.guardar_sala({
+            "id": "sala-zulia", "nombre": "Zulia", "modo": "normal",
+            "precio_carton": 10_00, "tipo_juego": "linea_h1", "dueno": "",
+            "publica": 1, "creada": 0.0, "activa": 1,
+        })
+        almacen.guardar_sala({
+            "id": "sala-lara", "nombre": "Lara", "modo": "competencia",
+            "precio_carton": 5_00, "tipo_juego": "cuatro_esquinas", "dueno": "",
+            "publica": 1, "creada": 0.0, "activa": 1,
+        })
+        salas = Salas(almacen)
+        self.assertEqual(salas.de("sala-zulia").modo, "carton_lleno")
+        self.assertEqual(salas.de("sala-zulia").tipo_juego, "carton_lleno")
+        self.assertEqual(salas.de("sala-lara").modo, "carton_lleno")
+        self.assertEqual(salas.de("sala-lara").tipo_juego, "carton_lleno")
+
+    def test_no_se_pisa_un_juego_que_cambio_el_admin(self):
+        almacen = Almacen(":memory:")
+        almacen.guardar_sala({
+            "id": "sala-zulia", "nombre": "Zulia", "modo": "competencia",
+            "precio_carton": 10_00, "tipo_juego": "diagonal", "dueno": "",
+            "publica": 1, "creada": 0.0, "activa": 1,
+        })
+        salas = Salas(almacen)
+        self.assertEqual(salas.de("sala-zulia").modo, "competencia")
+        self.assertEqual(salas.de("sala-zulia").tipo_juego, "diagonal")
+
+    def test_la_migracion_de_juegos_solo_corre_una_vez(self):
+        almacen = Almacen(":memory:")
+        Salas(almacen)
+        Salas(almacen).configurar_sala("sala-zulia", tipo_juego="diagonal")
+        otra = Salas(almacen)
+        self.assertEqual(otra.de("sala-zulia").tipo_juego, "diagonal")
 
 
 class MigracionPreciosTest(unittest.TestCase):

@@ -839,3 +839,20 @@ input[type="text"], input[type="email"], input[type="password"], select {
 .perfil-previa img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .perfil-previa__vacia { font-size: 2.4rem; font-weight: 800; color: #1a1a23; }
 #perfil-archivo { width: 100%; color: var(--gris); font-size: .86rem; }
+
+/* Sala de trabajo y avisos de juego. */
+.sala-tarjeta--trabajo { border-color: rgba(255, 107, 0, .45); }
+.sala-tarjeta__etiqueta--trabajo { background: linear-gradient(135deg, #7c3aed, #a855f7); color: #fff; }
+.sala-tarjeta__carton-lleno { font-size: .74rem; color: var(--naranja); font-weight: 700; margin-top: .2rem; }
+.interruptor {
+  display: flex; align-items: flex-start; gap: .5rem;
+  font-size: .85rem; color: var(--texto-suave); cursor: pointer; user-select: none;
+}
+.interruptor input { width: 18px; height: 18px; margin-top: .1rem; accent-color: var(--naranja); cursor: pointer; }
+.aviso-carton-lleno {
+  display: flex; align-items: center; gap: .5rem; margin: .4rem 0 .2rem;
+  padding: .5rem .8rem; border-radius: 12px; font-size: .86rem; font-weight: 600;
+  color: var(--dorado-claro); background: rgba(247, 201, 72, .12);
+  border: 1px solid rgba(247, 201, 72, .3);
+}
+.aviso-carton-lleno::before { content: "🎯"; }
