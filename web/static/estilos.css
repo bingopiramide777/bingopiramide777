@@ -310,8 +310,16 @@ input:focus { outline: 2px solid var(--dorado); outline-offset: 1px; }
 @media (max-width: 900px) {
   .hero { grid-template-columns: 1fr; }
   .mesa { grid-template-columns: 1fr; }
-  .nav { display: none; }
   .datos { gap: 1.2rem; }
+
+  /* La cabecera se reparte en dos filas y el menú es una tira deslizable. */
+  .cabecera { flex-wrap: wrap; gap: .6rem; padding: .7rem 1rem; }
+  .sesion { margin-left: auto; }
+  .nav {
+    display: flex; order: 3; width: 100%; margin: 0; overflow-x: auto;
+    gap: 1.1rem; padding-bottom: .2rem; -webkit-overflow-scrolling: touch;
+  }
+  .nav::-webkit-scrollbar { display: none; }
 }
 
 /* ===== Portada con el puente sobre el lago de Maracaibo ===== */
@@ -459,14 +467,6 @@ input[type="text"], input[type="email"], input[type="password"], select {
 
 /* La cabecera se reparte en dos filas en pantallas pequeñas. */
 @media (max-width: 720px) {
-  .cabecera { flex-wrap: wrap; gap: .6rem; padding: .7rem 1rem; }
-  .sesion { margin-left: auto; }
-  .nav {
-    order: 3; width: 100%; margin: 0; overflow-x: auto; gap: 1.1rem;
-    padding-bottom: .2rem; -webkit-overflow-scrolling: touch;
-  }
-  .nav::-webkit-scrollbar { display: none; }
-
   .portada { min-height: 300px; }
   .portada__slogan { letter-spacing: .1em; padding: .45rem 1rem; }
   .portada__emblema { margin-top: .8rem; }
