@@ -544,13 +544,17 @@ async function cargarSalas() {
            <div class="sala-tarjeta__precio">${t("mesa.carton_precio", { precio: s.precio_texto })}</div>
            <div class="sala-tarjeta__dueno">${t("salas.evento_pie")}</div>
          </button>`
-      : `<button class="sala-tarjeta ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
+      : `<button class="sala-tarjeta ${s.es_trabajo ? "sala-tarjeta--trabajo" : ""} ${s.id === salaActual ? "sala-tarjeta--activa" : ""}"
                  data-sala="${s.id}">
+           ${s.es_trabajo ? `<span class="sala-tarjeta__etiqueta sala-tarjeta__etiqueta--trabajo">${t("salas.trabajo_etiqueta")}</span>` : ""}
            <div class="sala-tarjeta__nombre">${s.nombre}</div>
            <div class="sala-tarjeta__modo">${nombreModo(s.modo)}</div>
            <div class="sala-tarjeta__precio">${t("mesa.carton_precio", { precio: s.precio_texto })}</div>
            ${s.es_de_jugador ? `<div class="sala-tarjeta__dueno">${t("salas.de_jugador", { dueno: s.dueno })}</div>`
                              : `<div class="sala-tarjeta__dueno">${t("salas.de_casa")}</div>`}
+           ${s.tipo_juego === "carton_lleno"
+             ? `<div class="sala-tarjeta__carton-lleno">${t("salas.carton_lleno_etiqueta")}</div>` : ""}
+           ${s.es_trabajo ? `<div class="sala-tarjeta__dueno">${t("salas.trabajo_pie")}</div>` : ""}
            ${s.max_cartones > 0
              ? `<div class="sala-tarjeta__dueno">${t("salas.max_cartones", { n: s.max_cartones })}</div>`
              : ""}
@@ -682,12 +686,16 @@ async function cargarMisSalas() {
         <thead><tr><th>${t("salas.tabla_sala")}</th><th>${t("salas.tabla_modo")}</th><th>${t("salas.tabla_carton")}</th><th>${t("salas.tabla_partidas")}</th>
           <th>${t("salas.tabla_botes")}</th><th>${t("salas.tabla_ganado")}</th><th></th></tr></thead>
         <tbody>${res.salas.map((s) => `
-          <tr><td><strong>${s.nombre}</strong><br>
+          <tr><td><strong>${s.nombre}</strong>${s.es_trabajo
+                ? `<br><span class="sala-tarjeta__etiqueta sala-tarjeta__etiqueta--trabajo">${t("salas.trabajo_etiqueta")}</span>` : ""}<br>
                 <span class="ayuda">${s.publica ? t("salas.publica_corta") : t("salas.privada_corta")}</span></td>
           <td>${nombreModo(s.modo)}</td>
           <td>${s.precio_texto}</td><td>${g.partidas}</td><td>${g.botes_texto}</td>
           <td><strong>${g.anfitrion_texto}</strong></td>
           <td class="acciones-celda">
+            ${s.es_trabajo ? `<button class="boton boton--fantasma boton--mini"
+                    data-trabajo="${s.id}" data-tipo="${s.tipo_juego}"
+                    data-precio="${s.precio_texto}">${t("salas.trabajo_config")}</button>` : ""}
             <button class="boton boton--fantasma boton--mini"
                     data-enlace="${s.id}">${t("salas.copiar_enlace")}</button>
             <button class="boton boton--fantasma boton--mini"
@@ -696,6 +704,8 @@ async function cargarMisSalas() {
       <p class="ayuda">${t("salas.pie", { pct: g.comision_pct, ganado: g.anfitrion_texto, botes: g.botes_texto })}</p>`;
     caja.querySelectorAll("[data-enlace]").forEach((b) =>
       (b.onclick = () => copiarEnlaceSala(b.dataset.enlace)));
+    caja.querySelectorAll("[data-trabajo]").forEach((b) =>
+      (b.onclick = () => abrirTrabajo(b.dataset.trabajo, b.dataset.tipo, b.dataset.precio)));
     caja.querySelectorAll("[data-cerrar]").forEach((b) =>
       (b.onclick = async () => {
         if (!confirm(t("salas.confirmar_cerrar"))) return;
@@ -709,6 +719,17 @@ async function cargarMisSalas() {
   } catch (err) { /* sin sesión */ }
 }
 
+/* El dueño de una sala de trabajo decide el juego y el precio del cartón. */
+function abrirTrabajo(id, tipo, precio) {
+  const caja = $("#dialogo-trabajo");
+  if (!caja) return;
+  const form = $("#form-trabajo");
+  form.sala.value = id;
+  if (tipo) form.tipo_juego.value = tipo;
+  if (precio) form.precio.value = precio;
+  caja.hidden = false;
+}
+
 /* --- juego --- */
 
 async function refrescarPartida() {
@@ -719,6 +740,8 @@ async function refrescarPartida() {
       : p.estado === "jugando" ? t("mesa.en_juego") : t("mesa.terminada");
     $("#precio-carton").textContent = t("mesa.carton_precio", { precio: formatear(p.precio_carton) });
     $("#contador-bolas").textContent = t("mesa.bolas_sacadas", { n: p.bolas_sacadas.length });
+    const aviso = $("#aviso-carton-lleno");
+    if (aviso) aviso.hidden = p.tipo_juego !== "carton_lleno";
     pintarBolas(p.bolas_sacadas);
     pintarOponentes(p.a_cuanto_estan);
     const mio = (p.a_cuanto_estan || []).find(
@@ -790,10 +813,114 @@ function refrescarTodo() {
   refrescarHistorial();
   refrescarRetiros();
   refrescarDepositos();
+  refrescarBilletera();
   cargarMisSalas();
   cargarReferidos();
   cargarEstadisticas();
   cargarTorneo();
+}
+
+/* --- billetera de cripto: se conecta y se firma un mensaje --- */
+
+let mensajeBilletera = "";
+
+async function refrescarBilletera() {
+  const estado = $("#billetera-estado");
+  if (!estado) return;
+  if (!token) {
+    estado.textContent = t("billetera.entra");
+    $("#billetera-form").hidden = true;
+    $("#billetera-vinculada").hidden = true;
+    return;
+  }
+  try {
+    const r = await get("/api/billetera");
+    const b = r.billetera;
+    if (b && b.configurada) {
+      const red = (r.redes && r.redes[b.red]) || b.red;
+      estado.textContent = t("billetera.vinculada_a", { direccion: acortar(b.direccion), red });
+      $("#billetera-form").hidden = true;
+      $("#billetera-vinculada").hidden = false;
+    } else {
+      estado.textContent = t("billetera.sin_vincular");
+      $("#billetera-form").hidden = false;
+      $("#billetera-vinculada").hidden = true;
+      $("#billetera-paso2").hidden = true;
+      $("#btn-billetera-desafio").hidden = false;
+    }
+  } catch (err) {
+    estado.textContent = "";
+  }
+}
+
+function acortar(direccion) {
+  if (!direccion || direccion.length <= 14) return direccion || "";
+  return direccion.slice(0, 8) + "…" + direccion.slice(-6);
+}
+
+function conectarBilletera() {
+  const pedirDesafio = $("#btn-billetera-desafio");
+  if (!pedirDesafio) return;
+  pedirDesafio.onclick = async () => {
+    if (!token) return abrirAcceso("entrar");
+    try {
+      const r = await post("/api/billetera/desafio", {});
+      mensajeBilletera = r.mensaje;
+      $("#billetera-mensaje").value = r.mensaje;
+      $("#billetera-paso2").hidden = false;
+      pedirDesafio.hidden = true;
+      // Si el navegador tiene una billetera inyectada, se ofrece firmar directo.
+      $("#btn-billetera-firmar").hidden = !(window.ethereum && window.ethereum.request);
+    } catch (err) { avisar(err.message, "error"); }
+  };
+
+  $("#btn-billetera-copiar").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(mensajeBilletera);
+      avisar(t("billetera.copiado"), "bien");
+    } catch (err) {
+      prompt(t("billetera.copiar_manual"), mensajeBilletera);
+    }
+  };
+
+  $("#btn-billetera-firmar").onclick = async () => {
+    if (!window.ethereum || !window.ethereum.request) return;
+    try {
+      const cuentas = await window.ethereum.request({ method: "eth_requestAccounts" });
+      const direccion = cuentas && cuentas[0];
+      if (!direccion) return avisar(t("billetera.sin_cuenta"), "error");
+      const firma = await window.ethereum.request({
+        method: "personal_sign",
+        params: [mensajeBilletera, direccion],
+      });
+      $("#billetera-direccion").value = direccion;
+      $("#billetera-firma").value = firma;
+    } catch (err) { avisar(err.message || t("billetera.cancelo"), "error"); }
+  };
+
+  $("#btn-billetera-enviar").onclick = async () => {
+    if (!token) return abrirAcceso("entrar");
+    const direccion = $("#billetera-direccion").value.trim();
+    const firma = $("#billetera-firma").value.trim();
+    if (!direccion) return avisar(t("billetera.falta_direccion"), "error");
+    if (!firma) return avisar(t("billetera.falta_firma"), "error");
+    try {
+      const r = await post("/api/billetera", { direccion, firma });
+      avisar(r.mensaje || t("billetera.lista"), "bien");
+      $("#billetera-direccion").value = "";
+      $("#billetera-firma").value = "";
+      refrescarBilletera();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+
+  $("#btn-billetera-borrar").onclick = async () => {
+    if (!token) return;
+    try {
+      const r = await post("/api/billetera/borrar", {});
+      avisar(r.mensaje || t("billetera.borrada"), "bien");
+      refrescarBilletera();
+    } catch (err) { avisar(err.message, "error"); }
+  };
 }
 
 /* --- referidos: invita y gana --- */
@@ -1327,6 +1454,7 @@ window.addEventListener("focus", () => { if (token) comprobarSesion(); });
 pintarCartonDemo();
 pintarSesion();
 conectarBotones();
+conectarBilletera();
 conectarPortada();
 // Primero el idioma (los textos), luego el país (la moneda), y al final las
 // salas: así los importes ya salen en la moneda del país y en su idioma.
@@ -1349,6 +1477,25 @@ if (formSala) {
       cargarMisSalas();
     } catch (err) { avisar(err.message, "error"); }
   };
+}
+
+const formTrabajo = $("#form-trabajo");
+if (formTrabajo) {
+  formTrabajo.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!token) return abrirAcceso("entrar");
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      const res = await post("/api/sala/trabajo", {
+        sala: d.sala, tipo_juego: d.tipo_juego, precio: d.precio,
+      });
+      avisar(res.mensaje || t("salas.trabajo_guardado"), "bien");
+      $("#dialogo-trabajo").hidden = true;
+      cargarSalas();
+      cargarMisSalas();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+  $("#trabajo-cerrar").onclick = () => ($("#dialogo-trabajo").hidden = true);
 }
 comprobarSesion().then(refrescarTodo);
 setInterval(refrescarPartida, 5000);

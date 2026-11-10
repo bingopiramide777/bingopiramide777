@@ -154,6 +154,34 @@ El usuario trabaja desde el teléfono. Botones ≥44 px, `font-size:16px` en inp
   Empujar con `https://x-access-token:<PAT>@github.com/bingopiramide777/bingopiramide777.git`.
 - `main` en GitHub al 2026-11-08: `9e246f3` (multi-país, referidos, Wise, i18n, Postgres).
 
+## Salas de trabajo y comisión de depósitos (2026-11-10)
+- **Zulia y Lara** ahora juegan **cartón lleno** (migración `VERSION_JUEGOS` para bases ya
+  creadas en `nucleo/salas.py::_subir_juegos_antiguos`).
+- **Salas de trabajo** (`salas.es_trabajo`): el anfitrión pone juego y precio desde dentro
+  de la sala; se lleva **15 %** del bote (la app el 5 %). Normales: 10 % / 10 %.
+  Ruta `POST /api/sala/trabajo` (solo el dueño); `crear` acepta `es_trabajo`.
+- **Depósitos**: al acreditar, la app retiene **10 %** (anti-lavado) y guarda `comision` +
+  `acreditado` en el depósito. `_economia()` en `web/servidor.py` = bingo + esa comisión.
+- Front: `#sala-es-trabajo` en el form, `#dialogo-trabajo`/`#form-trabajo`, aviso
+  `#aviso-carton-lleno`, CSS `.sala-tarjeta--trabajo`/`.interruptor`/`.aviso-carton-lleno`.
+- Detalle en `.openhands/memory/2026-11-10.md`.
+
+## Billeteras de cripto (2026-11-10)
+- Vincular billetera (EVM/Solana) firmando un mensaje de un solo uso (caduca 5 min).
+  **Solo biblioteca estándar**: `nucleo/firmas.py` (keccak256, secp256k1/ECDSA con
+  recuperación, ed25519) y `nucleo/billeteras.py` (desafío + vinculación). Verificado
+  contra `eth_account`/PyNaCl **solo en local** (jamás al repo). Tabla `billeteras` en
+  SQLite y PG. Rutas `/api/billetera`, `/api/billetera/desafio`, `/api/billetera/borrar`.
+  Front: apartado `#billetera`; `personal_sign` si hay `window.ethereum`, si no copiar/pegar.
+- Pruebas: **425 en verde**. Commit local `74cae3e` en `openhands/billeteras-cripto`.
+- **El dominio `bingopiramide777.vip` YA está en Render** (Cloudflare delante; apex y `www`
+  → `srv-dbnn2upsrm7s739tio40`, auto-deploy desde `main`). Lo que falta es **empujar**.
+- **Bloqueo de push (recurrente)**: `$GITHUB_TOKEN` y la credencial git son de
+  `taktakmessenger` → **solo lectura** sobre `bingopiramide777/bingopiramide777`
+  (`permissions.push=false`). Hace falta un **PAT fine-grained de `bingopiramide777`**
+  (*Contents: read and write*) o que el usuario añada a `taktakmessenger` como colaborador
+  con permiso de escritura.
+
 ## Pendiente / avisos
 Falta pasarela de pago real, verificación de identidad en retiros, límite de
 recargas y HTTPS. En Venezuela las apuestas requieren autorización: el usuario

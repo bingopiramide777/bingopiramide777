@@ -7,15 +7,17 @@ El reparto:
 
     bote = precio del cartón x cartones vendidos
 
-    premio al ganador  = 80 % del bote
-    se queda la app    = 20 % del bote
+Hay tres clases de sala, y en cada una el bote se parte así:
 
-Y cuando la sala es de un jugador (salas personalizadas), el ganador cobra lo
-mismo y el 20 % restante se parte entre el anfitrión y la app:
+    sala de la casa:      ganador 80 %  ·  app 20 %
+    sala de un jugador:   ganador 75 %  ·  anfitrión 10 %  ·  app 15 %
+    sala de trabajo:      ganador 80 %  ·  anfitrión 15 %  ·  app 5 %
 
-    premio al ganador      = 80 % del bote   (igual que en las salas de la casa)
-    comisión del anfitrión = 10 % del bote   (lo cobra quien creó la sala)
-    se queda la app        = 10 % del bote
+Las **salas de la casa** (los estados) dejan todo su margen a la app. Las
+**salas de un jugador** son las que puede crear cualquiera: el ganador cobra un
+poco menos porque parte del bote va al anfitrión que organiza. La **sala de
+trabajo** (la de "Ganar Dinero Desde Casa") premia más al anfitrión que trae a
+los jugadores y baja la parte de la app.
 
 Así el anfitrión tiene motivo para traer jugadores, el jugador no cobra menos
 por jugar en una sala de un particular, y la app nunca pierde dinero.
@@ -41,9 +43,16 @@ class ErrorDeSalas(ValueError):
 
 
 # Qué parte del bote va al ganador en cada tipo de sala.
-PREMIO_CASA = Decimal("0.80")        # sala de la casa: 80 % al ganador
-PREMIO_CON_ANFITRION = Decimal("0.80")  # sala de un jugador: el ganador cobra igual
-COMISION_ANFITRION = Decimal("0.10")    # el anfitrión cobra un 10 %; la app el otro 10 %
+PREMIO_CASA = Decimal("0.80")            # sala de la casa: 80 % al ganador (app 20 %)
+PREMIO_CON_ANFITRION = Decimal("0.75")   # sala de un jugador: 75 % al ganador
+# Sala normal de un anfitrión: el 25 % que no va al ganador se parte 10 % para el
+# anfitrión y 15 % para la app.
+COMISION_ANFITRION = Decimal("0.10")    # comisión por defecto del anfitrión
+# Sala de trabajo ("Ganar Dinero Desde Casa"): el ganador cobra como en una sala
+# de la casa (80 %) y el 20 % restante se parte 15 % para el anfitrión y 5 % para
+# la app, porque es él quien trae a los jugadores.
+COMISION_TRABAJO = Decimal("0.15")
+PREMIO_TRABAJO = Decimal("0.80")
 
 # Límites del precio del cartón, en céntimos. Ni regalado ni abusivo.
 # Las salas de la casa y el evento los pone la administración desde el panel, así
@@ -70,8 +79,8 @@ NOMBRE_MAXIMO_CASA = 60
 # Las salas de la casa llevan nombre de estado de Venezuela. El último dato es
 # el tipo de juego que premia la sala. El precio es en dólares (céntimos).
 SALAS_INICIALES = (
-    ("sala-zulia", "Zulia", "normal", 10_00, "linea_h1", "VE"),
-    ("sala-lara", "Lara", "competencia", 5_00, "cuatro_esquinas", "VE"),
+    ("sala-zulia", "Zulia", "carton_lleno", 10_00, "carton_lleno", "VE"),
+    ("sala-lara", "Lara", "carton_lleno", 5_00, "carton_lleno", "VE"),
     ("sala-carabobo", "Carabobo", "carton_lleno", 3_00, "carton_lleno", "VE"),
     ("sala-miranda", "Mérida", "normal", 2_00, "cruz_grande", "VE"),
     ("sala-tachira", "Táchira", "competencia", 1_00, "cruz_pequena", "VE"),
@@ -111,6 +120,19 @@ NOMBRE_VIEJO_MIRANDA = "Miranda"
 # tocar los precios de las bases ya existentes. La 2 es el cambio a dólares.
 VERSION_PRECIOS = 2
 
+# Marca de "los juegos nuevos ya se aplicaron". La 1 es el paso de Zulia y Lara
+# a cartón lleno. Solo se toca una sala si todavía tiene su juego viejo.
+VERSION_JUEGOS = 1
+
+# Marca de "la sala de trabajo ya se aplicó". La 1 pone dueño y modo de trabajo a
+# "Ganar Dinero Desde Casa" una sola vez.
+VERSION_TRABAJO = 1
+# El juego viejo de Zulia y Lara, antes de pasarlas a cartón lleno.
+JUEGOS_ANTIGUOS = {
+    "sala-zulia": ("normal", "linea_h1"),
+    "sala-lara": ("competencia", "cuatro_esquinas"),
+}
+
 # Sala de eventos: la maneja la administración. Ella pone el aforo, el precio del
 # cartón y el porcentaje del bote que se lleva cada puesto.
 SALA_EVENTO_ID = "sala-evento-lago"
@@ -130,13 +152,16 @@ NOMBRES_RESERVADOS = tuple(n.lower() for _, n, _, _, _, _ in SALAS_INICIALES) + 
 )
 
 
-def reparto_del_bote(bote: int, con_anfitrion: bool, comision_pct: int | None = None) -> dict:
+def reparto_del_bote(bote: int, con_anfitrion: bool, comision_pct: int | None = None,
+                     premio_pct: Decimal | None = None) -> dict:
     """Parte el bote en premio, comisión del anfitrión y lo que queda a la app.
 
     El resto del redondeo se le da al ganador, nunca a la casa: si sobra un
     céntimo, es del jugador. Así la app nunca gana por un error de redondeo.
     La comisión del anfitrión se puede ajustar por cuenta (comision_pct, en %);
-    si no se pasa, se usa la de por defecto.
+    si no se pasa, se usa la de por defecto. El premio del ganador también se
+    puede ajustar (premio_pct): las salas de jugador dan el 75 % y las de trabajo
+    el 80 %.
     """
     if not isinstance(bote, int) or bote < 0:
         raise ErrorDeSalas(f"El bote tiene que ser un entero de céntimos, no {bote!r}.")
@@ -145,8 +170,9 @@ def reparto_del_bote(bote: int, con_anfitrion: bool, comision_pct: int | None = 
     if not isinstance(pct, int) or isinstance(pct, bool) or not 0 <= pct <= 100:
         raise ErrorDeSalas(f"Porcentaje de anfitrión no válido: {pct!r}.")
 
-    proporcion = PREMIO_CON_ANFITRION if con_anfitrion else PREMIO_CASA
-    premio = int((Decimal(bote) * proporcion).quantize(Decimal("1")))
+    proporcion = premio_pct if premio_pct is not None else (
+        PREMIO_CON_ANFITRION if con_anfitrion else PREMIO_CASA)
+    premio = int((Decimal(bote) * Decimal(proporcion)).quantize(Decimal("1")))
     anfitrion = int((Decimal(bote) * Decimal(pct) / 100).quantize(Decimal("1"))) if con_anfitrion else 0
     # Lo que queda a la app es el bote menos lo repartido: por construcción, cuadra.
     app = bote - premio - anfitrion
@@ -205,6 +231,7 @@ class Sala:
     max_cartones: int = 0              # cartones por jugador como máximo; 0 = sin tope
     fecha_partida: str = ""            # cuándo se juega (texto libre: "hoy 8 pm")
     pais: str = "VE"                   # país y moneda de la sala (Opción A)
+    es_trabajo: bool = False           # sala de trabajo: el anfitrión pone juego y precio
 
     @property
     def es_de_jugador(self) -> bool:
@@ -229,8 +256,18 @@ class Sala:
 
     @property
     def comision_anfitrion(self) -> int:
-        """Céntimos que cobra el anfitrión por cada 100 de bote."""
-        return int(COMISION_ANFITRION * 100) if self.es_de_jugador else 0
+        """Porcentaje del bote que cobra el anfitrión (0 si la sala es de la casa)."""
+        if not self.es_de_jugador:
+            return 0
+        pct = COMISION_TRABAJO if self.es_trabajo else COMISION_ANFITRION
+        return int(pct * 100)
+
+    @property
+    def premio_pct(self) -> Decimal:
+        """Qué parte del bote se lleva el ganador (el resto es anfitrión y app)."""
+        if self.es_trabajo:
+            return PREMIO_TRABAJO
+        return PREMIO_CON_ANFITRION if self.es_de_jugador else PREMIO_CASA
 
     @property
     def plazas(self) -> int:
@@ -240,7 +277,11 @@ class Sala:
     def reparto(self, bote: int, comision_pct: int | None = None) -> dict:
         if self.es_evento:
             return reparto_evento(bote, self.premios_pct)
-        return reparto_del_bote(bote, con_anfitrion=self.es_de_jugador, comision_pct=comision_pct)
+        if comision_pct is None:
+            # Sala de trabajo: 15 % para el anfitrión. Sala normal: 10 %.
+            comision_pct = self.comision_anfitrion if self.es_de_jugador else 0
+        return reparto_del_bote(bote, con_anfitrion=self.es_de_jugador,
+                                comision_pct=comision_pct, premio_pct=self.premio_pct)
 
     def a_dict(self) -> dict:
         return {
@@ -254,6 +295,7 @@ class Sala:
             "publica": self.publica,
             "activa": self.activa,
             "comision_anfitrion": self.comision_anfitrion,
+            "premio_pct": int(self.premio_pct * 100),
             "es_de_jugador": self.es_de_jugador,
             "es_evento": self.es_evento,
             "aforo": self.aforo,
@@ -263,25 +305,33 @@ class Sala:
             "cupo_cartones": self.cupo_cartones,
             "max_cartones": self.max_cartones,
             "fecha_partida": self.fecha_partida,
+            "es_trabajo": self.es_trabajo,
         }
 
 
 class Salas:
     """Gestiona las salas: las de la casa y las que crean los jugadores."""
 
-    def __init__(self, almacen, usuarios=None) -> None:
+    def __init__(self, almacen, usuarios=None, anfitrion_casa: str = "") -> None:
         self.almacen = almacen
         self.usuarios = usuarios
+        # Correo que hace de anfitrión en la sala de trabajo ("Ganar Dinero Desde
+        # Casa"). Es la cuenta de administración: cobra el 15 % de esa sala.
+        self.anfitrion_casa = anfitrion_casa
         self._asegurar_iniciales()
         self._subir_precios_antiguos()
+        self._subir_juegos_antiguos()
+        self._subir_sala_trabajo()
 
-    def comision_de(self, dueno: str) -> int:
+    def comision_de(self, dueno: str, defecto: int | None = None) -> int:
         """El % de comisión de anfitrión que le toca a una cuenta.
 
         Cada cuenta puede tener su propio porcentaje (lo pone la administración);
-        si no lo tiene, se usa el de por defecto.
+        si no lo tiene, se usa el de por defecto. El defecto cambia según la sala
+        (15 % en las salas de trabajo, 10 % en las demás).
         """
-        defecto = int(COMISION_ANFITRION * 100)
+        if defecto is None:
+            defecto = int(COMISION_ANFITRION * 100)
         if not dueno or self.usuarios is None:
             return defecto
         return self.usuarios.comision_de(dueno, defecto)
@@ -318,6 +368,40 @@ class Salas:
                 self.almacen.actualizar_sala(id_, {"precio_carton": nuevo})
         self.almacen.guardar_meta("precios_v", str(VERSION_PRECIOS))
 
+    def _subir_juegos_antiguos(self) -> None:
+        """Pasa Zulia y Lara a cartón lleno en bases de datos creadas antes.
+
+        Solo toca una sala si todavía tiene su juego viejo (modo y tipo), para no
+        pisar un cambio que haya hecho la administración. Se hace una sola vez.
+        """
+        if self.almacen.meta("juegos_v") == str(VERSION_JUEGOS):
+            return
+        for id_, (modo_viejo, tipo_viejo) in JUEGOS_ANTIGUOS.items():
+            fila = self.almacen.sala(id_)
+            if fila is None:
+                continue
+            if fila["modo"] == modo_viejo and fila["tipo_juego"] == tipo_viejo:
+                self.almacen.actualizar_sala(id_, {"modo": "carton_lleno",
+                                                   "tipo_juego": "carton_lleno"})
+        self.almacen.guardar_meta("juegos_v", str(VERSION_JUEGOS))
+
+    def _subir_sala_trabajo(self) -> None:
+        """Convierte "Ganar Dinero Desde Casa" en la sala de trabajo de la casa.
+
+        Le pone dueño (la cuenta de administración) y la marca como sala de
+        trabajo, para que su anfitrión cobre el 15 % y la app solo el 5 %. Se hace
+        una sola vez; después la administración puede tocar el dueño desde el panel.
+        """
+        if not self.anfitrion_casa:
+            return
+        if self.almacen.meta("trabajo_v") == str(VERSION_TRABAJO):
+            return
+        fila = self.almacen.sala(SALA_CASA_ID)
+        if fila is not None and not fila["dueno"]:
+            self.almacen.actualizar_sala(SALA_CASA_ID, {"dueno": self.anfitrion_casa,
+                                                        "es_trabajo": 1})
+        self.almacen.guardar_meta("trabajo_v", str(VERSION_TRABAJO))
+
     def _asegurar_iniciales(self) -> None:
         """Crea las salas de la casa la primera vez. No pisa las que ya existan."""
         for id_, nombre, modo, precio, tipo, pais in SALAS_INICIALES:
@@ -331,9 +415,10 @@ class Salas:
         if self.almacen.sala(SALA_CASA_ID) is None:
             self.almacen.guardar_sala({
                 "id": SALA_CASA_ID, "nombre": SALA_CASA_NOMBRE, "modo": SALA_CASA_MODO,
-                "precio_carton": SALA_CASA_PRECIO, "dueno": "", "publica": 1,
-                "creada": time.time(), "activa": 1, "es_evento": 0,
-                "tipo_juego": SALA_CASA_TIPO,
+                "precio_carton": SALA_CASA_PRECIO,
+                "dueno": self.anfitrion_casa if self.anfitrion_casa else "",
+                "publica": 1, "creada": time.time(), "activa": 1, "es_evento": 0,
+                "tipo_juego": SALA_CASA_TIPO, "es_trabajo": 1 if self.anfitrion_casa else 0,
                 "max_cartones": SALA_CASA_MAX_CARTONES,
             })
         if self.almacen.sala(SALA_EVENTO_ID) is None:
@@ -352,8 +437,9 @@ class Salas:
         return [self._a_sala(f) for f in self.almacen.salas(incluir_inactivas)]
 
     def de_la_casa(self, incluir_inactivas: bool = False) -> list[Sala]:
-        """Las salas de los estados, sin la de eventos."""
-        return [s for s in self.todas(incluir_inactivas) if not s.es_evento and not s.dueno]
+        """Las salas de los estados: sin la de eventos ni la de trabajo."""
+        return [s for s in self.todas(incluir_inactivas)
+                if not s.es_evento and not s.dueno and s.id != SALA_CASA_ID]
 
     def evento(self) -> Sala:
         """La sala de eventos Lago de Maracaibo."""
@@ -376,6 +462,9 @@ class Salas:
     def crear(self, dueno: str, nombre: str, modo: str, precio: object,
               publica: bool = True, pais: str | None = None) -> Sala:
         """Un jugador crea su sala. El anfitrión se lleva el 10 % de los botes.
+
+        Las salas de jugador son siempre normales: el ganador cobra el 75 %, el
+        anfitrión el 10 % y la app el 15 %.
 
         La sala nace con un país (y por tanto una moneda). Si no se indica, se usa
         el país del jugador que la crea, y si tampoco, el de por defecto. El precio
@@ -415,16 +504,30 @@ class Salas:
             "id": sala.id, "nombre": sala.nombre, "modo": sala.modo,
             "precio_carton": sala.precio_carton, "dueno": sala.dueno,
             "publica": int(sala.publica), "creada": sala.creada, "activa": 1,
-            "pais": sala.pais,
+            "pais": sala.pais, "es_trabajo": int(sala.es_trabajo),
         })
         return sala
 
     def comision_de_sala(self, sala_id: str) -> int:
-        """El % de comisión que cobra el anfitrión de una sala (0 si no tiene dueño)."""
-        fila = self.almacen.sala(sala_id)
-        if not fila or not fila["dueno"]:
+        """El % de comisión que cobra el anfitrión de una sala (0 si no tiene dueño).
+
+        En una sala de trabajo el anfitrión se lleva el 15 % por defecto (salvo
+        que la administración le haya fijado otro porcentaje a su cuenta).
+        """
+        sala = self.de(sala_id)
+        if not sala.es_de_jugador:
             return 0
-        return self.comision_de(fila["dueno"])
+        defecto = sala.comision_anfitrion
+        return self.comision_de(sala.dueno, defecto)
+
+    def reparto_de_sala(self, sala_id: str, bote: int) -> dict:
+        """Parte el bote de una sala según su tipo (casa, jugador o trabajo).
+
+        Es el único sitio donde se decide el reparto: lo usan el motor de bingo y
+        el panel, para que todos vean siempre las mismas cuentas.
+        """
+        sala = self.de(sala_id)
+        return sala.reparto(bote, self.comision_de_sala(sala_id))
 
     def cerrar(self, id_: str, quien: str, es_admin: bool = False) -> Sala:
         """Cierra una sala. Solo su dueño o la administración."""
@@ -483,7 +586,9 @@ class Salas:
         repositorio cada vez que hay que cambiar algo de una sala.
         """
         sala = self.de(id_)
-        if sala.es_de_jugador:
+        # La sala de trabajo tiene dueño (la administración), pero se sigue
+        # configurando desde aquí como cualquier sala de la casa.
+        if sala.es_de_jugador and sala.id != SALA_CASA_ID:
             raise ErrorDeSalas("Las salas de jugador no se tocan desde aquí.")
         if sala.es_evento:
             raise ErrorDeSalas("La sala de eventos se configura aparte, con sus premios y aforo.")
@@ -507,6 +612,30 @@ class Salas:
             campos["fecha_partida"] = str(fecha_partida).strip()[:60]
         if activa is not None:
             campos["activa"] = int(bool(activa))
+        if campos:
+            self.almacen.actualizar_sala(sala.id, campos)
+        return self.de(sala.id)
+
+    def configurar_trabajo(self, id_: str, quien: str, precio: object | None = None,
+                           tipo_juego: object | None = None,
+                           fecha_partida: object | None = None) -> Sala:
+        """El anfitrión pone el juego y el precio del cartón en SU sala de trabajo.
+
+        Solo la puede ajustar su dueño. El precio se mueve dentro de los límites de
+        las salas de jugador y el tipo de juego tiene que existir.
+        """
+        sala = self.de(id_)
+        if not sala.es_de_jugador or sala.dueno != quien:
+            raise ErrorDeSalas("Esa sala de trabajo no es tuya.")
+        if not sala.es_trabajo:
+            raise ErrorDeSalas("Esta sala no es una sala de trabajo.")
+        campos: dict = {}
+        if precio is not None:
+            campos["precio_carton"] = self._precio_valido(precio, PRECIO_MAXIMO, "de tu sala")
+        if tipo_juego is not None:
+            campos["tipo_juego"] = self._tipo_juego_valido(tipo_juego)
+        if fecha_partida is not None:
+            campos["fecha_partida"] = str(fecha_partida).strip()[:60]
         if campos:
             self.almacen.actualizar_sala(sala.id, campos)
         return self.de(sala.id)
@@ -589,7 +718,7 @@ class Salas:
             bote = fila["precio_carton"] * len(self.almacen.cartones(fila["id"]))
             if bote == 0:
                 continue
-            r = reparto_del_bote(bote, con_anfitrion=True, comision_pct=self.comision_de(correo))
+            r = self.reparto_de_sala(fila["sala"], bote)
             total_anfitrion += r["anfitrion"]
             total_app += r["app"]
             total_botes += bote
@@ -677,12 +806,9 @@ class Salas:
         """Reparte el bote de una partida según el tipo de sala que la abrió."""
         bote = fila["precio_carton"] * len(self.almacen.cartones(fila["id"]))
         sala_fila = self.almacen.sala(fila["sala"]) if fila["sala"] else None
-        if sala_fila and sala_fila["es_evento"]:
-            premios = tuple(int(p) for p in (sala_fila["premios_pct"] or "").split(",") if p)
-            return reparto_evento(bote, premios)
-        con_anf = bool(sala_fila and sala_fila["dueno"])
-        comision = self.comision_de(sala_fila["dueno"]) if con_anf else None
-        return reparto_del_bote(bote, con_anfitrion=con_anf, comision_pct=comision)
+        if sala_fila is None:
+            return reparto_del_bote(bote, con_anfitrion=False)
+        return self.reparto_de_sala(fila["sala"], bote)
 
     def _es_de_jugador(self, sala_id: str) -> bool:
         fila = self.almacen.sala(sala_id)
@@ -705,4 +831,5 @@ class Salas:
                     cupo_cartones=int(fila["cupo_cartones"]) if "cupo_cartones" in claves else 0,
                     max_cartones=int(fila["max_cartones"]) if "max_cartones" in claves else 0,
                     fecha_partida=(fila["fecha_partida"] or "") if "fecha_partida" in claves else "",
-                    pais=(fila["pais"] or "VE") if "pais" in claves else "VE")
+                    pais=(fila["pais"] or "VE") if "pais" in claves else "VE",
+                    es_trabajo=bool(fila["es_trabajo"]) if "es_trabajo" in claves else False)

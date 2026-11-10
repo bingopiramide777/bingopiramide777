@@ -13,9 +13,13 @@ from bingo import MesaBingo, Sala as SalaBingo
 from nucleo.almacen import Almacen
 from nucleo.monedero import Monedero
 from nucleo.money import a_texto
+from nucleo.usuarios import Usuarios
 from nucleo.salas import (
     COMISION_ANFITRION,
+    COMISION_TRABAJO,
     PREMIO_CASA,
+    PREMIO_CON_ANFITRION,
+    PREMIO_TRABAJO,
     SALA_CASA_ID,
     SALA_CASA_NOMBRE,
     SALA_CASA_PRECIO,
@@ -37,11 +41,18 @@ class RepartoTest(unittest.TestCase):
         self.assertEqual(r["anfitrion"], 0)
         self.assertEqual(r["app"], 2_000)
 
-    def test_sala_de_jugador_el_ganador_cobra_lo_mismo(self):
+    def test_sala_de_jugador_reparte_75_10_15(self):
         r = reparto_del_bote(10_000, con_anfitrion=True)
-        self.assertEqual(r["premio"], 8_000, "el ganador no cobra menos por jugar en sala ajena")
+        self.assertEqual(r["premio"], 7_500)
         self.assertEqual(r["anfitrion"], 1_000)
-        self.assertEqual(r["app"], 1_000)
+        self.assertEqual(r["app"], 1_500)
+
+    def test_sala_de_trabajo_reparte_80_15_5(self):
+        r = reparto_del_bote(10_000, con_anfitrion=True, comision_pct=15,
+                             premio_pct=Decimal("0.80"))
+        self.assertEqual(r["premio"], 8_000)
+        self.assertEqual(r["anfitrion"], 1_500)
+        self.assertEqual(r["app"], 500)
 
     def test_el_reparto_nunca_pierde_un_centimo(self):
         """Ni con botes de céntimos raros: premio + anfitrión + app = bote."""
@@ -71,7 +82,7 @@ class SalasTest(unittest.TestCase):
     def test_vienen_las_salas_de_la_casa(self):
         nombres = [s.nombre for s in self.salas.de_la_casa()]
         self.assertEqual(nombres, ["Zulia", "Lara", "Carabobo", "Mérida", "Táchira",
-                                   "Nueva Esparta", SALA_CASA_NOMBRE])
+                                   "Nueva Esparta"])
         self.assertTrue(all(not s.es_de_jugador for s in self.salas.de_la_casa()))
 
     def test_viene_la_sala_de_jugar_desde_casa(self):
@@ -82,7 +93,9 @@ class SalasTest(unittest.TestCase):
         self.assertEqual(sala.tipo_juego, "carton_lleno")
         self.assertEqual(sala.precio_carton, 2_00)
         self.assertEqual(sala.max_cartones, 6)
+        # Sin anfitrión configurado sigue siendo de la casa (80/20).
         self.assertFalse(sala.es_de_jugador)
+        self.assertFalse(sala.es_trabajo)
 
     def test_viene_la_sala_de_eventos_lago_de_maracaibo(self):
         evento = self.salas.evento()
@@ -102,11 +115,12 @@ class SalasTest(unittest.TestCase):
             "Mérida": 2_00,
             "Táchira": 1_00,
             "Nueva Esparta": 1_00,
-            SALA_CASA_NOMBRE: 2_00,
         })
         modos = {s.nombre: s.modo for s in self.salas.de_la_casa()}
         self.assertEqual(modos["Carabobo"], "carton_lleno")
-        self.assertEqual(modos["Lara"], "competencia")
+        # Zulia y Lara son de cartón lleno: sus partidas duran más.
+        self.assertEqual(modos["Zulia"], "carton_lleno")
+        self.assertEqual(modos["Lara"], "carton_lleno")
 
     def test_un_jugador_crea_su_sala(self):
         s = self.salas.crear("ana@correo.com", "La de Ana", "normal", "25,00")
@@ -239,6 +253,143 @@ class ConfigurarSalasTest(unittest.TestCase):
         self.assertEqual(otra.de(SALA_CASA_ID).max_cartones, 4)
 
 
+class SalaTrabajoTest(unittest.TestCase):
+    """La sala de trabajo: "Ganar Dinero Desde Casa" con anfitrión de la casa."""
+
+    def setUp(self):
+        self.almacen = Almacen(":memory:")
+        self.usuarios = Usuarios(self.almacen)
+        self.anfitrion = "bingopiramide777@gmail.com"
+        self.salas = Salas(self.almacen, usuarios=self.usuarios,
+                           anfitrion_casa=self.anfitrion)
+
+    def _trabajo(self):
+        return self.salas.de(SALA_CASA_ID)
+
+    def test_la_sala_de_trabajo_es_la_de_ganar_desde_casa(self):
+        s = self._trabajo()
+        self.assertTrue(s.es_trabajo)
+        self.assertTrue(s.es_de_jugador)
+        self.assertEqual(s.dueno, self.anfitrion)
+        self.assertEqual(s.comision_anfitrion, 15)
+
+    def test_la_sala_de_trabajo_reparte_80_15_5(self):
+        s = self._trabajo()
+        r = s.reparto(10_000)
+        self.assertEqual(r["premio"], 8_000)
+        self.assertEqual(r["anfitrion"], 1_500)
+        self.assertEqual(r["app"], 500)
+
+    def test_una_sala_de_jugador_reparte_75_10_15(self):
+        s = self.salas.crear("ana@correo.com", "Normal", "normal", "10,00")
+        self.assertFalse(s.es_trabajo)
+        self.assertEqual(s.comision_anfitrion, 10)
+        r = s.reparto(10_000)
+        self.assertEqual(r["premio"], 7_500)
+        self.assertEqual(r["anfitrion"], 1_000)
+        self.assertEqual(r["app"], 1_500)
+
+    def test_el_reparto_de_trabajo_nunca_pierde_un_centimo(self):
+        s = self._trabajo()
+        for bote in range(0, 5_000):
+            r = s.reparto(bote)
+            self.assertEqual(r["premio"] + r["anfitrion"] + r["app"], bote)
+
+    def test_el_dueno_pone_el_juego_y_el_precio(self):
+        s = self._trabajo()
+        nueva = self.salas.configurar_trabajo(s.id, self.anfitrion,
+                                              precio="25,00", tipo_juego="diagonal")
+        self.assertEqual(nueva.precio_carton, 2_500)
+        self.assertEqual(nueva.tipo_juego, "diagonal")
+
+    def test_solo_el_dueno_toca_la_sala_de_trabajo(self):
+        s = self._trabajo()
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_trabajo(s.id, "otro@correo.com", precio="25,00")
+
+    def test_no_se_configura_una_sala_que_no_es_de_trabajo(self):
+        s = self.salas.crear("ana@correo.com", "Normal", "normal", "10,00")
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_trabajo(s.id, "ana@correo.com", precio="25,00")
+
+    def test_el_precio_de_trabajo_respeta_los_limites(self):
+        s = self._trabajo()
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_trabajo(s.id, self.anfitrion, precio="1000,00")
+
+    def test_el_juego_inventado_se_rechaza(self):
+        s = self._trabajo()
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.configurar_trabajo(s.id, self.anfitrion, tipo_juego="inventado")
+
+    def test_la_comision_de_la_sala_de_trabajo_llega_al_monedero(self):
+        s = self._trabajo()
+        self.assertEqual(self.salas.comision_de_sala(s.id), 15)
+
+    def test_la_sala_de_trabajo_sobrevive_al_reinicio(self):
+        s = self._trabajo()
+        otra = Salas(self.almacen, usuarios=self.usuarios,
+                     anfitrion_casa=self.anfitrion)
+        self.assertTrue(otra.de(s.id).es_trabajo)
+        self.assertEqual(otra.de(s.id).dueno, self.anfitrion)
+
+    def test_la_sala_de_trabajo_no_esta_entre_las_de_la_casa(self):
+        self.assertNotIn(self._trabajo(), self.salas.de_la_casa())
+
+    def test_el_admin_configura_la_sala_de_trabajo(self):
+        """Desde el panel se toca como cualquier sala de la casa."""
+        s = self.salas.configurar_sala(SALA_CASA_ID, precio="50,00", tipo_juego="linea_h1")
+        self.assertEqual(s.precio_carton, 5_000)
+        self.assertEqual(s.tipo_juego, "linea_h1")
+
+    def test_sin_anfitrion_la_sala_es_de_la_casa(self):
+        almacen = Almacen(":memory:")
+        salas = Salas(almacen, usuarios=Usuarios(almacen))
+        s = salas.de(SALA_CASA_ID)
+        self.assertFalse(s.es_trabajo)
+        self.assertFalse(s.es_de_jugador)
+
+
+class MigracionJuegosTest(unittest.TestCase):
+    """Bases de datos viejas: Zulia y Lara pasan a cartón lleno una vez."""
+
+    def test_zulia_y_lara_pasan_a_carton_lleno(self):
+        almacen = Almacen(":memory:")
+        almacen.guardar_sala({
+            "id": "sala-zulia", "nombre": "Zulia", "modo": "normal",
+            "precio_carton": 10_00, "tipo_juego": "linea_h1", "dueno": "",
+            "publica": 1, "creada": 0.0, "activa": 1,
+        })
+        almacen.guardar_sala({
+            "id": "sala-lara", "nombre": "Lara", "modo": "competencia",
+            "precio_carton": 5_00, "tipo_juego": "cuatro_esquinas", "dueno": "",
+            "publica": 1, "creada": 0.0, "activa": 1,
+        })
+        salas = Salas(almacen)
+        self.assertEqual(salas.de("sala-zulia").modo, "carton_lleno")
+        self.assertEqual(salas.de("sala-zulia").tipo_juego, "carton_lleno")
+        self.assertEqual(salas.de("sala-lara").modo, "carton_lleno")
+        self.assertEqual(salas.de("sala-lara").tipo_juego, "carton_lleno")
+
+    def test_no_se_pisa_un_juego_que_cambio_el_admin(self):
+        almacen = Almacen(":memory:")
+        almacen.guardar_sala({
+            "id": "sala-zulia", "nombre": "Zulia", "modo": "competencia",
+            "precio_carton": 10_00, "tipo_juego": "diagonal", "dueno": "",
+            "publica": 1, "creada": 0.0, "activa": 1,
+        })
+        salas = Salas(almacen)
+        self.assertEqual(salas.de("sala-zulia").modo, "competencia")
+        self.assertEqual(salas.de("sala-zulia").tipo_juego, "diagonal")
+
+    def test_la_migracion_de_juegos_solo_corre_una_vez(self):
+        almacen = Almacen(":memory:")
+        Salas(almacen)
+        Salas(almacen).configurar_sala("sala-zulia", tipo_juego="diagonal")
+        otra = Salas(almacen)
+        self.assertEqual(otra.de("sala-zulia").tipo_juego, "diagonal")
+
+
 class MigracionPreciosTest(unittest.TestCase):
     """Bases de datos viejas: los precios suben una vez, sin pisar al admin."""
 
@@ -343,9 +494,10 @@ class EconomiaTest(unittest.TestCase):
         sala = self.salas.crear("duena@correo.com", "La de la dueña", "normal", "10,00")
         res = self._jugar(sala.id, ["ana@correo.com", "luis@correo.com"])
         self.assertEqual(res["bote"], 2_000)
-        self.assertEqual(res["premio"], 1_600)
+        # Sala de jugador: ganador 75 %, anfitrión 10 %, app 15 %.
+        self.assertEqual(res["premio"], 1_500)
         self.assertEqual(res["anfitrion"], 200)
-        self.assertEqual(res["app"], 200)
+        self.assertEqual(res["app"], 300)
 
     def test_el_anfitrion_cobra_su_comision_en_el_monedero(self):
         sala = self.salas.crear("duena@correo.com", "La de la dueña", "normal", "10,00")
@@ -365,8 +517,9 @@ class EconomiaTest(unittest.TestCase):
         g = self.salas.ganancias("duena@correo.com")
         self.assertEqual(g["partidas"], 2)
         self.assertEqual(g["botes"], 4_000)
+        # Sala de jugador: el anfitrión se lleva el 10 % y la app el 15 %.
         self.assertEqual(g["anfitrion"], 400)
-        self.assertEqual(g["app"], 400)
+        self.assertEqual(g["app"], 600)
 
     def test_la_economia_suma_todas_las_salas(self):
         sala = self.salas.crear("duena@correo.com", "La de la dueña", "normal", "10,00")
@@ -377,9 +530,11 @@ class EconomiaTest(unittest.TestCase):
         # Lara ($ 5 el cartón, 2 cartones = $ 10) + la sala de la dueña ($ 10 el
         # cartón, 2 cartones = $ 20): 3.000 céntimos.
         self.assertEqual(e["botes"], 3_000)
-        self.assertEqual(e["premios"], 2_400)
+        # Lara 80 % (800) + sala de jugador 75 % (1.500) = 2.300 de premios.
+        self.assertEqual(e["premios"], 2_300)
         self.assertEqual(e["comisiones"], 200)
-        self.assertEqual(e["app"], 400)
+        # Lara 200 + sala de jugador 300 = 500 para la app.
+        self.assertEqual(e["app"], 500)
         # Y el reparto siempre cuadra.
         self.assertEqual(e["premios"] + e["comisiones"] + e["app"], e["botes"])
 
@@ -390,11 +545,17 @@ class EconomiaTest(unittest.TestCase):
         self.assertEqual(a_texto(e["app"]), "$ 0,00")
 
     def test_los_porcentajes_son_los_documentados(self):
-        # El ganador siempre cobra el 80 %; el 20 % restante se reparte a partes
-        # iguales entre el anfitrión (10 %) y la app (10 %).
+        # Sala de la casa: 80 % al ganador y 20 % para la app.
         self.assertEqual(PREMIO_CASA, Decimal("0.80"))
+        # Sala de jugador: 75 % al ganador, 10 % al anfitrión y 15 % para la app.
+        self.assertEqual(PREMIO_CON_ANFITRION, Decimal("0.75"))
         self.assertEqual(COMISION_ANFITRION, Decimal("0.10"))
-        self.assertEqual(Decimal("1") - PREMIO_CASA - COMISION_ANFITRION, Decimal("0.10"))
+        self.assertEqual(Decimal("1") - PREMIO_CON_ANFITRION - COMISION_ANFITRION,
+                         Decimal("0.15"))
+        # Sala de trabajo: 80 % al ganador, 15 % al anfitrión y 5 % para la app.
+        self.assertEqual(PREMIO_TRABAJO, Decimal("0.80"))
+        self.assertEqual(COMISION_TRABAJO, Decimal("0.15"))
+        self.assertEqual(Decimal("1") - PREMIO_TRABAJO - COMISION_TRABAJO, Decimal("0.05"))
 
 
 class RepartoEventoTest(unittest.TestCase):

@@ -548,7 +548,9 @@ class ServidorTest(unittest.TestCase):
                                  {"id": r["deposito"]["id"], "accion": "acreditar"}, at)
         self.assertEqual(estado, 200)
         self.assertEqual(res["deposito"]["estado"], "acreditado")
-        self.assertEqual(self.pedir("/api/saldo", token=token)[1]["saldo"], 15_000)
+        # De $ 150 la administración retiene su 20 %: entran $ 120 al saldo.
+        self.assertEqual(res["deposito"]["comision"], 3_000)
+        self.assertEqual(self.pedir("/api/saldo", token=token)[1]["saldo"], 12_000)
 
     def test_solo_el_admin_acredita(self):
         token = self.usuario("ana@correo.com")
@@ -763,6 +765,66 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(estado, 400)
         self.assertIn("jugador", r["error"])
 
+    # -- sala de trabajo (la de la casa con anfitrión) --
+
+    def test_la_sala_de_trabajo_es_la_de_ganar_desde_casa(self):
+        jugador = self.usuario("ana@correo.com")
+        _, r = self.pedir("/api/salas", token=jugador)
+        sala = next(s for s in r["salas"] if s["id"] == "sala-ganar-desde-casa")
+        self.assertTrue(sala["es_trabajo"])
+        self.assertEqual(sala["comision_anfitrion"], 15)
+        self.assertEqual(sala["premio_pct"], 80)
+
+    def test_una_sala_de_jugador_reparte_75_10_15(self):
+        token = self.usuario("ana@correo.com")
+        _, r = self.pedir("/api/sala/crear",
+                          {"nombre": "Normal", "modo": "normal", "precio": "10,00"}, token)
+        self.assertFalse(r["sala"]["es_trabajo"])
+        self.assertEqual(r["sala"]["comision_anfitrion"], 10)
+        self.assertEqual(r["sala"]["premio_pct"], 75)
+
+    def test_el_anfitrion_de_la_casa_pone_el_juego_y_el_precio(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/sala/trabajo",
+                               {"sala": "sala-ganar-desde-casa", "precio": "25,00",
+                                "tipo_juego": "diagonal"}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["sala"]["precio_texto"], "$ 25,00")
+        self.assertEqual(r["sala"]["tipo_juego"], "diagonal")
+
+    def test_el_precio_nuevo_de_trabajo_lo_paga_el_jugador(self):
+        at = self.admin()
+        self.pedir("/api/sala/trabajo",
+                   {"sala": "sala-ganar-desde-casa", "precio": "25,00"}, at)
+        jugador = self.usuario("luis@correo.com", recarga="100,00")
+        _, c = self.pedir("/api/carton", {"sala": "sala-ganar-desde-casa"}, jugador)
+        self.assertEqual(c["precio"], 2_500)
+        self.assertEqual(c["saldo"], 7_500)
+
+    def test_solo_el_anfitrion_toca_la_sala_de_trabajo(self):
+        otro = self.usuario("luis@correo.com")
+        estado, _ = self.pedir("/api/sala/trabajo",
+                               {"sala": "sala-ganar-desde-casa", "precio": "25,00"}, otro)
+        self.assertEqual(estado, 400)
+
+    def test_al_entrar_a_la_sala_de_trabajo_el_anfitrion_se_reconoce(self):
+        at = self.admin()
+        _, r = self.pedir("/api/sala/entrar", {"sala": "sala-ganar-desde-casa"}, at)
+        self.assertTrue(r["partida"]["es_trabajo"])
+        self.assertTrue(r["partida"]["soy_dueno"])
+        self.assertEqual(r["partida"]["reparto"]["comision_pct"], 15)
+
+    def test_la_sala_de_trabajo_reparte_80_15_5(self):
+        at = self.admin()
+        jugador = self.usuario("luis@correo.com", recarga="100,00")
+        self.pedir("/api/carton", {"sala": "sala-ganar-desde-casa"}, jugador)
+        _, r = self.pedir("/api/sala/entrar", {"sala": "sala-ganar-desde-casa"}, at)
+        reparto = r["partida"]["reparto"]
+        self.assertEqual(reparto["bote"], 2_00)
+        self.assertEqual(reparto["premio"], 1_60)
+        self.assertEqual(reparto["anfitrion"], 30)
+        self.assertEqual(reparto["app"], 10)
+
     # -- referidos --
 
     def test_referido_cobra_comision_al_ganar_el_ahijado(self):
@@ -924,6 +986,48 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(d["foto_url"], "")
         _, s = self.pedir("/api/sesion", token=token)
         self.assertEqual(s["foto_url"], "")
+
+    def test_billetera_desafio_y_vincular(self):
+        import json as _json
+        import time
+        from tests.test_billeteras import EVM_DIRECCION, EVM_FIRMA, NONCE
+
+        correo = "ana@correo.com"
+        token = self.usuario(correo)
+
+        # Desafío por HTTP: trae un mensaje para firmar con el correo dentro.
+        estado, d = self.pedir("/api/billetera/desafio", {}, token)
+        self.assertEqual(estado, 200)
+        self.assertTrue(d["ok"])
+        self.assertIn(correo, d["mensaje"])
+
+        # Con una firma que no corresponde, no se vincula.
+        estado, _ = self.pedir("/api/billetera",
+                               {"direccion": EVM_DIRECCION, "firma": "00" * 65}, token)
+        self.assertNotEqual(estado, 200)
+
+        # Con el desafío fijado al nonce del vector, la firma buena sí vincula.
+        self.almacen.guardar_meta("billetera_desafio:" + correo,
+                                  _json.dumps({"nonce": NONCE,
+                                               "caduca": time.time() + 300}))
+        estado, d = self.pedir("/api/billetera",
+                               {"direccion": EVM_DIRECCION, "firma": EVM_FIRMA}, token)
+        self.assertEqual(estado, 200)
+        self.assertTrue(d["ok"])
+        _, d = self.pedir("/api/billetera", token=token)
+        self.assertTrue(d["billetera"]["configurada"])
+        self.assertEqual(d["billetera"]["direccion"], EVM_DIRECCION)
+
+        # Se puede desvincular.
+        self.pedir("/api/billetera/borrar", {}, token)
+        _, d = self.pedir("/api/billetera", token=token)
+        self.assertIsNone(d["billetera"])
+
+    def test_billetera_requiere_sesion(self):
+        estado, _ = self.pedir("/api/billetera")
+        self.assertEqual(estado, 401)
+        estado, _ = self.pedir("/api/billetera/desafio", {})
+        self.assertEqual(estado, 401)
 
     def _marcar_patron(self, sala_id, carton_id, patron):
         """Marca en el cartón el patrón de la partida, para poder cantar bingo.
