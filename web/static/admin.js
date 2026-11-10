@@ -338,7 +338,7 @@ function ajustarSaldo(correo) {
     <h2>Ajustar saldo</h2>
     <p style="color:var(--gris);font-size:.9rem">${correo}</p>
     <form id="form-ajuste">
-      <label>Importe (Bs)<input type="text" name="importe" required placeholder="100,00"></label>
+      <label>Importe ($)<input type="text" name="importe" required placeholder="100,00"></label>
       <label>Qué hacer
         <select name="signo">
           <option value="sumar">Sumar al saldo</option>
@@ -547,7 +547,7 @@ async function editarTorneo(evento) {
     <p style="color:var(--gris);font-size:.9rem">Sala de evento: reparte el bote entre los puestos.</p>
     <form id="form-torneo">
       <label>Nombre<input type="text" name="nombre" value="${evento.nombre || "Torneo del día"}" maxlength="40"></label>
-      <label>Precio del cartón (Bs)
+      <label>Precio del cartón ($)
         <input type="text" name="precio" value="${(evento.precio_texto || "").replace("$ ", "")}" required>
       </label>
       <label>Aforo (0 = sin límite)
@@ -816,7 +816,7 @@ async function editarSala(sala) {
     <p style="color:var(--gris);font-size:.9rem">${sala.nombre}</p>
     <form id="form-sala">
       <label>Nombre<input type="text" name="nombre" value="${sala.nombre}" required maxlength="60"></label>
-      <label>Precio del cartón (Bs)
+      <label>Precio del cartón ($)
         <input type="text" name="precio" value="${sala.precio_texto.replace("$ ", "")}" required>
       </label>
       <label>Tipo de juego<select name="tipo_juego">${opciones}</select></label>

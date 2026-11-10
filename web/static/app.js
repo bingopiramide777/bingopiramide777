@@ -1186,7 +1186,7 @@ function pintarSelectorPais() {
 }
 
 /* Los textos que nombran la moneda (títulos, etiquetas) se actualizan al país
-   activo y al idioma, para que no digan "bolívares" a un jugador colombiano ni
+   activo y al idioma, para que no digan "dólares" a un jugador colombiano ni
    "cartón" a uno que lee en inglés. */
 function pintarTextosMoneda() {
   const sim = simboloMoneda();
