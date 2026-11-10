@@ -126,6 +126,12 @@ function pintarSesion() {
       panel.textContent = t("sesion.panel");
       caja.appendChild(panel);
     }
+    const perfil = document.createElement("button");
+    perfil.className = "boton boton--fantasma";
+    perfil.style.padding = ".4rem 1rem";
+    perfil.innerHTML = `<span id="mini-avatar" class="mini-avatar">${iniciales(localStorage.getItem("bp777_correo") || "")}</span> ${t("perfil.boton")}`;
+    perfil.onclick = () => abrirPerfil();
+    caja.appendChild(perfil);
     const salir = document.createElement("button");
     salir.className = "boton boton--fantasma";
     salir.textContent = t("sesion.salir");
@@ -140,6 +146,7 @@ function pintarSesion() {
     entrar.onclick = () => abrirAcceso("entrar");
     caja.appendChild(entrar);
   }
+  pintarMiniAvatar();
 }
 
 /* Borra la sesión de este dispositivo. El panel de administración es una página
@@ -149,8 +156,82 @@ function cerrarSesion() {
   localStorage.removeItem(CLAVE_TOKEN);
   localStorage.removeItem("bp777_correo");
   localStorage.removeItem("bp777_admin");
+  localStorage.removeItem("bp777_foto");
   token = "";
   location.reload();
+}
+
+/* --- perfil: foto del jugador --- */
+
+function pintarMiniAvatar() {
+  const caja = $("#mini-avatar");
+  if (!caja) return;
+  const foto = localStorage.getItem("bp777_foto") || "";
+  caja.innerHTML = foto
+    ? `<img src="${foto}" alt="" onerror="this.parentNode.textContent='${iniciales(localStorage.getItem("bp777_correo") || "")}'">`
+    : iniciales(localStorage.getItem("bp777_correo") || "");
+}
+
+function abrirPerfil() {
+  const foto = localStorage.getItem("bp777_foto") || "";
+  $("#dialogo-contenido").innerHTML = `
+    <h2>${t("perfil.titulo")}</h2>
+    <p style="color:var(--gris);font-size:.9rem">${t("perfil.ayuda")}</p>
+    <div class="perfil-previa" id="perfil-previa">
+      ${foto ? `<img src="${foto}" alt="">` : `<span class="perfil-previa__vacia">${iniciales(localStorage.getItem("bp777_correo") || "")}</span>`}
+    </div>
+    <input type="file" id="perfil-archivo" accept="image/png,image/jpeg,image/webp,image/gif">
+    <div style="display:flex;gap:.6rem;margin-top:.8rem">
+      <button class="boton boton--principal boton--alto" id="perfil-guardar" type="button">${t("perfil.guardar")}</button>
+      <button class="boton boton--fantasma boton--alto" id="perfil-quitar" type="button">${t("perfil.quitar")}</button>
+    </div>`;
+  $("#dialogo").hidden = false;
+  $("#dialogo-cerrar").onclick = () => ($("#dialogo").hidden = true);
+
+  let dataUrl = foto;
+  $("#perfil-archivo").onchange = (e) => {
+    const archivo = e.target.files[0];
+    if (!archivo) return;
+    const lector = new FileReader();
+    lector.onload = () => {
+      // Se reduce la imagen a 256×256 para que pese poco y quepa en la base.
+      const img = new Image();
+      img.onload = () => {
+        const lado = 256;
+        const lienzo = document.createElement("canvas");
+        lienzo.width = lado; lienzo.height = lado;
+        const ctx = lienzo.getContext("2d");
+        const min = Math.min(img.width, img.height);
+        ctx.drawImage(img, (img.width - min) / 2, (img.height - min) / 2, min, min, 0, 0, lado, lado);
+        dataUrl = lienzo.toDataURL("image/jpeg", 0.85);
+        $("#perfil-previa").innerHTML = `<img src="${dataUrl}" alt="">`;
+      };
+      img.onerror = () => avisar(t("perfil.no_imagen"), "error");
+      img.src = lector.result;
+    };
+    lector.readAsDataURL(archivo);
+  };
+  $("#perfil-guardar").onclick = async () => {
+    try {
+      const res = await post("/api/foto", { foto: dataUrl });
+      if (res.foto_url) localStorage.setItem("bp777_foto", res.foto_url + "&t=" + Date.now());
+      else localStorage.removeItem("bp777_foto");
+      pintarMiniAvatar();
+      $("#dialogo").hidden = true;
+      avisar(res.mensaje || t("perfil.guardada"), "bien");
+      refrescarPartida();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+  $("#perfil-quitar").onclick = async () => {
+    try {
+      const res = await post("/api/foto", { foto: "" });
+      localStorage.removeItem("bp777_foto");
+      pintarMiniAvatar();
+      $("#dialogo").hidden = true;
+      avisar(res.mensaje || t("perfil.quitada"), "bien");
+      refrescarPartida();
+    } catch (err) { avisar(err.message, "error"); }
+  };
 }
 
 /* --- diálogo de acceso --- */
@@ -967,6 +1048,15 @@ function iniciales(correo) {
   return nombre.slice(0, 2).toUpperCase();
 }
 
+/* El avatar muestra la foto del jugador si la tiene; si no, sus iniciales. */
+function avatarHTML(f) {
+  const foto = f.foto_url
+    ? `<img src="${f.foto_url}" alt="" loading="lazy"
+         onerror="this.replaceWith(document.createTextNode('${iniciales(f.correo || f.jugador)}'))">`
+    : iniciales(f.correo || f.jugador);
+  return `<div class="oponente__avatar${f.foto_url ? " oponente__avatar--foto" : ""}">${foto}</div>`;
+}
+
 function pintarOponentes(filas) {
   const caja = $("#oponentes");
   if (!caja) return;
@@ -984,11 +1074,12 @@ function pintarOponentes(filas) {
     else if (f.faltan <= 2) clase.push("oponente--cerca");
     const texto = f.faltan === 0 ? t("jugador.bingo")
       : t("jugador.faltan", { n: f.faltan, ficha: f.faltan === 1 ? t("jugador.ficha") : t("jugador.fichas") });
+    const nombre = f.nombre || (f.correo || f.jugador).split("@")[0];
     caja.insertAdjacentHTML("beforeend", `
       <div class="${clase.join(" ")}">
-        <div class="oponente__avatar">${iniciales(f.jugador)}</div>
+        ${avatarHTML(f)}
         <div class="oponente__datos">
-          <div class="oponente__nombre">${yo ? t("jugador.tu") : f.jugador}</div>
+          <div class="oponente__nombre">${yo ? t("jugador.tu") : nombre}</div>
           <div class="oponente__cartones">${f.cartones === 1
             ? t("jugador.carton", { n: f.cartones })
             : t("jugador.cartones", { n: f.cartones })}</div>
@@ -1225,6 +1316,8 @@ async function comprobarSesion() {
     esAdmin = !!s.admin;
     localStorage.setItem("bp777_correo", s.correo);
     localStorage.setItem("bp777_admin", s.admin ? "1" : "0");
+    if (s.foto_url) localStorage.setItem("bp777_foto", s.foto_url + "&t=" + Date.now());
+    else localStorage.removeItem("bp777_foto");
   } catch (err) {
     // El token caducó o no vale: se limpia y se sigue como visitante.
     localStorage.removeItem(CLAVE_TOKEN);

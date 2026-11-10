@@ -868,6 +868,67 @@ class ServidorTest(unittest.TestCase):
         _, d2 = self.pedir("/api/referidos", token=token)
         self.assertEqual(d2["codigo"], d["codigo"])
 
+    # -- foto de perfil --
+
+    FOTO = ("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlE"
+            "QVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+
+    def test_sin_foto_la_sesion_no_trae_url(self):
+        token = self.usuario("sinfoto@correo.com")
+        _, s = self.pedir("/api/sesion", token=token)
+        self.assertEqual(s["foto_url"], "")
+
+    def test_guardar_y_servir_la_foto(self):
+        token = self.usuario("confoto@correo.com")
+        estado, d = self.pedir("/api/foto", {"foto": self.FOTO}, token)
+        self.assertEqual(estado, 200)
+        self.assertTrue(d["foto_url"])
+        # La sesión ya la anuncia.
+        _, s = self.pedir("/api/sesion", token=token)
+        self.assertEqual(s["foto_url"], d["foto_url"])
+        # Y se sirve como imagen de verdad.
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{self.puerto}{d['foto_url']}", timeout=10) as r:
+            self.assertEqual(r.status, 200)
+            self.assertTrue(r.headers["Content-Type"].startswith("image/"))
+            self.assertGreater(len(r.read()), 0)
+
+    def test_la_mesa_muestra_nombre_y_foto_del_jugador(self):
+        token = self.usuario("mesa@correo.com", recarga="5000,00")
+        self.pedir("/api/foto", {"foto": self.FOTO}, token)
+        self.pedir("/api/sala/entrar", {"sala": "sala-zulia"}, token)
+        self.pedir("/api/carton", {"sala": "sala-zulia"}, token)
+        _, vista = self.pedir("/api/partida")
+        fila = next(f for f in vista["a_cuanto_estan"] if f["jugador"] == "mesa@correo.com")
+        self.assertEqual(fila["nombre"], "mesa")
+        self.assertTrue(fila["foto_url"])
+
+    def test_la_foto_no_puede_ser_cualquier_cosa(self):
+        token = self.usuario("malafoto@correo.com")
+        estado, _ = self.pedir("/api/foto", {"foto": "hola"}, token)
+        self.assertEqual(estado, 400)
+        estado, _ = self.pedir("/api/foto", {"foto": "data:image/png;base64,###"}, token)
+        self.assertEqual(estado, 400)
+        # Una foto enorme se rechaza, y no deja la cuenta sin la que ya tenía.
+        self.pedir("/api/foto", {"foto": self.FOTO}, token)
+        enorme = "data:image/png;base64," + "A" * 500_000
+        estado, _ = self.pedir("/api/foto", {"foto": enorme}, token)
+        self.assertEqual(estado, 400)
+        _, s = self.pedir("/api/sesion", token=token)
+        self.assertTrue(s["foto_url"], "un rechazo borró la foto buena")
+
+    def test_la_foto_necesita_sesion(self):
+        estado, _ = self.pedir("/api/foto", {"foto": self.FOTO})
+        self.assertEqual(estado, 401)
+
+    def test_quitar_la_foto(self):
+        token = self.usuario("quitarfoto@correo.com")
+        self.pedir("/api/foto", {"foto": self.FOTO}, token)
+        _, d = self.pedir("/api/foto", {"foto": ""}, token)
+        self.assertEqual(d["foto_url"], "")
+        _, s = self.pedir("/api/sesion", token=token)
+        self.assertEqual(s["foto_url"], "")
+
     def _marcar_patron(self, sala_id, carton_id, patron):
         """Marca en el cartón el patrón de la partida, para poder cantar bingo.
 

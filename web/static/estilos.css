@@ -816,3 +816,26 @@ input[type="text"], input[type="email"], input[type="password"], select {
 .tabla th, .tabla td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--borde); }
 .tabla th { color: var(--gris); font-size: .76rem; text-transform: uppercase; letter-spacing: .07em; }
 .tabla__yo { background: rgba(255, 107, 0, .12); font-weight: 700; }
+
+/* --- foto de perfil --- */
+.oponente__avatar--foto { padding: 0; overflow: hidden; background: var(--tarjeta); }
+.oponente__avatar--foto img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.oponente__avatar--foto { width: 36px; height: 36px; flex: 0 0 36px; }
+
+.mini-avatar {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; border-radius: 50%; overflow: hidden;
+  background: linear-gradient(135deg, var(--dorado), var(--naranja));
+  color: #1a1a23; font-weight: 800; font-size: .68rem; vertical-align: middle;
+}
+.mini-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.perfil-previa {
+  display: flex; align-items: center; justify-content: center;
+  width: 128px; height: 128px; margin: .8rem auto; border-radius: 50%;
+  overflow: hidden; border: 2px solid var(--borde);
+  background: linear-gradient(135deg, var(--dorado), var(--naranja));
+}
+.perfil-previa img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.perfil-previa__vacia { font-size: 2.4rem; font-weight: 800; color: #1a1a23; }
+#perfil-archivo { width: 100%; color: var(--gris); font-size: .86rem; }
