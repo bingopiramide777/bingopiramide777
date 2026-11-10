@@ -831,8 +831,10 @@ async function refrescarBilletera() {
     estado.textContent = t("billetera.entra");
     $("#billetera-form").hidden = true;
     $("#billetera-vinculada").hidden = true;
+    $("#billetera-entrar").hidden = false;
     return;
   }
+  $("#billetera-entrar").hidden = true;
   try {
     const r = await get("/api/billetera");
     const b = r.billetera;
@@ -861,18 +863,78 @@ function acortar(direccion) {
 function conectarBilletera() {
   const pedirDesafio = $("#btn-billetera-desafio");
   if (!pedirDesafio) return;
+
+  // Billetera que el navegador trae puesta (MetaMask para EVM, Phantom para Solana).
+  function billeteraInyectada() {
+    if (window.ethereum && window.ethereum.request) return "evm";
+    const sol = window.phantom?.solana || (window.solana && window.solana.isPhantom ? window.solana : null);
+    if (sol && sol.signMessage) return "solana";
+    return "";
+  }
+
+  // Conecta y firma el mensaje con la billetera del navegador.
+  // Devuelve {direccion, firma, red} o null.
+  async function firmarConBilletera() {
+    const red = billeteraInyectada();
+    if (!red) return null;
+    let direccion;
+    let firma;
+    if (red === "evm") {
+      const cuentas = await window.ethereum.request({ method: "eth_requestAccounts" });
+      direccion = cuentas && cuentas[0];
+      if (!direccion) { avisar(t("billetera.sin_cuenta"), "error"); return null; }
+      firma = await window.ethereum.request({
+        method: "personal_sign",
+        params: [mensajeBilletera, direccion],
+      });
+    } else {
+      const sol = window.phantom?.solana || window.solana;
+      const resp = await sol.connect();
+      direccion = (resp && resp.publicKey ? resp.publicKey : sol.publicKey).toString();
+      if (!direccion) { avisar(t("billetera.sin_cuenta"), "error"); return null; }
+      const firmado = await sol.signMessage(new TextEncoder().encode(mensajeBilletera), "utf8");
+      firma = "0x" + Array.from(firmado.signature, (b) => b.toString(16).padStart(2, "0")).join("");
+    }
+    $("#billetera-direccion").value = direccion;
+    $("#billetera-firma").value = firma;
+    return { direccion, firma, red };
+  }
+
+  async function enviarBilletera(direccion, firma, red) {
+    if (!direccion) return avisar(t("billetera.falta_direccion"), "error");
+    if (!firma) return avisar(t("billetera.falta_firma"), "error");
+    try {
+      const r = await post("/api/billetera", { direccion, firma, red });
+      avisar(r.mensaje || t("billetera.lista"), "bien");
+      $("#billetera-direccion").value = "";
+      $("#billetera-firma").value = "";
+      refrescarBilletera();
+    } catch (err) { avisar(err.message, "error"); }
+  }
+
   pedirDesafio.onclick = async () => {
     if (!token) return abrirAcceso("entrar");
     try {
+      // Con billetera en el navegador se conecta y firma de una sola vez, sin
+      // más pasos: el jugador solo confirma en su billetera.
+      const hayBilletera = billeteraInyectada();
       const r = await post("/api/billetera/desafio", {});
       mensajeBilletera = r.mensaje;
       $("#billetera-mensaje").value = r.mensaje;
       $("#billetera-paso2").hidden = false;
       pedirDesafio.hidden = true;
-      // Si el navegador tiene una billetera inyectada, se ofrece firmar directo.
-      $("#btn-billetera-firmar").hidden = !(window.ethereum && window.ethereum.request);
-    } catch (err) { avisar(err.message, "error"); }
+      $("#btn-billetera-firmar").hidden = !hayBilletera;
+      const instr = $("#billetera-instrucciones");
+      if (instr) instr.textContent = t(hayBilletera ? "billetera.confirma" : "billetera.instrucciones");
+      if (hayBilletera) {
+        const firmado = await firmarConBilletera();
+        if (firmado) await enviarBilletera(firmado.direccion, firmado.firma, firmado.red);
+      }
+    } catch (err) { avisar(err.message || t("billetera.cancelo"), "error"); }
   };
+
+  const entrar = $("#btn-billetera-entrar");
+  if (entrar) entrar.onclick = () => abrirAcceso("entrar");
 
   $("#btn-billetera-copiar").onclick = async () => {
     try {
@@ -884,33 +946,16 @@ function conectarBilletera() {
   };
 
   $("#btn-billetera-firmar").onclick = async () => {
-    if (!window.ethereum || !window.ethereum.request) return;
     try {
-      const cuentas = await window.ethereum.request({ method: "eth_requestAccounts" });
-      const direccion = cuentas && cuentas[0];
-      if (!direccion) return avisar(t("billetera.sin_cuenta"), "error");
-      const firma = await window.ethereum.request({
-        method: "personal_sign",
-        params: [mensajeBilletera, direccion],
-      });
-      $("#billetera-direccion").value = direccion;
-      $("#billetera-firma").value = firma;
+      const firmado = await firmarConBilletera();
+      if (firmado) await enviarBilletera(firmado.direccion, firmado.firma, firmado.red);
     } catch (err) { avisar(err.message || t("billetera.cancelo"), "error"); }
   };
 
   $("#btn-billetera-enviar").onclick = async () => {
     if (!token) return abrirAcceso("entrar");
-    const direccion = $("#billetera-direccion").value.trim();
-    const firma = $("#billetera-firma").value.trim();
-    if (!direccion) return avisar(t("billetera.falta_direccion"), "error");
-    if (!firma) return avisar(t("billetera.falta_firma"), "error");
-    try {
-      const r = await post("/api/billetera", { direccion, firma });
-      avisar(r.mensaje || t("billetera.lista"), "bien");
-      $("#billetera-direccion").value = "";
-      $("#billetera-firma").value = "";
-      refrescarBilletera();
-    } catch (err) { avisar(err.message, "error"); }
+    await enviarBilletera($("#billetera-direccion").value.trim(),
+                          $("#billetera-firma").value.trim(), "");
   };
 
   $("#btn-billetera-borrar").onclick = async () => {
