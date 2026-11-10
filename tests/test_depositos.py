@@ -37,17 +37,17 @@ class DepositoTest(unittest.TestCase):
         d = self.declarar()
         acreditado = self.depositos.acreditar(d.id, "admin@correo.com", "verificado")
         self.assertEqual(acreditado.estado, "acreditado")
-        # La app retiene su 10 %: de $ 10 entran $ 9 al saldo.
-        self.assertEqual(acreditado.comision, 100)
-        self.assertEqual(acreditado.acreditado, 900)
-        self.assertEqual(self.monedero.saldo(self.correo), 900)
+        # La administración retiene su 20 %: de $ 10 entran $ 8 al saldo.
+        self.assertEqual(acreditado.comision, 200)
+        self.assertEqual(acreditado.acreditado, 800)
+        self.assertEqual(self.monedero.saldo(self.correo), 800)
 
     def test_la_comision_anti_lavado_se_queda_en_la_app(self):
         d = self.declarar(importe="100,00")
         self.depositos.acreditar(d.id, "admin@correo.com")
-        # 100 - 10 % = 90 al jugador; los 10 quedan como ganancia de la app.
-        self.assertEqual(self.monedero.saldo(self.correo), 9_000)
-        self.assertEqual(self.depositos.comision_total(), 1_000)
+        # 100 - 20 % = 80 al jugador; los 20 quedan como ganancia de la app.
+        self.assertEqual(self.monedero.saldo(self.correo), 8_000)
+        self.assertEqual(self.depositos.comision_total(), 2_000)
 
     def test_la_comision_nunca_pierde_un_centimo(self):
         for i, importe in enumerate(("1,00", "3,33", "7,77", "99,99")):
@@ -61,7 +61,7 @@ class DepositoTest(unittest.TestCase):
         self.depositos.acreditar(d.id, "admin@correo.com")
         with self.assertRaises(ErrorDeDeposito):
             self.depositos.acreditar(d.id, "admin@correo.com")
-        self.assertEqual(self.monedero.saldo(self.correo), 900)
+        self.assertEqual(self.monedero.saldo(self.correo), 800)
 
     def test_rechazar_no_mueve_dinero(self):
         d = self.declarar()

@@ -22,9 +22,11 @@ from nucleo.almacen_pg import abrir_almacen
 from nucleo.correo import Correo, ErrorDeCorreo
 from nucleo.datos_cobro import CAMPOS as _CAMPOS_COBRO
 from nucleo.datos_cobro import METODOS as _METODOS_COBRO
+from nucleo.billeteras import Billeteras
 from nucleo.depositos import METODOS as METODOS_DEPOSITO
 from nucleo.depositos import ErrorDeDeposito, Depositos
 from nucleo.fichas import ErrorDeFicha, FichasCobro
+from nucleo.firmas import REDES as REDES_BILLETERA
 from nucleo.glenis import ErrorDeGlenis, Glenis
 from nucleo.glenis_herramientas import Herramientas
 from nucleo.idiomas import IDIOMAS
@@ -56,7 +58,12 @@ class Juego:
         self.depositos = Depositos(self.almacen, self.monedero)
         self.referidos = Referidos(self.almacen)
         self.fichas = FichasCobro(self.almacen)
-        self.salas = Salas(self.almacen, usuarios=self.usuarios)
+        self.billeteras = Billeteras(self.almacen)
+        self.correo_admin = (correo_admin or os.environ.get("BINGO_ADMIN_EMAIL")
+                             or CORREO_ADMIN_POR_DEFECTO)
+        # La cuenta de administración es el anfitrión de la sala de trabajo.
+        self.salas = Salas(self.almacen, usuarios=self.usuarios,
+                           anfitrion_casa=self.correo_admin)
         self.herramientas = Herramientas(self)
         self.glenis = Glenis(self.herramientas.esquemas(), self.herramientas.ejecutar)
         self.correo = Correo()
@@ -66,8 +73,6 @@ class Juego:
         self._partida = None
         self._partida_id = ""
         self._partida_sala = "sala-zulia"
-        self.correo_admin = (correo_admin or os.environ.get("BINGO_ADMIN_EMAIL")
-                             or CORREO_ADMIN_POR_DEFECTO)
         self.clave_admin = clave_admin or os.environ.get("BINGO_ADMIN_CLAVE") or ""
         self._crear_admin()
 
@@ -85,10 +90,13 @@ class Juego:
             reparto["con_anfitrion"] = False
             return reparto
         from nucleo.salas import reparto_del_bote
-        dueno = fila["dueno"] if fila else ""
-        # La comisión la decide la sala: 15 % si es sala de trabajo, 10 % si no.
-        comision = self.salas.comision_de_sala(sala_id) if dueno else None
-        reparto = reparto_del_bote(bote, con_anfitrion=bool(dueno), comision_pct=comision)
+        # El reparto lo decide la sala: 80/20 en las de la casa, 75/10/15 en las de
+        # jugador y 80/15/5 en la sala de trabajo.
+        if not sala_id or fila is None:
+            reparto = reparto_del_bote(bote, con_anfitrion=False)
+            reparto["anfitrion_correo"] = ""
+            return reparto
+        reparto = self.salas.reparto_de_sala(sala_id, bote)
         reparto["anfitrion_correo"] = self.anfitrion_de(partida_id)
         return reparto
 
@@ -702,6 +710,16 @@ class Manejador(BaseHTTPRequestHandler):
                                    for m, cs in _CAMPOS_COBRO.items()}})
             return
 
+        if ruta == "/api/billetera":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            with self.juego.candado:
+                billetera = self.juego.billeteras.de(jugador)
+            self._json({"billetera": billetera, "redes": REDES_BILLETERA})
+            return
+
         if ruta == "/api/saldo":
             jugador = self._jugador()
             if not jugador:
@@ -1039,16 +1057,11 @@ class Manejador(BaseHTTPRequestHandler):
                 return
             try:
                 with self.juego.candado:
-                    es_trabajo = bool(datos.get("es_trabajo"))
                     sala = self.juego.salas.crear(
                         jugador, datos.get("nombre", ""), datos.get("modo", ""),
-                        datos.get("precio", ""), datos.get("publica", True),
-                        es_trabajo=es_trabajo)
-                if sala.es_trabajo:
-                    mensaje = (f"Sala de trabajo {sala.nombre} creada. Tú pones el juego y el "
-                               "precio de cada partida y cobras el 15% de los botes.")
-                else:
-                    mensaje = f"Sala {sala.nombre} creada. Cobras el 10% de los botes."
+                        datos.get("precio", ""), datos.get("publica", True))
+                mensaje = (f"Sala {sala.nombre} creada. El ganador cobra el 75% y tú "
+                           "cobras el 10% de los botes.")
                 self._json({"ok": True, "sala": self._sala_json(sala), "mensaje": mensaje})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
@@ -1088,10 +1101,8 @@ class Manejador(BaseHTTPRequestHandler):
                     vista["dueno"] = sala.dueno
                     vista["soy_dueno"] = bool(sala.dueno and sala.dueno == jugador)
                     vista["max_cartones"] = sala.max_cartones
-                    vista["reparto"] = sala.reparto(
-                        partida.precio_carton * len(partida.cartones),
-                        comision_pct=self.juego.salas.comision_de_sala(sala.id)
-                        if sala.dueno else None)
+                    vista["reparto"] = self.juego.salas.reparto_de_sala(
+                        sala.id, partida.precio_carton * len(partida.cartones))
                     if sala.es_evento:
                         vista["evento"] = self.juego.info_evento()
                 self._json({"ok": True, "partida": vista})
@@ -1254,6 +1265,45 @@ class Manejador(BaseHTTPRequestHandler):
                 self._json({"ok": True, "ficha": ficha.a_dict()})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
+            return
+
+        if ruta == "/api/billetera/desafio":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            try:
+                with self.juego.candado:
+                    reto = self.juego.billeteras.desafio(jugador)
+                self._json({"ok": True, **reto})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/billetera":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            try:
+                with self.juego.candado:
+                    billetera = self.juego.billeteras.vincular(
+                        jugador, datos.get("direccion", ""), datos.get("firma", ""),
+                        datos.get("red", ""))
+                self._json({"ok": True, "billetera": billetera,
+                            "mensaje": "Billetera vinculada a tu cuenta."})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/billetera/borrar":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            with self.juego.candado:
+                self.juego.billeteras.borrar(jugador)
+            self._json({"ok": True, "mensaje": "Billetera desvinculada."})
             return
 
         if ruta == "/api/foto":

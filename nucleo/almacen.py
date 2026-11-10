@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+import time
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -171,6 +172,13 @@ CREATE INDEX IF NOT EXISTS idx_cartones_partida ON cartones(partida);
 CREATE TABLE IF NOT EXISTS meta (
     clave TEXT PRIMARY KEY,
     valor TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS billeteras (
+    correo    TEXT PRIMARY KEY,
+    red       TEXT NOT NULL,
+    direccion TEXT NOT NULL,
+    creada    REAL NOT NULL
 );
 """
 
@@ -717,7 +725,7 @@ class Almacen:
         permitidos = {"nombre", "modo", "precio_carton", "publica", "activa",
                       "es_evento", "aforo", "premios_pct", "tipo_juego",
                       "cupo_cartones", "max_cartones", "fecha_partida", "pais",
-                      "es_trabajo"}
+                      "es_trabajo", "dueno"}
         asignar = {k: v for k, v in campos.items() if k in permitidos}
         if not asignar:
             return
@@ -749,6 +757,23 @@ class Almacen:
             c.execute("INSERT INTO meta (clave, valor) VALUES (?,?)"
                       " ON CONFLICT(clave) DO UPDATE SET valor = excluded.valor",
                       (clave, str(valor)))
+
+    # -- billeteras de cripto --
+
+    def guardar_billetera(self, correo: str, red: str, direccion: str) -> None:
+        with self.transaccion() as c:
+            c.execute("INSERT INTO billeteras (correo, red, direccion, creada)"
+                      " VALUES (?,?,?,?)"
+                      " ON CONFLICT(correo) DO UPDATE SET red = excluded.red,"
+                      " direccion = excluded.direccion, creada = excluded.creada",
+                      (correo, red, direccion, time.time()))
+
+    def billetera(self, correo: str) -> sqlite3.Row | None:
+        return self._uno("SELECT * FROM billeteras WHERE correo = ?", (correo,))
+
+    def borrar_billetera(self, correo: str) -> None:
+        with self.transaccion() as c:
+            c.execute("DELETE FROM billeteras WHERE correo = ?", (correo,))
 
     def guardar_carton(self, id_: str, partida: str, correo: str, numeros: str) -> None:
         with self.transaccion() as c:

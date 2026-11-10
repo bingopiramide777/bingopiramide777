@@ -187,6 +187,13 @@ CREATE TABLE IF NOT EXISTS meta (
     clave TEXT PRIMARY KEY,
     valor TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS billeteras (
+    correo    TEXT PRIMARY KEY,
+    red       TEXT NOT NULL,
+    direccion TEXT NOT NULL,
+    creada    DOUBLE PRECISION NOT NULL
+);
 """
 
 _INSERT_OR_IGNORE = re.compile(r"INSERT\s+OR\s+IGNORE\s+INTO", re.IGNORECASE)

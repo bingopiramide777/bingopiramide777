@@ -114,7 +114,7 @@ async function cargarResumen() {
     ["Jugadores", r.jugadores, "cuentas activas"],
     ["Dinero en cuentas", formatear(r.total_en_cuentas), "saldo de todos"],
     ["Retiros pendientes", r.retiros_pendientes, formatear(r.total_pendiente) + " por pagar"],
-    ["Comisión de depósitos", formatear(r.depositos_comision), "10% retenido al acreditar"],
+    ["Comisión de depósitos", formatear(r.depositos_comision), "20% retenido al acreditar"],
     ["Partidas", r.partidas, "jugadas"],
     ["Apostado", formatear(r.apostado), "en cartones"],
     ["Pagado en premios", formatear(r.pagado), "a los ganadores"],
@@ -317,7 +317,7 @@ function editarComision(correo, pctActual) {
         <input type="number" name="pct" min="-1" max="90" step="1"
                value="${actual}" required>
       </label>
-      <p class="ayuda">Escribe <strong>-1</strong> para dejar el 10 % fijo de siempre.
+      <p class="ayuda">Escribe <strong>-1</strong> para dejar el 10 % fijo de las salas de jugador.
          Del 0 al 90 fija el porcentaje de esta cuenta: el premio del ganador no cambia,
          lo que cambia es la parte del anfitrión.</p>
       <button class="boton boton--principal" type="submit">Guardar</button>
@@ -444,15 +444,16 @@ async function cargarGanancias() {
   const tarjetas = [
     ["Partidas terminadas", e.partidas || 0, "jugadas"],
     ["Botes totales", e.botes_texto, "apostado en cartones"],
-    ["Premios pagados", e.premios_texto, "a los ganadores (80%)"],
-    ["Comisiones a anfitriones", e.comisiones_texto, "salas normales (10%) y de trabajo (15%)"],
-    ["Comisión de depósitos", formatear(e.depositos_comision || 0), "10% retenido al acreditar"],
+    ["Premios pagados", e.premios_texto, "a los ganadores (75%-80%)"],
+    ["Comisiones a anfitriones", e.comisiones_texto, "salas de jugador (10%) y de trabajo (15%)"],
+    ["Comisión de depósitos", formatear(e.depositos_comision || 0), "20% retenido al acreditar"],
     ["Ganancia de la app", e.app_total_texto || e.app_texto, "bingo + depósitos"],
   ];
   caja.innerHTML = `
-    <p class="entrada">El ganador cobra el 80% del bote. En una sala normal el anfitrión se lleva
-       un 10% y la app el 10%; en una sala de trabajo el anfitrión se lleva un 15% y la app el 5%.
-       Además, la app retiene un 10% de cada depósito al acreditarlo.</p>
+    <p class="entrada">En las salas de la casa el ganador cobra el 80% y la app el 20%. En las
+       salas de jugador el ganador cobra el 75%, el anfitrión el 10% y la app el 15%. En la sala
+       de trabajo ("Gana dinero desde casa") el ganador cobra el 80%, el anfitrión el 15% y la app
+       el 5%. Además, la app retiene un 20% de cada depósito al acreditarlo.</p>
     <div class="tarjetas-resumen">${tarjetas.map(([t, v, p]) => `
       <div class="tarjeta-resumen">
         <p class="tarjeta-resumen__titulo">${t}</p>

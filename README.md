@@ -61,6 +61,8 @@ nucleo/          lo común a todo
   correo.py      envío de correos (contraseña de aplicación de Gmail)
   depositos.py   pagos declarados por el jugador (Pago Móvil y transferencia)
   salas.py       salas de bingo y reparto del bote (premio, anfitrión y app)
+  firmas.py      verificación de firmas de billeteras (secp256k1 y ed25519)
+  billeteras.py  vincula una billetera de cripto a la cuenta con una firma
   glenis.py      el motor de Glenis IA (habla con el modelo)
   glenis_herramientas.py  lo que Glenis puede consultar y hacer
   retiros.py     pedir, pagar y rechazar retiros
@@ -71,7 +73,7 @@ bingo/           el juego
 web/             servidor e interfaz
   servidor.py    http.server + API
   static/        interfaz del jugador y panel de administración
-tests/           pruebas (196)
+tests/           pruebas (425)
 ```
 
 ## Cuánto cuesta un cartón y en qué se convierte
@@ -224,6 +226,21 @@ pedir dos veces el mismo saldo). El administrador lo paga o lo rechaza:
 Un retiro solo se puede resolver una vez. Si dos administradores pulsan a la vez,
 solo uno cobra.
 
+## Billeteras de cripto
+
+El jugador puede atar su billetera (MetaMask, Phantom, Trust…) a su cuenta. La
+app pide un mensaje con un **código de un solo uso** que caduca a los 5 minutos;
+el jugador lo firma en su billetera y pega la dirección y la firma. La app
+**verifica la firma** antes de guardar nada, así que nadie puede apuntarse la
+dirección de otro.
+
+- La verificación es con la **biblioteca estándar** (`nucleo/firmas.py`):
+  secp256k1/ECDSA para Ethereum y compatibles, ed25519 para Solana. No pide claves
+  privadas ni mueve dinero: la billetera firma en su propia app.
+- Firmar **no cuesta gas**. El mensaje lo dice, para que el jugador no desconfíe.
+- En el navegador, si hay una billetera inyectada, el botón "Firmar con mi
+  billetera" la usa directo; si no, el jugador copia el mensaje y lo firma a mano.
+
 ## Publicarlo en internet
 
 El proyecto incluye `render.yaml` para Render. Los pasos:
@@ -259,6 +276,10 @@ El proyecto incluye `render.yaml` para Render. Los pasos:
 | POST | `/api/carton` | Comprar cartón |
 | POST | `/api/bola` | Sacar bola |
 | POST | `/api/bingo` | Cantar bingo: `carton` |
+| GET | `/api/billetera` | Billetera de cripto de la cuenta (requiere sesión) |
+| POST | `/api/billetera/desafio` | Mensaje para firmar con la billetera (requiere sesión) |
+| POST | `/api/billetera` | Vincular: `direccion`, `firma`, `red` (requiere sesión) |
+| POST | `/api/billetera/borrar` | Desvincular la billetera (requiere sesión) |
 
 Las rutas con sesión llevan la cabecera `Authorization: Bearer <token>`.
 

@@ -51,16 +51,16 @@ class ConfigDeposito:
     minimo: int = 100              # $ 1,00
     tope_diario: int = 200_000     # $ 2.000,00
     dias_atras: int = 3            # cuántos días atrás se admite declarar el pago
-    comision_pct: int = 10         # % que retiene la app al acreditar (anti-lavado)
+    comision_pct: int = 20         # % que retiene la app al acreditar (anti-lavado)
 
 
 # La comisión anti-lavado se puede ajustar por entorno (0 a 100 %).
 def comision_porcentaje() -> int:
     try:
-        valor = int(os.environ.get("BINGO_DEPOSITO_COMISION_PCT", "") or 10)
+        valor = int(os.environ.get("BINGO_DEPOSITO_COMISION_PCT", "") or 20)
     except ValueError:
-        return 10
-    return valor if 0 <= valor <= 100 else 10
+        return 20
+    return valor if 0 <= valor <= 100 else 20
 
 
 def reparto_deposito(centimos: int, pct: int) -> tuple[int, int]:

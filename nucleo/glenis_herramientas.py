@@ -63,7 +63,7 @@ class Herramientas:
                           "description": "Filtra por estado. Si se omite, los pendientes."}}),
             f("listar_partidas", "Últimas partidas: cartones, bolas, ganador y premio."),
             f("listar_salas", "Las salas de bingo: nombre, modo, precio del cartón y de quién "
-                              "son. Las salas de jugadores pagan un 10% al anfitrión."),
+                              "son. Las salas de jugadores pagan un 10% al anfitrión y el 75% al ganador."),
             f("ganancias", "Cuánto dinero ha dejado el bingo: botes, premios pagados, comisiones "
                            "de anfitriones y lo que queda a la app.",
               {"correo": {"type": "string", "description": "Opcional: el correo de un anfitrión, "
@@ -186,8 +186,9 @@ class Herramientas:
             "salas": cuentas,
             "de_la_casa": sum(1 for s in salas if not s.es_de_jugador),
             "de_jugadores": sum(1 for s in salas if s.es_de_jugador),
-            "aviso": ("El ganador siempre cobra el 80% del bote. En las salas de un jugador, "
-                      "el anfitrión se lleva un 10% y la app el 10%."),
+            "aviso": ("En las salas de la casa el ganador cobra el 80% y la app el 20%. En las de "
+                      "jugador el ganador cobra el 75%, el anfitrión el 10% y la app el 15%. En la "
+                      "sala de trabajo el ganador cobra el 80%, el anfitrión el 15% y la app el 5%."),
         }
 
     def _h_ganancias(self, correo: str = "") -> dict:
@@ -204,8 +205,9 @@ class Herramientas:
             "premios_pagados": e["premios_texto"],
             "comisiones_a_anfitriones": e["comisiones_texto"],
             "ganancia_de_la_app": e["app_texto"],
-            "reparto": "El ganador cobra el 80% del bote; el anfitrión se lleva el 10% si la "
-                       "sala es de un jugador, y la app el 10%.",
+            "reparto": "Sala de la casa: ganador 80% y app 20%. Sala de jugador: ganador 75%, "
+                       "anfitrión 10% y app 15%. Sala de trabajo: ganador 80%, anfitrión 15% y "
+                       "app 5%.",
         }
 
     def _h_buscar_jugador(self, correo: str) -> dict:

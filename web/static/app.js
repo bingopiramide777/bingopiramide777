@@ -813,10 +813,114 @@ function refrescarTodo() {
   refrescarHistorial();
   refrescarRetiros();
   refrescarDepositos();
+  refrescarBilletera();
   cargarMisSalas();
   cargarReferidos();
   cargarEstadisticas();
   cargarTorneo();
+}
+
+/* --- billetera de cripto: se conecta y se firma un mensaje --- */
+
+let mensajeBilletera = "";
+
+async function refrescarBilletera() {
+  const estado = $("#billetera-estado");
+  if (!estado) return;
+  if (!token) {
+    estado.textContent = t("billetera.entra");
+    $("#billetera-form").hidden = true;
+    $("#billetera-vinculada").hidden = true;
+    return;
+  }
+  try {
+    const r = await get("/api/billetera");
+    const b = r.billetera;
+    if (b && b.configurada) {
+      const red = (r.redes && r.redes[b.red]) || b.red;
+      estado.textContent = t("billetera.vinculada_a", { direccion: acortar(b.direccion), red });
+      $("#billetera-form").hidden = true;
+      $("#billetera-vinculada").hidden = false;
+    } else {
+      estado.textContent = t("billetera.sin_vincular");
+      $("#billetera-form").hidden = false;
+      $("#billetera-vinculada").hidden = true;
+      $("#billetera-paso2").hidden = true;
+      $("#btn-billetera-desafio").hidden = false;
+    }
+  } catch (err) {
+    estado.textContent = "";
+  }
+}
+
+function acortar(direccion) {
+  if (!direccion || direccion.length <= 14) return direccion || "";
+  return direccion.slice(0, 8) + "…" + direccion.slice(-6);
+}
+
+function conectarBilletera() {
+  const pedirDesafio = $("#btn-billetera-desafio");
+  if (!pedirDesafio) return;
+  pedirDesafio.onclick = async () => {
+    if (!token) return abrirAcceso("entrar");
+    try {
+      const r = await post("/api/billetera/desafio", {});
+      mensajeBilletera = r.mensaje;
+      $("#billetera-mensaje").value = r.mensaje;
+      $("#billetera-paso2").hidden = false;
+      pedirDesafio.hidden = true;
+      // Si el navegador tiene una billetera inyectada, se ofrece firmar directo.
+      $("#btn-billetera-firmar").hidden = !(window.ethereum && window.ethereum.request);
+    } catch (err) { avisar(err.message, "error"); }
+  };
+
+  $("#btn-billetera-copiar").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(mensajeBilletera);
+      avisar(t("billetera.copiado"), "bien");
+    } catch (err) {
+      prompt(t("billetera.copiar_manual"), mensajeBilletera);
+    }
+  };
+
+  $("#btn-billetera-firmar").onclick = async () => {
+    if (!window.ethereum || !window.ethereum.request) return;
+    try {
+      const cuentas = await window.ethereum.request({ method: "eth_requestAccounts" });
+      const direccion = cuentas && cuentas[0];
+      if (!direccion) return avisar(t("billetera.sin_cuenta"), "error");
+      const firma = await window.ethereum.request({
+        method: "personal_sign",
+        params: [mensajeBilletera, direccion],
+      });
+      $("#billetera-direccion").value = direccion;
+      $("#billetera-firma").value = firma;
+    } catch (err) { avisar(err.message || t("billetera.cancelo"), "error"); }
+  };
+
+  $("#btn-billetera-enviar").onclick = async () => {
+    if (!token) return abrirAcceso("entrar");
+    const direccion = $("#billetera-direccion").value.trim();
+    const firma = $("#billetera-firma").value.trim();
+    if (!direccion) return avisar(t("billetera.falta_direccion"), "error");
+    if (!firma) return avisar(t("billetera.falta_firma"), "error");
+    try {
+      const r = await post("/api/billetera", { direccion, firma });
+      avisar(r.mensaje || t("billetera.lista"), "bien");
+      $("#billetera-direccion").value = "";
+      $("#billetera-firma").value = "";
+      refrescarBilletera();
+    } catch (err) { avisar(err.message, "error"); }
+  };
+
+  $("#btn-billetera-borrar").onclick = async () => {
+    if (!token) return;
+    try {
+      const r = await post("/api/billetera/borrar", {});
+      avisar(r.mensaje || t("billetera.borrada"), "bien");
+      refrescarBilletera();
+    } catch (err) { avisar(err.message, "error"); }
+  };
 }
 
 /* --- referidos: invita y gana --- */
@@ -1350,6 +1454,7 @@ window.addEventListener("focus", () => { if (token) comprobarSesion(); });
 pintarCartonDemo();
 pintarSesion();
 conectarBotones();
+conectarBilletera();
 conectarPortada();
 // Primero el idioma (los textos), luego el país (la moneda), y al final las
 // salas: así los importes ya salen en la moneda del país y en su idioma.
@@ -1365,7 +1470,6 @@ if (formSala) {
     try {
       const res = await post("/api/sala/crear", {
         nombre: d.nombre, modo: d.modo, precio: d.precio, publica: d.publica === "si",
-        es_trabajo: !!d.es_trabajo,
       });
       avisar(res.mensaje, "bien");
       formSala.reset();

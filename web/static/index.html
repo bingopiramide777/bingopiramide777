@@ -192,10 +192,6 @@
           <option value="no" data-i18n="salas.privada">Privada (solo con el enlace)</option>
         </select>
       </label>
-      <label class="interruptor">
-        <input type="checkbox" name="es_trabajo" id="sala-es-trabajo">
-        <span data-i18n="salas.es_trabajo">Sala de trabajo (tú pones el juego y el precio de cada partida)</span>
-      </label>
       <button class="boton boton--brillo boton--alto" type="submit" data-i18n="salas.crear">Crear mi sala</button>
     </form>
 
@@ -263,6 +259,42 @@
 
     <h3 class="subtitulo" data-i18n="retirar.tus_retiros">Tus retiros</h3>
     <ul class="lista-retiros" id="lista-retiros"><li class="vacio" data-i18n="retirar.sin_retiros">Todavía no has pedido ningún retiro.</li></ul>
+  </section>
+
+  <section class="panel panel--suave" id="billetera">
+    <h2 data-i18n="billetera.titulo">Tu billetera de cripto</h2>
+    <p class="entrada" data-i18n="billetera.entrada">Conecta tu billetera y firma un mensaje. Así queda atada a tu cuenta y nadie puede usar tu dirección. Firmar no cuesta gas ni mueve dinero.</p>
+
+    <div class="tarjeta">
+      <p class="ayuda" id="billetera-estado">—</p>
+      <div id="billetera-vinculada" hidden>
+        <button class="boton boton--fantasma boton--alto" id="btn-billetera-borrar" data-i18n="billetera.desvincular">Desvincular</button>
+      </div>
+
+      <div id="billetera-form">
+        <button class="boton boton--principal boton--alto" id="btn-billetera-desafio" data-i18n="billetera.vincular">Vincular mi billetera</button>
+
+        <div id="billetera-paso2" hidden>
+          <p class="ayuda" data-i18n="billetera.instrucciones">Firma este mensaje con tu billetera (MetaMask, Phantom, Trust…). Copia el mensaje en tu billetera, firma y pega aquí la dirección y la firma.</p>
+          <label class="campo"><span data-i18n="billetera.mensaje">Mensaje para firmar</span>
+            <textarea id="billetera-mensaje" rows="6" readonly></textarea>
+          </label>
+          <div class="fila-campos">
+            <label class="campo"><span data-i18n="billetera.direccion">Dirección de tu billetera</span>
+              <input type="text" id="billetera-direccion" placeholder="0x… o tu dirección de Solana" spellcheck="false">
+            </label>
+            <label class="campo"><span data-i18n="billetera.firma">Firma</span>
+              <input type="text" id="billetera-firma" placeholder="0x…" spellcheck="false">
+            </label>
+          </div>
+          <div class="acciones acciones--pegadas">
+            <button class="boton boton--fantasma" id="btn-billetera-copiar" data-i18n="billetera.copiar">Copiar mensaje</button>
+            <button class="boton boton--principal" id="btn-billetera-firmar" data-i18n="billetera.firmar_con" hidden>Firmar con mi billetera</button>
+            <button class="boton boton--brillo" id="btn-billetera-enviar" data-i18n="billetera.confirmar">Confirmar</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <section class="panel panel--suave" id="torneos">
