@@ -429,6 +429,9 @@ class Juego:
 class Manejador(BaseHTTPRequestHandler):
     server_version = "BingoPiramide777/1.1"
 
+    # Si la petición es HEAD no se escribe el cuerpo, solo las cabeceras.
+    _cabeza = False
+
     @property
     def juego(self) -> Juego:
         return self.server.juego
@@ -443,7 +446,8 @@ class Manejador(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(cuerpo)
+        if not self._cabeza:
+            self.wfile.write(cuerpo)
 
     def _error(self, mensaje: str, codigo: int = 400) -> None:
         self._json({"error": mensaje}, codigo)
@@ -518,7 +522,8 @@ class Manejador(BaseHTTPRequestHandler):
         # versión nueva y no una vieja guardada.
         self.send_header("Cache-Control", "no-store, must-revalidate")
         self.end_headers()
-        self.wfile.write(cuerpo)
+        if not self._cabeza:
+            self.wfile.write(cuerpo)
 
     def _deposito_json(self, d) -> dict:
         return {"id": d.id, "correo": d.correo, "centimos": d.centimos,
@@ -605,7 +610,8 @@ class Manejador(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=60")
             self.send_header("X-Content-Type-Options", "nosniff")
             self.end_headers()
-            self.wfile.write(contenido)
+            if not self._cabeza:
+                self.wfile.write(contenido)
             return
 
         if ruta == "/api/partida":
@@ -943,6 +949,15 @@ class Manejador(BaseHTTPRequestHandler):
             return
 
         self._estatico(ruta)
+
+    def do_HEAD(self) -> None:  # noqa: N802
+        # Mismo trato que GET pero sin cuerpo: lo usan los monitores de
+        # disponibilidad y las vistas previas de enlaces.
+        self._cabeza = True
+        try:
+            self.do_GET()
+        finally:
+            self._cabeza = False
 
     # -- POST --
 

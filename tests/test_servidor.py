@@ -94,6 +94,16 @@ class ServidorTest(unittest.TestCase):
         estado, _ = self.pedir("/../servidor.py")
         self.assertIn(estado, (400, 404))
 
+    def test_head_responde_sin_cuerpo(self):
+        # Los monitores de disponibilidad y las vistas previas de enlaces usan
+        # HEAD: debe responder como GET pero sin cuerpo.
+        for ruta in ("/", "/estilos.css", "/app.js", "/api/salud"):
+            peticion = urllib.request.Request(
+                f"http://127.0.0.1:{self.puerto}{ruta}", method="HEAD")
+            with urllib.request.urlopen(peticion, timeout=10) as r:
+                self.assertEqual(r.status, 200)
+                self.assertEqual(r.read(), b"")
+
     def test_sin_token_no_hay_saldo(self):
         estado, datos = self.pedir("/api/saldo")
         self.assertEqual(estado, 401)
