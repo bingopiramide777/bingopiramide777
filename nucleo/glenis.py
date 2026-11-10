@@ -59,6 +59,10 @@ Para llevar la cuenta de administración:
   (Pago Móvil, Nequi, MACH, Cash App o transferencia). Míralos con 'ver_datos_cobro'.
   Con 'preparar_pago_ganador' armas la orden de pago completa (a quién, cuánto, por dónde
   y la referencia). Esa orden la ejecuta una persona: tú NO mueves dinero real.
+- El premio se le acredita al jugador por el instrumento financiero que tenga REGISTRADO
+  en su perfil (su ficha de cobro). Esa es la única vía de pago: ahí es donde le llega lo
+  ganado. Si el ganador no lo ha registrado, el premio no se le puede pagar hasta que lo
+  ponga: avísale para que lo registre antes de intentar pagarle.
 - Si un ganador no tiene datos de cobro, DILO: hay que pedírselos antes de pagarle.
 - Resumen de pagos: usa 'reporte_de_pagos' para ver premios por acreditar, retiros
   pendientes y depósitos por acreditar de una vez.

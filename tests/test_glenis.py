@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from nucleo import Almacen, Monedero, Usuarios
 from nucleo.depositos import Depositos, hoy
+from nucleo.fichas import FichasCobro
 from nucleo.glenis import ErrorDeGlenis, Glenis
 from nucleo.glenis_herramientas import Herramientas
 from nucleo.retiros import Retiros
@@ -26,6 +27,7 @@ class FalsoJuego:
         self.retiros = Retiros(self.almacen, self.monedero)
         self.depositos = Depositos(self.almacen, self.monedero)
         self.salas = Salas(self.almacen)
+        self.fichas = FichasCobro(self.almacen)
         self.candado = threading.RLock()
         self.usuarios.registrar("ana@correo.com", "miClaveSegura1", "Ana")
 
@@ -181,6 +183,38 @@ class HerramientasTest(unittest.TestCase):
         """La IA manda null cuando no usa el filtro: no debe reventar."""
         r = self.h.ejecutar("cuentas_admin", {"pais": None})
         self.assertEqual(len(r["cuentas"]), 4)
+
+    # -- el premio se paga por el instrumento que el ganador registró --
+
+    def _partida_con_ganador(self, premio: int = 16_000) -> str:
+        self.juego.almacen.guardar_partida({
+            "id": "p-1", "sala": "", "patron": "linea", "precio_carton": 1_000,
+            "estado": "terminada", "bolas": "1,2,3", "ganador": "ana@correo.com",
+            "carton_ganador": 1, "premio": premio})
+        return "p-1"
+
+    def test_acreditacion_avisa_si_el_ganador_no_registro_como_cobrar(self):
+        self._partida_con_ganador()
+        r = self.h.ejecutar("datos_de_acreditacion", {"correo": "ana@correo.com"})
+        fila = r["acreditaciones"][0]
+        self.assertFalse(fila["instrumento_registrado"])
+        self.assertIn("falta", fila)
+        self.assertIn("perfil", fila["falta"])
+
+    def test_acreditacion_muestra_el_instrumento_registrado(self):
+        self._partida_con_ganador()
+        self.juego.fichas.guardar("ana@correo.com", "pago_movil", {
+            "titular": "Ana Pérez", "banco": "Banesco",
+            "telefono": "04161234567", "cedula": "V-12345678"})
+        r = self.h.ejecutar("datos_de_acreditacion", {"correo": "ana@correo.com"})
+        fila = r["acreditaciones"][0]
+        self.assertTrue(fila["instrumento_registrado"])
+        self.assertEqual(fila["metodo_de_pago"], "pago_movil")
+        self.assertEqual(fila["datos_de_pago"]["Teléfono"], "04161234567")
+
+    def test_acreditacion_sin_partidas_no_revienta(self):
+        r = self.h.ejecutar("datos_de_acreditacion", {})
+        self.assertIn("aviso", r)
 
 
 class GlenisTest(unittest.TestCase):
