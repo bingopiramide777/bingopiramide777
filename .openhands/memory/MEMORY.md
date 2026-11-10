@@ -178,8 +178,15 @@ El usuario trabaja desde el teléfono. Botones ≥44 px, `font-size:16px` en inp
   squash-merge a `main` (`43ed5be`). Render (`srv-dbnn2upsrm7s739tio40`, auto-deploy desde
   `main`) construyó y quedó **live**. Verificado en `https://bingopiramide777.vip/#billetera`:
   sale el apartado "Your crypto wallet" y `/api/billetera` responde 401 sin sesión.
-- **El dominio `bingopiramide777.vip` YA está en Render** (Cloudflare delante; apex y `www`
-  → `srv-dbnn2upsrm7s739tio40`).
+- **El dominio `bingopiramide777.vip` es de Porkbun** (NS `*.ns.porkbun.com`) y YA está en
+  Render (apex y `www` → `srv-dbnn2upsrm7s739tio40`, ambos `verified`). No hay que comprar más.
+- **Móvil (2026-11-10)**: el menú estaba oculto (`@media 900px .nav{display:none}` sin
+  hamburguesa) → ahora es una tira deslizable ≤900 px. `[hidden]{display:none!important}`
+  para que `.boton` (inline-flex) no deje visibles botones ocultos. Firma **automática**:
+  MetaMask (`personal_sign`) y Phantom (`connect`+`signMessage`) vinculan de un clic.
+- **`HEAD` ya no da 501** (`do_HEAD` reutiliza `do_GET` con bandera `_cabeza`). **426 pruebas**.
+- **Squash-merge desincroniza la rama**: tras fusionar con squash, rebasar con
+  `git reset --hard origin/main` + reaplicar archivos + `push --force-with-lease`.
 - **Para empujar hace falta un PAT de la cuenta `bingopiramide777`** (fine-grained,
   *Contents: read and write*), NO de `taktakmessenger`: el `$GITHUB_TOKEN` del entorno es de
   `taktakmessenger` y solo tiene lectura (`push=false`). El usuario aporta el PAT de
