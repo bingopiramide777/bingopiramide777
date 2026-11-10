@@ -173,14 +173,17 @@ El usuario trabaja desde el teléfono. Botones ≥44 px, `font-size:16px` en inp
   contra `eth_account`/PyNaCl **solo en local** (jamás al repo). Tabla `billeteras` en
   SQLite y PG. Rutas `/api/billetera`, `/api/billetera/desafio`, `/api/billetera/borrar`.
   Front: apartado `#billetera`; `personal_sign` si hay `window.ethereum`, si no copiar/pegar.
-- Pruebas: **425 en verde**. Commit local `74cae3e` en `openhands/billeteras-cripto`.
+- Pruebas: **425 en verde**.
+- **DESPLEGADO (2026-11-10)**: rama `openhands/billeteras-cripto` → **PR #4** →
+  squash-merge a `main` (`43ed5be`). Render (`srv-dbnn2upsrm7s739tio40`, auto-deploy desde
+  `main`) construyó y quedó **live**. Verificado en `https://bingopiramide777.vip/#billetera`:
+  sale el apartado "Your crypto wallet" y `/api/billetera` responde 401 sin sesión.
 - **El dominio `bingopiramide777.vip` YA está en Render** (Cloudflare delante; apex y `www`
-  → `srv-dbnn2upsrm7s739tio40`, auto-deploy desde `main`). Lo que falta es **empujar**.
-- **Bloqueo de push (recurrente)**: `$GITHUB_TOKEN` y la credencial git son de
-  `taktakmessenger` → **solo lectura** sobre `bingopiramide777/bingopiramide777`
-  (`permissions.push=false`). Hace falta un **PAT fine-grained de `bingopiramide777`**
-  (*Contents: read and write*) o que el usuario añada a `taktakmessenger` como colaborador
-  con permiso de escritura.
+  → `srv-dbnn2upsrm7s739tio40`).
+- **Para empujar hace falta un PAT de la cuenta `bingopiramide777`** (fine-grained,
+  *Contents: read and write*), NO de `taktakmessenger`: el `$GITHUB_TOKEN` del entorno es de
+  `taktakmessenger` y solo tiene lectura (`push=false`). El usuario aporta el PAT de
+  `bingopiramide777` (admin/push) cuando toca empujar; **no guardar el token**.
 
 ## Pendiente / avisos
 Falta pasarela de pago real, verificación de identidad en retiros, límite de

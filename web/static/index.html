@@ -50,6 +50,7 @@
     <a href="#como" data-i18n="nav.como">Cómo se juega</a>
     <a href="#premios" data-i18n="nav.premios">Premios</a>
     <a href="#retirar" data-i18n="nav.retirar">Retirar</a>
+    <a href="#billetera" data-i18n="nav.billetera">Billetera</a>
   </nav>
   <div class="pais-selector" id="pais-selector" title="País y moneda"></div>
   <div class="idioma-selector" id="idioma-selector" title="Idioma"></div>
@@ -267,15 +268,18 @@
 
     <div class="tarjeta">
       <p class="ayuda" id="billetera-estado">—</p>
+      <div id="billetera-entrar" hidden>
+        <button class="boton boton--principal boton--alto boton--ancho" id="btn-billetera-entrar" data-i18n="billetera.entrar">Entrar para vincular</button>
+      </div>
       <div id="billetera-vinculada" hidden>
-        <button class="boton boton--fantasma boton--alto" id="btn-billetera-borrar" data-i18n="billetera.desvincular">Desvincular</button>
+        <button class="boton boton--fantasma boton--alto boton--ancho" id="btn-billetera-borrar" data-i18n="billetera.desvincular">Desvincular</button>
       </div>
 
       <div id="billetera-form">
-        <button class="boton boton--principal boton--alto" id="btn-billetera-desafio" data-i18n="billetera.vincular">Vincular mi billetera</button>
+        <button class="boton boton--principal boton--alto boton--ancho" id="btn-billetera-desafio" data-i18n="billetera.vincular">Vincular mi billetera</button>
 
         <div id="billetera-paso2" hidden>
-          <p class="ayuda" data-i18n="billetera.instrucciones">Firma este mensaje con tu billetera (MetaMask, Phantom, Trust…). Copia el mensaje en tu billetera, firma y pega aquí la dirección y la firma.</p>
+          <p class="ayuda" id="billetera-instrucciones" data-i18n="billetera.instrucciones">Firma este mensaje con tu billetera (MetaMask, Phantom, Trust…). Copia el mensaje en tu billetera, firma y pega aquí la dirección y la firma.</p>
           <label class="campo"><span data-i18n="billetera.mensaje">Mensaje para firmar</span>
             <textarea id="billetera-mensaje" rows="6" readonly></textarea>
           </label>

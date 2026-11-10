@@ -39,6 +39,10 @@
 
 * { box-sizing: border-box; }
 
+/* `hidden` debe ganar siempre: si no, una clase con display (p. ej. .boton)
+   deja visible un elemento marcado como oculto. */
+[hidden] { display: none !important; }
+
 html { scroll-behavior: smooth; }
 
 body {
