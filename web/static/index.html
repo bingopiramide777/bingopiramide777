@@ -377,21 +377,29 @@
 
         <div id="billetera-paso2" hidden>
           <p class="ayuda" id="billetera-instrucciones" data-i18n="billetera.instrucciones">Firma este mensaje con tu billetera (MetaMask, Phantom, Trust…). Copia el mensaje en tu billetera, firma y pega aquí la dirección y la firma.</p>
-          <label class="campo"><span data-i18n="billetera.mensaje">Mensaje para firmar</span>
-            <textarea id="billetera-mensaje" rows="6" readonly></textarea>
-          </label>
-          <div class="fila-campos">
-            <label class="campo"><span data-i18n="billetera.direccion">Dirección de tu billetera</span>
-              <input type="text" id="billetera-direccion" placeholder="0x… o tu dirección de Solana" spellcheck="false">
+
+          <!-- Camino directo: si hay billetera en el navegador, solo se pulsa
+               este botón y la billetera firma sola (sin copiar ni pegar nada). -->
+          <button class="boton boton--principal boton--alto boton--ancho" id="btn-billetera-firmar" data-i18n="billetera.firmar_con" hidden>Firmar con mi billetera</button>
+
+          <!-- Camino a mano: solo se muestra cuando NO hay billetera dentro del
+               navegador (por ejemplo, en un ordenador sin extensión). -->
+          <div id="billetera-manual" hidden>
+            <label class="campo"><span data-i18n="billetera.mensaje">Mensaje para firmar</span>
+              <textarea id="billetera-mensaje" rows="6" readonly></textarea>
             </label>
-            <label class="campo"><span data-i18n="billetera.firma">Firma</span>
-              <input type="text" id="billetera-firma" placeholder="0x…" spellcheck="false">
-            </label>
-          </div>
-          <div class="acciones acciones--pegadas">
-            <button class="boton boton--fantasma" id="btn-billetera-copiar" data-i18n="billetera.copiar">Copiar mensaje</button>
-            <button class="boton boton--principal" id="btn-billetera-firmar" data-i18n="billetera.firmar_con" hidden>Firmar con mi billetera</button>
-            <button class="boton boton--brillo" id="btn-billetera-enviar" data-i18n="billetera.confirmar">Confirmar</button>
+            <div class="fila-campos">
+              <label class="campo"><span data-i18n="billetera.direccion">Dirección de tu billetera</span>
+                <input type="text" id="billetera-direccion" placeholder="0x… o tu dirección de Solana" spellcheck="false">
+              </label>
+              <label class="campo"><span data-i18n="billetera.firma">Firma</span>
+                <input type="text" id="billetera-firma" placeholder="0x…" spellcheck="false">
+              </label>
+            </div>
+            <div class="acciones acciones--pegadas">
+              <button class="boton boton--fantasma" id="btn-billetera-copiar" data-i18n="billetera.copiar">Copiar mensaje</button>
+              <button class="boton boton--brillo" id="btn-billetera-enviar" data-i18n="billetera.confirmar">Confirmar</button>
+            </div>
           </div>
         </div>
       </div>

@@ -908,6 +908,9 @@ async function refrescarBilletera() {
       $("#billetera-vinculada").hidden = true;
       $("#billetera-paso2").hidden = true;
       $("#btn-billetera-desafio").hidden = false;
+      const manual = $("#billetera-manual");
+      if (manual) manual.hidden = true;
+      $("#btn-billetera-firmar").hidden = true;
       const abrir = $("#billetera-abrir");
       if (abrir) abrir.hidden = true;
       const elegirCaja = $("#billetera-elegir");
@@ -1041,6 +1044,10 @@ function conectarBilletera() {
     if (!caja) return;
     const mostrar = !hayBilletera() && esMovil();
     caja.hidden = !mostrar;
+    // En el teléfono el camino a mano (copiar y pegar) no tiene sentido: se
+    // ofrecen solo los enlaces que abren la web dentro de la billetera.
+    const manual = $("#billetera-manual");
+    if (manual && mostrar) manual.hidden = true;
     if (!mostrar) return;
     const { mm, ph } = enlacesDeBilletera();
     const a = $("#btn-abrir-metamask");
@@ -1073,7 +1080,11 @@ function conectarBilletera() {
       $("#billetera-mensaje").value = r.mensaje;
       $("#billetera-paso2").hidden = false;
       pedirDesafio.hidden = true;
+      // Si hay billetera, el camino es de un toque: solo el botón de firmar.
+      // Sin billetera, se muestra el camino a mano (copiar y pegar).
       $("#btn-billetera-firmar").hidden = !hay;
+      const manual = $("#billetera-manual");
+      if (manual) manual.hidden = hay;
       const instr = $("#billetera-instrucciones");
       if (instr) instr.textContent = t(hay ? "billetera.confirma" : "billetera.instrucciones");
       await conectarConAlguna();
