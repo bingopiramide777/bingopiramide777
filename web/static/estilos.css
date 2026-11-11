@@ -630,6 +630,27 @@ input[type="text"], input[type="email"], input[type="password"], select {
   content: "🔒"; position: absolute; left: 0; font-size: .82rem;
 }
 
+/* Enlace al vídeo del paso a paso (TikTok): se ve la URL para copiarla y verla
+   fuera del juego, con un botón para copiarla de un toque. */
+.guia-billetera__enlace {
+  margin-top: 1rem; padding: .8rem .9rem;
+  background: rgba(255, 107, 0, .12);
+  border: 1px solid rgba(255, 107, 0, .45);
+  border-radius: 12px;
+  display: grid; gap: .55rem;
+}
+.guia-billetera__enlace-titulo {
+  color: var(--texto); font-weight: 700; font-size: .92rem;
+}
+.guia-billetera__enlace-fila {
+  display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+}
+.guia-billetera__enlace-url {
+  flex: 1 1 12rem; min-width: 0;
+  color: var(--dorado-claro); font-size: .86rem;
+  word-break: break-all; text-decoration: underline;
+}
+
 .lista-retiros { list-style: none; padding: 0; margin: .8rem 0 0; display: grid; gap: .6rem; }
 .lista-retiros li {
   display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap;

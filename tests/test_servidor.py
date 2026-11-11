@@ -1411,6 +1411,52 @@ class ServidorTest(unittest.TestCase):
         faltan = [f["faltan"] for f in vista["a_cuanto_estan"]]
         self.assertEqual(faltan, sorted(faltan))
 
+    # -- enlace del vídeo de la billetera --
+
+    def test_el_enlace_de_la_billetera_empieza_vacio(self):
+        _, cfg = self.pedir("/api/config")
+        self.assertEqual(cfg["billetera_video_enlace"], "")
+
+    def test_el_admin_cambia_el_enlace_de_la_billetera(self):
+        at = self.admin()
+        url = "https://vt.tiktok.com/ZSpmgj18p/"
+        estado, r = self.pedir("/api/admin/enlace-billetera", {"enlace": url}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["enlace"], url)
+        # El juego lo ve: sale en la configuración pública.
+        _, cfg = self.pedir("/api/config")
+        self.assertEqual(cfg["billetera_video_enlace"], url)
+        # Y el panel lo vuelve a leer.
+        _, leido = self.pedir("/api/admin/enlace-billetera", token=at)
+        self.assertEqual(leido["enlace"], url)
+
+    def test_el_admin_quita_el_enlace_de_la_billetera(self):
+        at = self.admin()
+        self.pedir("/api/admin/enlace-billetera", {"enlace": "https://ejemplo.com/v"}, at)
+        estado, r = self.pedir("/api/admin/enlace-billetera", {"enlace": ""}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["enlace"], "")
+        _, cfg = self.pedir("/api/config")
+        self.assertEqual(cfg["billetera_video_enlace"], "")
+
+    def test_el_enlace_de_la_billetera_rechaza_lo_que_no_es_web(self):
+        at = self.admin()
+        for malo in ("javascript:alert(1)", "no-es-un-enlace", "ftp://archivo.txt", "https://"):
+            estado, _ = self.pedir("/api/admin/enlace-billetera", {"enlace": malo}, at)
+            self.assertEqual(estado, 400, f"debería rechazar {malo!r}")
+
+    def test_solo_el_admin_cambia_el_enlace_de_la_billetera(self):
+        token = self.usuario("ana@correo.com")
+        estado, _ = self.pedir("/api/admin/enlace-billetera", {"enlace": "https://ejemplo.com"}, token)
+        self.assertEqual(estado, 403)
+        # Un visitante sin sesión tampoco.
+        estado, _ = self.pedir("/api/admin/enlace-billetera", {"enlace": "https://ejemplo.com"})
+        self.assertEqual(estado, 403)
+
+    def test_solo_el_admin_lee_el_enlace_de_la_billetera(self):
+        token = self.usuario("ana@correo.com")
+        self.assertEqual(self.pedir("/api/admin/enlace-billetera", token=token)[0], 403)
+
 
 if __name__ == "__main__":
     unittest.main()

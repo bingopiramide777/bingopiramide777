@@ -877,6 +877,7 @@ async function hablarConGlenis(texto) {
 const VENTANAS = {
   resumen:     { titulo: "Resumen",               cargar: () => cargarResumen() },
   glenis:      { titulo: "Glenis IA",             cargar: () => cargarGlenis() },
+  enlace:      { titulo: "Enlace de la billetera", cargar: () => cargarEnlaceBilletera() },
   torneos:     { titulo: "Torneos",               cargar: () => cargarTorneos() },
   depositos:   { titulo: "Entradas: cobros por acreditar", cargar: () => refrescarDepositos() },
   retiros:     { titulo: "Salidas: pagos por hacer",    cargar: () => cargarRetiros() },
@@ -1110,9 +1111,52 @@ function cartonHtml(c) {
   return `<table class="carton-mini"><tbody>${filas}</tbody></table>`;
 }
 
+/* --- enlace de la billetera --- */
+
+// El enlace del vídeo que sale en la sección Billetera del juego. Se puede
+// cambiar aquí o pidiéndoselo a Glenis IA ("cambia el enlace por este").
+async function cargarEnlaceBilletera() {
+  const caja = cuerpo("enlace");
+  if (!caja) return;
+  const r = await get("/api/admin/enlace-billetera");
+  const enlace = r.enlace || "";
+  caja.innerHTML = `
+    <p class="entrada">Este es el enlace al vídeo que ven los jugadores en la sección
+       <strong>Billetera → Cómo vincular tu billetera</strong>. Si lo dejas vacío, la sección
+       no muestra ningún enlace. También puedes cambiarlo pidiéndoselo a Glenis IA:
+       «cambia el enlace por este: …».</p>
+    <label class="campo">Enlace del vídeo
+      <input id="enlace-billetera-url" type="url" inputmode="url" spellcheck="false"
+             placeholder="https://…">
+    </label>
+    <p class="ayuda" id="enlace-billetera-actual"></p>
+    <div class="acciones acciones--pegadas">
+      <button class="boton boton--principal" id="enlace-billetera-guardar">Guardar enlace</button>
+      <button class="boton boton--fantasma" id="enlace-billetera-quitar">Quitar enlace</button>
+    </div>`;
+
+  const campo = $("#enlace-billetera-url");
+  campo.value = enlace;
+  $("#enlace-billetera-actual").textContent = enlace
+    ? "Ahora mismo: " + enlace : "Ahora mismo no hay ningún enlace puesto.";
+
+  const guardar = async (valor) => {
+    try {
+      const res = await post("/api/admin/enlace-billetera", { enlace: valor });
+      avisar(res.enlace ? "Enlace guardado." : "Enlace quitado.", "bien");
+      await cargarEnlaceBilletera();
+    } catch (err) {
+      avisar(err.message, "error");
+    }
+  };
+
+  $("#enlace-billetera-guardar").onclick = () => guardar(campo.value.trim());
+  $("#enlace-billetera-quitar").onclick = () => guardar("");
+}
+
 /* --- arranque --- */
 
-const ORDEN_VENTANAS = ["resumen", "glenis", "torneos", "depositos", "retiros", "jugadores",
+const ORDEN_VENTANAS = ["resumen", "glenis", "enlace", "torneos", "depositos", "retiros", "jugadores",
                         "partidas", "salas", "cobros", "ganancias", "referidos", "movimientos"];
 
 function pintarLanzadera() {

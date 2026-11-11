@@ -13,9 +13,14 @@ es una máquina de hacer agujeros.
 
 from __future__ import annotations
 
+import re
 import time
 
 from .money import a_centimos, a_texto
+
+# Clave en la tabla 'meta' donde vive el enlace del vídeo de la sección Billetera.
+# La comparte el servidor (web/servidor.py) para no tener dos sitios con el mismo dato.
+CLAVE_ENLACE_BILLETERA = "billetera_video_enlace"
 
 
 class Herramientas:
@@ -139,6 +144,14 @@ class Herramientas:
                                "país. No son cuentas de jugadores: son las de la casa.",
               {"pais": {"type": "string", "enum": ["VE", "CO", "CL", "US"],
                         "description": "Filtra por país. Si se omite, las de todos."}}),
+            f("ver_enlace_billetera", "Muestra el enlace del vídeo que aparece en la sección "
+                                      "Billetera del juego (o avisa de que no hay ninguno)."),
+            f("cambiar_enlace_billetera", "Cambia el enlace del vídeo que aparece en la sección "
+                                          "Billetera del juego. Úsalo cuando el administrador te "
+                                          "diga 'cambia el enlace por este' y te dé una dirección. "
+                                          "Enviar el enlace vacío lo quita.",
+              {"enlace": {"type": "string", "description": "La dirección web (http:// o https://) "
+                           "del vídeo. Vacío para quitarlo."}}),
         ]
 
     # -- ejecución --
@@ -459,6 +472,29 @@ class Herramientas:
                       "o con USDT (cripto). Es la misma para todos los países."),
             "sin_configurar": [c["pais"] for c in lista if not c["configurada"]],
         }
+
+    def _h_ver_enlace_billetera(self) -> dict:
+        with self.juego.candado:
+            enlace = (self.juego.almacen.meta(CLAVE_ENLACE_BILLETERA) or "").strip()
+        if not enlace:
+            return {"hay_enlace": False,
+                    "aviso": ("Ahora mismo la sección Billetera no muestra ningún enlace. "
+                              "Pásame la dirección y la pongo.")}
+        return {"hay_enlace": True, "enlace": enlace,
+                "nota": "Es el enlace del vídeo que ven los jugadores en la sección Billetera."}
+
+    def _h_cambiar_enlace_billetera(self, enlace: str = "") -> dict:
+        enlace = (enlace or "").strip()
+        if enlace and not re.match(r"^https?://", enlace, re.IGNORECASE):
+            return {"error": "El enlace tiene que empezar por http:// o https://. "
+                             "Si quieres quitarlo, mándalo vacío."}
+        with self.juego.candado:
+            self.juego.almacen.guardar_meta(CLAVE_ENLACE_BILLETERA, enlace)
+        if not enlace:
+            return {"ok": True, "enlace": "",
+                    "aviso": "Listo: la sección Billetera ya no muestra ningún enlace."}
+        return {"ok": True, "enlace": enlace,
+                "aviso": "Listo: ese enlace ya aparece en la sección Billetera del juego."}
 
     def _h_ver_datos_cobro(self, correo: str) -> dict:
         correo = (correo or "").strip().lower()
