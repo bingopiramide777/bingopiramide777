@@ -1343,23 +1343,6 @@ function conectarBotones() {
       if (seccion) seccion.scrollIntoView({ behavior: "smooth", block: "start" });
     };
   }
-
-  // Enlace del vídeo de la billetera: se copia de un toque para verlo fuera.
-  const botonCopiarEnlace = $("#btn-copiar-enlace-billetera");
-  if (botonCopiarEnlace) {
-    botonCopiarEnlace.onclick = async () => {
-      const enlace = $("#billetera-video-url");
-      const url = enlace ? enlace.href : "";
-      if (!url) return;
-      try {
-        await navigator.clipboard.writeText(url);
-        avisar(t("billetera.enlace_copiado"), "bien");
-      } catch (err) {
-        // Sin permiso de portapapeles (o sin HTTPS): se muestra para copiar a mano.
-        prompt(t("billetera.copiar_manual"), url);
-      }
-    };
-  }
   $("#btn-recargar").onclick = () => {
     if (!token) return abrirAcceso("entrar");
     abrirDeposito();
