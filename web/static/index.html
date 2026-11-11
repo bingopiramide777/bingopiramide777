@@ -358,13 +358,18 @@
             <li data-i18n="billetera.como_nota_movil">¿En el teléfono? Abre la web dentro de la app de tu billetera (botón «Abrir en MetaMask») para que se conecte sola.</li>
           </ul>
 
-          <!-- Vídeo con el paso a paso. Solo aparece cuando el archivo existe
-               (ver cargarVideoBilletera en app.js): así, si todavía no está
-               subido, la sección se ve igual que antes. -->
-          <figure class="guia-billetera__video" id="billetera-video" hidden>
-            <video id="billetera-video-player" controls playsinline preload="metadata"></video>
-            <figcaption data-i18n="billetera.video_titulo">Vídeo: cómo conectar tu billetera</figcaption>
-          </figure>
+          <!-- Enlace al vídeo del paso a paso (TikTok): se muestra el enlace a la
+               vista para que se pueda copiar y ver fuera del juego. -->
+          <div class="guia-billetera__enlace" id="billetera-video-enlace">
+            <span class="guia-billetera__enlace-titulo" data-i18n="billetera.video_enlace">Cómo vincular billetera MetaMask</span>
+            <div class="guia-billetera__enlace-fila">
+              <a class="guia-billetera__enlace-url" id="billetera-video-url"
+                 href="https://vt.tiktok.com/ZSpmgj18p/" target="_blank" rel="noopener noreferrer"
+                 >https://vt.tiktok.com/ZSpmgj18p/</a>
+              <button class="boton boton--fantasma boton--mini" id="btn-copiar-enlace-billetera"
+                      type="button" data-i18n="billetera.copiar_enlace">Copiar enlace</button>
+            </div>
+          </div>
         </div>
 
         <!-- Con varias billeteras instaladas, cada una se anuncia por su cuenta
