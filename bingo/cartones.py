@@ -187,6 +187,50 @@ class Bombo:
 
 # -- Generación de cartones --------------------------------------------------
 
+def huella_carton(carton: Carton) -> tuple:
+    """Una clave que identifica el cartón por sus números.
+
+    Dos cartones con los mismos 24 números son el mismo cartón, aunque su id o el
+    orden de lectura cambien: sirve para no repetir cartas en una misma partida.
+    """
+    return tuple(n for fila in carton.numeros for n in fila)
+
+
+def generar_carton_unico(generador=None, id_: str = "", usados=None) -> Carton:
+    """Genera un cartón que no coincida con ninguno de los ya repartidos.
+
+    Se sortean 24 números entre 25^24 combinaciones, así que el choque es raro;
+    cuando pasa (o cuando alguien prueba el sistema con bombos amañados), se
+    vuelve a tirar. Si no se puede en unos cuantos intentos, se rompe el empate
+    a mano cambiando un número, para no dejar nunca dos cartas iguales.
+    """
+    azar = generador or secrets.SystemRandom()
+    usados = set(usados or ())
+    for _ in range(50):
+        carton = generar_carton(azar, id_)
+        if huella_carton(carton) not in usados:
+            return carton
+    # Salida de emergencia: se coge un cartón válido y se le cambia un número por
+    # otro de su misma columna que aún no esté en el cartón.
+    carton = generar_carton(azar, id_)
+    numeros = [list(fila) for fila in carton.numeros]
+    for _ in range(50):
+        fila = azar.randrange(5)
+        col = azar.randrange(5)
+        if (fila, col) == LIBRE:
+            continue
+        lo, hi = RANGOS[col]
+        en_carton = {numeros[f][col] for f in range(5)}
+        candidatos = [n for n in range(lo, hi + 1) if n not in en_carton]
+        if not candidatos:
+            continue
+        numeros[fila][col] = candidatos[azar.randrange(len(candidatos))]
+        nuevo = Carton(numeros=tuple(tuple(f) for f in numeros), id=carton.id)
+        if huella_carton(nuevo) not in usados:
+            return nuevo
+    return carton
+
+
 def generar_carton(generador=None, id_: str = "") -> Carton:
     """Crea un cartón válido al azar. Cada columna saca 5 números sin repetir."""
     azar = generador or secrets.SystemRandom()

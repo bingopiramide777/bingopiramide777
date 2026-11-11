@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 
 from nucleo.money import a_centimos, multiplicar
 
-from .cartones import PATRONES, Bombo, Carton, ErrorDeBingo, generar_carton, patron_cumplido
+from .cartones import (PATRONES, Bombo, Carton, ErrorDeBingo, generar_carton_unico,
+                       huella_carton, patron_cumplido)
 
 
 class ErrorDeSala(ValueError):
@@ -96,7 +97,8 @@ class Sala:
         partida = self._partida(partida_id)
         if not partida.abierta:
             raise ErrorDeSala("La partida ya ha empezado: no se venden más cartones.")
-        carton = generar_carton()
+        usados = {huella_carton(c) for c in partida.cartones.values()}
+        carton = generar_carton_unico(id_="", usados=usados)
         partida.cartones[carton.id] = carton
         partida.dueno[carton.id] = jugador
         return carton, partida.precio_carton

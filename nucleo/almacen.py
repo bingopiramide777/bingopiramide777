@@ -159,6 +159,7 @@ CREATE TABLE IF NOT EXISTS salas (
     cupo_cartones  INTEGER NOT NULL DEFAULT 0,
     max_cartones   INTEGER NOT NULL DEFAULT 0,
     fecha_partida  TEXT NOT NULL DEFAULT '',
+    hora_partida   TEXT NOT NULL DEFAULT '',
     pais           TEXT NOT NULL DEFAULT 'VE',
     es_trabajo     INTEGER NOT NULL DEFAULT 0
 );
@@ -261,6 +262,10 @@ class Almacen:
         if "pais" not in columnas_s2:
             with self.transaccion() as c:
                 c.execute("ALTER TABLE salas ADD COLUMN pais TEXT NOT NULL DEFAULT 'VE'")
+        # La sala aprendió a guardar la hora aparte del día.
+        if "hora_partida" not in columnas_s2:
+            with self.transaccion() as c:
+                c.execute("ALTER TABLE salas ADD COLUMN hora_partida TEXT NOT NULL DEFAULT ''")
 
         # Los códigos aprendieron a distinguir para qué son (recuperar o verificar).
         columnas_c = {f["name"] for f in self._todos("PRAGMA table_info(codigos)")}
@@ -791,20 +796,22 @@ class Almacen:
             c.execute(
                 "INSERT INTO salas (id, nombre, modo, precio_carton, dueno, publica, activa,"
                 " creada, es_evento, aforo, premios_pct, tipo_juego, cupo_cartones,"
-                " max_cartones, fecha_partida, pais, es_trabajo)"
-                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+                " max_cartones, fecha_partida, hora_partida, pais, es_trabajo)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
                 " ON CONFLICT(id) DO UPDATE SET nombre=excluded.nombre, modo=excluded.modo,"
                 " precio_carton=excluded.precio_carton, publica=excluded.publica,"
                 " activa=excluded.activa, es_evento=excluded.es_evento, aforo=excluded.aforo,"
                 " premios_pct=excluded.premios_pct, tipo_juego=excluded.tipo_juego,"
                 " cupo_cartones=excluded.cupo_cartones, max_cartones=excluded.max_cartones,"
-                " fecha_partida=excluded.fecha_partida, pais=excluded.pais,"
+                " fecha_partida=excluded.fecha_partida, hora_partida=excluded.hora_partida,"
+                " pais=excluded.pais,"
                 " es_trabajo=excluded.es_trabajo",
                 (s["id"], s["nombre"], s["modo"], s["precio_carton"], s.get("dueno", ""),
                  s.get("publica", 1), s.get("activa", 1), s["creada"],
                  s.get("es_evento", 0), s.get("aforo", 0), s.get("premios_pct", ""),
                  s.get("tipo_juego", "linea_h1"), s.get("cupo_cartones", 0),
                  s.get("max_cartones", 0), s.get("fecha_partida", "") or "",
+                 s.get("hora_partida", "") or "",
                  s.get("pais", "VE") or "VE", s.get("es_trabajo", 0)),
             )
 
@@ -812,8 +819,8 @@ class Almacen:
         """Cambia solo los campos indicados de una sala (precio, aforo, premios…)."""
         permitidos = {"nombre", "modo", "precio_carton", "publica", "activa",
                       "es_evento", "aforo", "premios_pct", "tipo_juego",
-                      "cupo_cartones", "max_cartones", "fecha_partida", "pais",
-                      "es_trabajo", "dueno"}
+                      "cupo_cartones", "max_cartones", "fecha_partida", "hora_partida",
+                      "pais", "es_trabajo", "dueno"}
         asignar = {k: v for k, v in campos.items() if k in permitidos}
         if not asignar:
             return
@@ -872,6 +879,15 @@ class Almacen:
 
     def cartones(self, partida: str) -> list[sqlite3.Row]:
         return self._todos("SELECT * FROM cartones WHERE partida = ?", (partida,))
+
+    def borrar_carton(self, id_: str) -> None:
+        with self.transaccion() as c:
+            c.execute("DELETE FROM cartones WHERE id = ?", (id_,))
+
+    def borrar_cartones_de(self, partida: str, correo: str) -> None:
+        """Quita de una partida todos los cartones de un jugador."""
+        with self.transaccion() as c:
+            c.execute("DELETE FROM cartones WHERE partida = ? AND correo = ?", (partida, correo))
 
     # -- estadísticas del jugador --
 

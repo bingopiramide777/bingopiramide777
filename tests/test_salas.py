@@ -255,6 +255,24 @@ class ConfigurarSalasTest(unittest.TestCase):
         otra = Salas(self.almacen)
         self.assertEqual(otra.de(SALA_CASA_ID).max_cartones, 4)
 
+    def test_la_sala_de_evento_guarda_fecha_y_hora(self):
+        sala = self.salas.configurar_evento(fecha_partida="2026-12-31", hora_partida="20:00")
+        self.assertEqual(sala.fecha_partida, "2026-12-31")
+        self.assertEqual(sala.hora_partida, "20:00")
+        # Y sobrevive al reinicio, porque vive en la base.
+        otra = Salas(self.almacen)
+        self.assertEqual(otra.de("sala-evento-lago").hora_partida, "20:00")
+
+    def test_la_sala_de_la_casa_guarda_fecha_y_hora(self):
+        sala = self.salas.configurar_sala(SALA_CASA_ID, fecha_partida="2026-01-01",
+                                          hora_partida="19:30")
+        self.assertEqual(sala.fecha_partida, "2026-01-01")
+        self.assertEqual(sala.hora_partida, "19:30")
+
+    def test_la_hora_de_la_partida_aparece_en_los_datos_de_la_sala(self):
+        self.salas.configurar_evento(hora_partida="21:15")
+        self.assertEqual(self.salas.de("sala-evento-lago").a_dict()["hora_partida"], "21:15")
+
 
 class SalaTrabajoTest(unittest.TestCase):
     """La sala de trabajo: "Ganar Dinero Desde Casa" con anfitrión de la casa."""

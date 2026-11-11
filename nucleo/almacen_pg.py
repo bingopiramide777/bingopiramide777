@@ -171,6 +171,7 @@ CREATE TABLE IF NOT EXISTS salas (
     cupo_cartones  INTEGER NOT NULL DEFAULT 0,
     max_cartones   INTEGER NOT NULL DEFAULT 0,
     fecha_partida  TEXT NOT NULL DEFAULT '',
+    hora_partida   TEXT NOT NULL DEFAULT '',
     pais           TEXT NOT NULL DEFAULT 'VE',
     es_trabajo     INTEGER NOT NULL DEFAULT 0
 );
@@ -295,6 +296,7 @@ class AlmacenPG(Almacen):
                       ("cupo_cartones", "INTEGER NOT NULL DEFAULT 0"),
                       ("max_cartones", "INTEGER NOT NULL DEFAULT 0"),
                       ("fecha_partida", "TEXT NOT NULL DEFAULT ''"),
+                      ("hora_partida", "TEXT NOT NULL DEFAULT ''"),
                       ("pais", "TEXT NOT NULL DEFAULT 'VE'"),
                       ("es_trabajo", "INTEGER NOT NULL DEFAULT 0")),
             "depositos": (("pais", "TEXT NOT NULL DEFAULT 'VE'"),

@@ -44,6 +44,13 @@ function formatear(centimos) {
   return (centimos < 0 ? "-" : "") + "$ " + entero + "," + String(n % 100).padStart(2, "0");
 }
 
+// El precio se muestra con el símbolo de la moneda (🫰, $, Bs…). Al editar hay
+// que quedarse solo con el número: el servidor no entiende el símbolo.
+function soloImporte(texto) {
+  const m = String(texto || "").match(/(\d[\d.,]*)/);
+  return m ? m[1] : "";
+}
+
 function fecha(ts) {
   return ts ? new Date(ts * 1000).toLocaleString("es-VE", { dateStyle: "short", timeStyle: "short" }) : "—";
 }
@@ -598,13 +605,106 @@ async function cargarTorneos() {
       </div>
       <div class="tarjeta-resumen">
         <p class="tarjeta-resumen__titulo">Fecha</p>
-        <p class="tarjeta-resumen__valor" style="font-size:1rem">${evento.fecha_partida || "—"}</p>
+        <p class="tarjeta-resumen__valor" style="font-size:1rem">${[evento.fecha_partida, evento.hora_partida].filter(Boolean).join(" ") || "—"}</p>
         <p class="tarjeta-resumen__pie">cuándo se juega</p>
       </div>
     </div>
     <div class="evento__premios" style="margin:1rem 0">${premios || '<p class="ayuda">Sin premios configurados.</p>'}</div>
-    <button class="boton boton--principal boton--alto" id="btn-config-torneo">Configurar el torneo</button>`;
-  $("#btn-config-torneo").onclick = () => editarTorneo(evento);
+    <button class="boton boton--principal boton--alto" id="btn-config-torneo">Configurar el torneo</button>
+    <div id="evento-jugadores"></div>`;
+  $("#btn-config-torneo").onclick = () => editarTorneo(evento, () => cargarTorneos());
+  cargarJugadoresEvento(evento);
+}
+
+/* --- colocar jugadores y cartas en la sala de evento --- */
+
+async function cargarJugadoresEvento(evento) {
+  const caja = $("#evento-jugadores");
+  if (!caja) return;
+  const sala = evento.id || "sala-evento-lago";
+  let v;
+  try { v = await get("/api/admin/sala?sala=" + encodeURIComponent(sala)); }
+  catch (err) { caja.innerHTML = `<p class="vacio">${err.message}</p>`; return; }
+  const filas = v.jugadores.map((j) => `
+    <tr>
+      <td>${j.correo}</td>
+      <td>${j.cartones}</td>
+      <td class="acciones-celda">
+        <button class="boton boton--fantasma boton--mini" data-ver-cartas="${j.correo}">Ver cartas</button>
+        <button class="boton boton--peligro boton--mini" data-quitar="${j.correo}">Quitar</button>
+      </td>
+    </tr>`).join("") || '<tr><td colspan="3" class="vacio">Nadie colocado todavía.</td></tr>';
+  caja.innerHTML = `
+    <h3 class="evento__titulo" style="margin-top:1.4rem">Jugadores y cartas</h3>
+    <p class="ayuda">Coloca jugadores a mano y repárteles cartas. Se les puede cobrar del saldo
+       o dar los cartones de regalo.</p>
+    <form id="form-evento-jugador" class="formulario--linea">
+      <label>Correo del jugador
+        <input type="email" name="correo" required placeholder="jugador@correo.com">
+      </label>
+      <label>Nombre (si es nuevo)
+        <input type="text" name="nombre" maxlength="60" placeholder="opcional">
+      </label>
+      <label>Cartas
+        <input type="number" name="cartones" min="1" max="10" step="1" value="1">
+      </label>
+      <label style="display:flex;align-items:center;gap:.4rem">
+        <input type="checkbox" name="cobrar" style="width:auto"> Cobrar del saldo
+      </label>
+      <button class="boton boton--principal" type="submit">Colocar jugador</button>
+    </form>
+    <div class="tabla-scroll"><table class="tabla">
+      <thead><tr><th>Jugador</th><th>Cartas</th><th></th></tr></thead>
+      <tbody>${filas}</tbody>
+    </table></div>
+    <div id="evento-cartas"></div>`;
+  $("#form-evento-jugador").onsubmit = async (e) => {
+    e.preventDefault();
+    const d = Object.fromEntries(new FormData(e.target));
+    try {
+      const r = await post("/api/admin/sala/jugador", {
+        sala, correo: d.correo, nombre: d.nombre,
+        cartones: d.cartones, cobrar: !!d.cobrar,
+      });
+      let msg = `${r.correo}: ${r.cantidad} carta(s) colocada(s).`;
+      if (r.creado) msg += ` Cuenta nueva. Clave temporal: ${r.clave_temporal}`;
+      avisar(msg, "bien");
+      cargarJugadoresEvento(evento);
+    } catch (err) { avisar(err.message, "error"); }
+  };
+  caja.querySelectorAll("[data-quitar]").forEach((b) =>
+    (b.onclick = async () => {
+      if (!confirm(`¿Quitar a ${b.dataset.quitar} de la sala con sus cartas?`)) return;
+      try {
+        const r = await post("/api/admin/sala/quitar-jugador", { sala, correo: b.dataset.quitar });
+        avisar(`Quitado: ${r.quitados} carta(s). Devuelto ${r.devuelto_texto}.`, "bien");
+        cargarJugadoresEvento(evento);
+      } catch (err) { avisar(err.message, "error"); }
+    }));
+  caja.querySelectorAll("[data-ver-cartas]").forEach((b) =>
+    (b.onclick = () => {
+      const j = v.jugadores.find((x) => x.correo === b.dataset.verCartas);
+      const cajaCartas = $("#evento-cartas");
+      cajaCartas.innerHTML = `
+        <h4 style="margin:.8rem 0 .4rem">Cartas de ${j.correo}</h4>
+        <div class="mesas-jugadores">${j.detalle.map((c) => `
+          <div class="mesa-jugador">
+            <div class="mesa-jugador__cabeza"><strong>${c.id}</strong>
+              <button class="boton boton--peligro boton--mini"
+                data-quitar-carta="${c.id}" data-dueno="${j.correo}">Quitar carta</button></div>
+            <div class="mesa-jugador__cartones">${cartonHtml(c)}</div>
+          </div>`).join("")}</div>`;
+      cajaCartas.querySelectorAll("[data-quitar-carta]").forEach((bb) =>
+        (bb.onclick = async () => {
+          if (!confirm("¿Quitar esta carta?")) return;
+          try {
+            await post("/api/admin/sala/quitar-carton",
+              { sala, correo: bb.dataset.dueno, carton: bb.dataset.quitarCarta });
+            avisar("Carta quitada.", "bien");
+            cargarJugadoresEvento(evento);
+          } catch (err) { avisar(err.message, "error"); }
+        }));
+    }));
 }
 
 async function editarTorneo(evento, alGuardar = null) {
@@ -618,7 +718,7 @@ async function editarTorneo(evento, alGuardar = null) {
     <form id="form-torneo">
       <label>Nombre<input type="text" name="nombre" value="${evento.nombre || "Torneo del día"}" maxlength="40"></label>
       <label>Precio del cartón ($)
-        <input type="text" name="precio" value="${(evento.precio_texto || "").replace("$ ", "")}" required>
+        <input type="text" name="precio" value="${soloImporte(evento.precio_texto)}" required>
       </label>
       <label>Aforo (0 = sin límite)
         <input type="number" name="aforo" min="0" step="1" value="${evento.aforo || 0}">
@@ -638,8 +738,10 @@ async function editarTorneo(evento, alGuardar = null) {
         <input type="number" name="cupo_cartones" min="0" step="1" value="${evento.cupo_cartones || 0}">
       </label>
       <label>Fecha de la partida
-        <input type="text" name="fecha_partida" maxlength="60" placeholder="Ej.: hoy 8:00 pm"
-               value="${evento.fecha_partida || ""}">
+        <input type="date" name="fecha_partida" value="${evento.fecha_partida || ""}">
+      </label>
+      <label>Hora de la partida
+        <input type="time" name="hora_partida" value="${evento.hora_partida || ""}">
       </label>
       <label>¿Abierto?
         <select name="activa">
@@ -658,6 +760,7 @@ async function editarTorneo(evento, alGuardar = null) {
         nombre: d.nombre, precio: d.precio, aforo: d.aforo,
         ganadores: d.ganadores, premios_pct: d.premios_pct, tipo_juego: d.tipo_juego,
         cupo_cartones: d.cupo_cartones, fecha_partida: d.fecha_partida,
+        hora_partida: d.hora_partida,
         activa: d.activa === "si",
       });
       $("#dialogo").hidden = true;
@@ -873,7 +976,7 @@ async function cargarSalasAdmin() {
           <td>${s.tipo_juego_texto || "—"}</td>
           <td>${s.precio_texto}</td>
           <td>${s.cupo_cartones > 0 ? s.cupo_cartones : "sin tope"}</td>
-          <td>${s.fecha_partida || "—"}</td>
+          <td>${[s.fecha_partida, s.hora_partida].filter(Boolean).join(" ") || "—"}</td>
           <td><span class="etiqueta etiqueta--${s.activa ? "acreditado" : "rechazado"}">${
             s.activa ? "abierta" : "cerrada"}</span></td>
           <td class="acciones-celda">
@@ -932,7 +1035,7 @@ async function editarSala(sala) {
     <form id="form-sala">
       <label>Nombre<input type="text" name="nombre" value="${sala.nombre}" required maxlength="60"></label>
       <label>Precio del cartón ($)
-        <input type="text" name="precio" value="${sala.precio_texto.replace("$ ", "")}" required>
+        <input type="text" name="precio" value="${soloImporte(sala.precio_texto)}" required>
       </label>
       <label>Tipo de juego<select name="tipo_juego">${opciones}</select></label>
       <label>Cartones a la venta (0 = sin tope)
@@ -942,8 +1045,10 @@ async function editarSala(sala) {
         <input type="number" name="max_cartones" min="0" step="1" value="${sala.max_cartones || 0}">
       </label>
       <label>Fecha de la partida
-        <input type="text" name="fecha_partida" maxlength="60" placeholder="Ej.: hoy 8:00 pm"
-               value="${sala.fecha_partida || ""}">
+        <input type="date" name="fecha_partida" value="${sala.fecha_partida || ""}">
+      </label>
+      <label>Hora de la partida
+        <input type="time" name="hora_partida" value="${sala.hora_partida || ""}">
       </label>
       <button class="boton boton--principal" type="submit">Guardar</button>
     </form>
@@ -957,6 +1062,7 @@ async function editarSala(sala) {
         sala: sala.id, nombre: d.nombre, precio: d.precio,
         tipo_juego: d.tipo_juego, cupo_cartones: d.cupo_cartones,
         max_cartones: d.max_cartones, fecha_partida: d.fecha_partida,
+        hora_partida: d.hora_partida,
       });
       $("#dialogo").hidden = true;
       avisar(res.mensaje, "bien");
@@ -998,7 +1104,8 @@ function cartonHtml(c) {
   const filas = c.numeros.map((fila, f) => `<tr>${fila.map((n, col) => {
     const libre = f === 2 && col === 2;
     const marca = libre || marcados.has(`${f}-${col}`);
-    return `<td class="${marca ? "carton-mini__marcado" : ""}">${libre ? "★" : n}</td>`;
+    return `<td class="${marca ? "carton-mini__marcado" : ""}">${
+      libre ? '<img class="carton-mini__logo" src="/emblema.svg" alt="libre">' : n}</td>`;
   }).join("")}</tr>`).join("");
   return `<table class="carton-mini"><tbody>${filas}</tbody></table>`;
 }

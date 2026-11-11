@@ -200,7 +200,8 @@ a { color: inherit; }
   border: 1px solid rgba(255, 255, 255, .08);
   transition: background .2s, transform .2s;
 }
-.celda--libre { background: rgba(247, 201, 72, .2); color: var(--dorado); font-size: .8rem; }
+.celda--libre { background: rgba(247, 201, 72, .2); color: var(--dorado); font-size: .8rem; padding: 6%; }
+.celda__logo { width: 100%; height: 100%; object-fit: contain; }
 .celda--marcada {
   background: linear-gradient(135deg, var(--verde), #1c8a4e);
   color: #04240f; transform: scale(.96);
@@ -795,6 +796,11 @@ input[type="text"], input[type="email"], input[type="password"], select {
   border: 1px solid rgba(255, 255, 255, .15); border-radius: 999px; padding: .25rem .8rem;
 }
 .evento__aforo--lleno { color: #ffd9dd; border-color: rgba(224, 82, 99, .7); }
+.evento__cuenta {
+  margin: .5rem 0 0; font-weight: 800; letter-spacing: .04em;
+  font-size: 1.05rem; color: var(--dorado-claro);
+}
+.evento__cuenta--ya { color: var(--verde); }
 .evento__bote { margin: .6rem 0 .2rem; font-size: .9rem; color: var(--gris); }
 .evento__bote strong { color: var(--dorado); font-size: 1.1rem; }
 .evento__premios { display: grid; gap: .6rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); margin-top: .8rem; }
@@ -869,6 +875,7 @@ input[type="text"], input[type="email"], input[type="password"], select {
   padding: .2rem .1rem; color: var(--gris);
 }
 .carton-mini__marcado { background: var(--dorado); color: var(--morado-900); font-weight: 800; }
+.carton-mini__logo { width: 14px; height: 14px; display: block; margin: 0 auto; }
 
 /* Datos de la cuenta a la que el jugador manda el dinero. */
 .cuenta-pago {

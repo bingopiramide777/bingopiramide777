@@ -48,6 +48,18 @@ class RegistroTest(unittest.TestCase):
         with self.assertRaises(ErrorDeUsuario):
             self.u.registrar("ana@correo.com", "otraClave123")
 
+    def test_no_se_repite_el_correo_con_espacios(self):
+        self.u.registrar("ana@correo.com", "miClaveSegura1")
+        with self.assertRaises(ErrorDeUsuario):
+            self.u.registrar("  ana@correo.com  ", "otraClave123")
+
+    def test_gmail_y_googlemail_son_la_misma_cuenta(self):
+        self.u.registrar("ana@gmail.com", "miClaveSegura1")
+        with self.assertRaises(ErrorDeUsuario):
+            self.u.registrar("ana@googlemail.com", "otraClave123")
+        # Y se entra por cualquiera de los dos, que llevan al mismo buzón.
+        self.u.entrar("ana@googlemail.com", "miClaveSegura1")
+
     def test_correo_mal_formado(self):
         for malo in ("", "ana", "ana@", "@correo.com", "ana correo.com"):
             with self.assertRaises(ErrorDeUsuario):
