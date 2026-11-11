@@ -28,12 +28,6 @@ function simboloMoneda() {
   return (paisInfo && paisInfo.currencySymbol) || "🫰";
 }
 
-/* El formato de los números sigue al idioma (no al país), porque el dinero es el
-   mismo en todo el mundo. El país solo cambia la bandera. */
-function localeMoneda() {
-  return localeDeIdioma();
-}
-
 /* Nombre de la moneda para los textos. Siempre el dólar, en el idioma elegido. */
 function nombreMoneda() {
   return t("moneda.nombre");
@@ -822,7 +816,10 @@ async function refrescarHistorial() {
 function formatear(centimos) {
   const negativo = centimos < 0;
   const n = Math.abs(centimos);
-  const entero = Math.floor(n / 100).toLocaleString(localeMoneda());
+  // Mismo formato que el servidor (nucleo/money.a_texto): punto para los miles,
+  // coma para los decimales y dígitos latinos. Así los importes que llegan ya
+  // formateados y los que pinta el navegador nunca se contradicen.
+  const entero = String(Math.floor(n / 100)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   const resto = String(n % 100).padStart(2, "0");
   return (negativo ? "-" : "") + simboloMoneda() + " " + entero + "," + resto;
 }
