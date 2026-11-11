@@ -86,13 +86,29 @@ NOMBRE_MAXIMO_CASA = 60
 
 # Las salas de la casa llevan nombre de estado de Venezuela. El último dato es
 # el tipo de juego que premia la sala. El precio es en dólares (céntimos).
+#
+# Son 15, una por cada casilla de la rejilla: tres modos (normal, competencia y
+# cartón lleno) por cinco precios (1, 2, 3, 5 y 10 dólares). Así el jugador
+# siempre encuentra el modo que quiere al precio que puede pagar.
 SALAS_INICIALES = (
-    ("sala-zulia", "Zulia", "carton_lleno", 10_00, "carton_lleno", "VE"),
-    ("sala-lara", "Lara", "carton_lleno", 5_00, "carton_lleno", "VE"),
-    ("sala-carabobo", "Carabobo", "carton_lleno", 3_00, "carton_lleno", "VE"),
+    # Normal: una línea, columna o diagonal.
+    ("sala-amazonas", "Amazonas", "normal", 1_00, "linea_h1", "VE"),
     ("sala-miranda", "Mérida", "normal", 2_00, "cruz_grande", "VE"),
+    ("sala-apure", "Apure", "normal", 3_00, "linea_h1", "VE"),
+    ("sala-aragua", "Aragua", "normal", 5_00, "linea_h1", "VE"),
+    ("sala-barinas", "Barinas", "normal", 10_00, "linea_h1", "VE"),
+    # Competencia: además de líneas y diagonales valen las 4 esquinas.
     ("sala-tachira", "Táchira", "competencia", 1_00, "cruz_pequena", "VE"),
+    ("sala-bolivar", "Bolívar", "competencia", 2_00, "cuatro_esquinas", "VE"),
+    ("sala-cojedes", "Cojedes", "competencia", 3_00, "cuatro_esquinas", "VE"),
+    ("sala-falcon", "Falcón", "competencia", 5_00, "cuatro_esquinas", "VE"),
+    ("sala-guarico", "Guárico", "competencia", 10_00, "cuatro_esquinas", "VE"),
+    # Cartón lleno: hay que completar los 25 números.
     ("sala-nueva-esparta", "Nueva Esparta", "carton_lleno", 1_00, "diagonal", "VE"),
+    ("sala-monagas", "Monagas", "carton_lleno", 2_00, "carton_lleno", "VE"),
+    ("sala-carabobo", "Carabobo", "carton_lleno", 3_00, "carton_lleno", "VE"),
+    ("sala-lara", "Esequibo", "carton_lleno", 5_00, "carton_lleno", "VE"),
+    ("sala-zulia", "Zulia", "carton_lleno", 10_00, "carton_lleno", "VE"),
 )
 
 # La sala para jugar desde casa. Es una sala de la casa (no de un anfitrión),
@@ -135,6 +151,12 @@ VERSION_JUEGOS = 1
 # Marca de "la sala de trabajo ya se aplicó". La 1 pone dueño y modo de trabajo a
 # "Ganar Dinero Desde Casa" una sola vez.
 VERSION_TRABAJO = 1
+
+# Marca de "Lara pasó a llamarse Esequibo". La 1 hace el cambio una sola vez, solo
+# si la sala todavía se llama "Lara" (para no pisar un nombre que puso el admin).
+VERSION_ESEQUIBO = 1
+# El nombre viejo de la sala que ahora se llama Esequibo.
+NOMBRE_VIEJO_LARA = "Lara"
 # El juego viejo de Zulia y Lara, antes de pasarlas a cartón lleno.
 JUEGOS_ANTIGUOS = {
     "sala-zulia": ("normal", "linea_h1"),
@@ -152,6 +174,9 @@ SALA_EVENTO_AFORO = 50                     # jugadores como máximo (0 = sin lí
 SALA_EVENTO_CUPO = 0                       # cartones como máximo (0 = sin tope)
 PREMIO_EVENTO_POR_DEFECTO = (60, 15, 5)    # % del bote para 1º, 2º y 3º
 PLAZAS_EVENTO = len(PREMIO_EVENTO_POR_DEFECTO)
+# Cuando el evento reparte un solo ganador, se lleva este % del bote (el resto es
+# de la app, como en una sala de la casa).
+PREMIO_EVENTO_UNO = (80,)
 AFORO_MAXIMO = 1000
 
 NOMBRES_RESERVADOS = tuple(n.lower() for _, n, _, _, _, _ in SALAS_INICIALES) + (
@@ -361,6 +386,7 @@ class Salas:
         self._subir_precios_antiguos()
         self._subir_juegos_antiguos()
         self._subir_sala_trabajo()
+        self._subir_nombre_esequibo()
 
     def comision_de(self, dueno: str, defecto: int | None = None) -> int:
         """El % de comisión de anfitrión que le toca a una cuenta.
@@ -440,6 +466,19 @@ class Salas:
             self.almacen.actualizar_sala(SALA_CASA_ID, {"dueno": self.anfitrion_casa,
                                                         "es_trabajo": 1})
         self.almacen.guardar_meta("trabajo_v", str(VERSION_TRABAJO))
+
+    def _subir_nombre_esequibo(self) -> None:
+        """Renombra la sala "Lara" a "Esequibo" en bases de datos creadas antes.
+
+        Solo toca la sala si todavía se llama "Lara": si la administración ya le
+        puso otro nombre, no se pisa. Se hace una sola vez.
+        """
+        if self.almacen.meta("esequibo_v") == str(VERSION_ESEQUIBO):
+            return
+        fila = self.almacen.sala("sala-lara")
+        if fila is not None and fila["nombre"] == NOMBRE_VIEJO_LARA:
+            self.almacen.actualizar_sala("sala-lara", {"nombre": "Esequibo"})
+        self.almacen.guardar_meta("esequibo_v", str(VERSION_ESEQUIBO))
 
     def _asegurar_iniciales(self) -> None:
         """Crea las salas de la casa la primera vez. No pisa las que ya existan."""
@@ -724,14 +763,28 @@ class Salas:
                           nombre: object | None = None, tipo_juego: object | None = None,
                           cupo_cartones: object | None = None,
                           max_cartones: object | None = None,
-                          fecha_partida: object | None = None) -> Sala:
+                          fecha_partida: object | None = None,
+                          ganadores: object | None = None) -> Sala:
         """Ajusta la sala de eventos: precio, aforo, premios, tipo de juego y fecha.
 
         Solo se cambia lo que se pasa. Los porcentajes son para 1º, 2º y 3º y no
-        pueden sumar más de 100 %.
+        pueden sumar más de 100 %. Con ``ganadores`` se elige entre un único ganador
+        (el 80 % del bote) o tres puestos (1º, 2º y 3º); si se pasan los porcentajes
+        a mano, mandan ellos.
         """
         sala = self.evento()
         campos: dict = {}
+        if ganadores is not None and premios_pct is None:
+            try:
+                n = int(ganadores)
+            except (TypeError, ValueError):
+                raise ErrorDeSalas("Los ganadores tienen que ser 1 o 3.") from None
+            if n == 1:
+                premios_pct = ",".join(str(p) for p in PREMIO_EVENTO_UNO)
+            elif n == PLAZAS_EVENTO:
+                premios_pct = ",".join(str(p) for p in PREMIO_EVENTO_POR_DEFECTO)
+            else:
+                raise ErrorDeSalas(f"El evento reparte 1 o {PLAZAS_EVENTO} ganadores.")
         if precio is not None:
             campos["precio_carton"] = self._precio_valido(precio, PRECIO_MAXIMO_CASA,
                                                           "del evento")

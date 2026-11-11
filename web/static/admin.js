@@ -623,6 +623,12 @@ async function editarTorneo(evento) {
       <label>Aforo (0 = sin límite)
         <input type="number" name="aforo" min="0" step="1" value="${evento.aforo || 0}">
       </label>
+      <label>¿Cuántos ganadores?
+        <select name="ganadores">
+          <option value="1" ${(evento.plazas || 3) === 1 ? "selected" : ""}>1 ganador (se lleva el 80 %)</option>
+          <option value="3" ${(evento.plazas || 3) === 3 ? "selected" : ""}>3 ganadores (1º, 2º y 3º)</option>
+        </select>
+      </label>
       <label>Premios por porcentaje (separados por coma, de 1º a último)
         <input type="text" name="premios_pct" value="${pctActual}" placeholder="70,20,10">
       </label>
@@ -649,7 +655,7 @@ async function editarTorneo(evento) {
     try {
       await post("/api/admin/evento", {
         nombre: d.nombre, precio: d.precio, aforo: d.aforo,
-        premios_pct: d.premios_pct, tipo_juego: d.tipo_juego,
+        ganadores: d.ganadores, premios_pct: d.premios_pct, tipo_juego: d.tipo_juego,
         cupo_cartones: d.cupo_cartones, fecha_partida: d.fecha_partida,
         activa: d.activa === "si",
       });
@@ -657,6 +663,12 @@ async function editarTorneo(evento) {
       avisar("Torneo actualizado.", "bien");
       cargarTorneos();
     } catch (err) { avisar(err.message, "error"); }
+  };
+  // Al elegir cuántos ganadores se rellenan los porcentajes por defecto; el campo
+  // sigue siendo editable para afinar el reparto.
+  const selGanadores = $("#form-torneo [name=ganadores]");
+  selGanadores.onchange = () => {
+    $("#form-torneo [name=premios_pct]").value = selGanadores.value === "1" ? "80" : "60,15,5";
   };
 }
 

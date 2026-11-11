@@ -82,8 +82,11 @@ class SalasTest(unittest.TestCase):
 
     def test_vienen_las_salas_de_la_casa(self):
         nombres = [s.nombre for s in self.salas.de_la_casa()]
-        self.assertEqual(nombres, ["Zulia", "Lara", "Carabobo", "Mérida", "Táchira",
-                                   "Nueva Esparta"])
+        self.assertEqual(nombres, [
+            "Amazonas", "Mérida", "Apure", "Aragua", "Barinas",
+            "Táchira", "Bolívar", "Cojedes", "Falcón", "Guárico",
+            "Nueva Esparta", "Monagas", "Carabobo", "Esequibo", "Zulia"])
+        self.assertEqual(len(nombres), 15)
         self.assertTrue(all(not s.es_de_jugador for s in self.salas.de_la_casa()))
 
     def test_viene_la_sala_de_jugar_desde_casa(self):
@@ -107,21 +110,20 @@ class SalasTest(unittest.TestCase):
         self.assertEqual(evento.plazas, 3)
 
     def test_cada_sala_tiene_su_precio_y_su_modo(self):
-        """Los precios que fijó la administración, de la más barata a la más cara."""
+        """La rejilla: 3 modos (normal, competencia y cartón lleno) por 5 precios."""
         precios = {s.nombre: s.precio_carton for s in self.salas.de_la_casa()}
-        self.assertEqual(precios, {
-            "Zulia": 10_00,
-            "Lara": 5_00,
-            "Carabobo": 3_00,
-            "Mérida": 2_00,
-            "Táchira": 1_00,
-            "Nueva Esparta": 1_00,
-        })
-        modos = {s.nombre: s.modo for s in self.salas.de_la_casa()}
-        self.assertEqual(modos["Carabobo"], "carton_lleno")
-        # Zulia y Lara son de cartón lleno: sus partidas duran más.
-        self.assertEqual(modos["Zulia"], "carton_lleno")
-        self.assertEqual(modos["Lara"], "carton_lleno")
+        self.assertEqual(sorted(precios.values()), [1_00] * 3 + [2_00] * 3 + [3_00] * 3
+                         + [5_00] * 3 + [10_00] * 3)
+        modos = {}
+        for s in self.salas.de_la_casa():
+            modos.setdefault(s.modo, []).append(s.precio_carton)
+        self.assertEqual(sorted(modos["normal"]), [1_00, 2_00, 3_00, 5_00, 10_00])
+        self.assertEqual(sorted(modos["competencia"]), [1_00, 2_00, 3_00, 5_00, 10_00])
+        self.assertEqual(sorted(modos["carton_lleno"]), [1_00, 2_00, 3_00, 5_00, 10_00])
+        # Esequibo entra en cartón lleno de $ 5, donde estaba Lara.
+        esequibo = next(s for s in self.salas.de_la_casa() if s.nombre == "Esequibo")
+        self.assertEqual(esequibo.precio_carton, 5_00)
+        self.assertEqual(esequibo.modo, "carton_lleno")
 
     def test_un_jugador_crea_su_sala(self):
         s = self.salas.crear("ana@correo.com", "La de Ana", "normal", "25,00")
@@ -389,6 +391,42 @@ class MigracionJuegosTest(unittest.TestCase):
         Salas(almacen).configurar_sala("sala-zulia", tipo_juego="diagonal")
         otra = Salas(almacen)
         self.assertEqual(otra.de("sala-zulia").tipo_juego, "diagonal")
+
+
+class MigracionEsequiboTest(unittest.TestCase):
+    """Bases de datos viejas: la sala Lara pasa a llamarse Esequibo una vez."""
+
+    def test_lara_pasa_a_llamarse_esequibo(self):
+        almacen = Almacen(":memory:")
+        almacen.guardar_sala({
+            "id": "sala-lara", "nombre": "Lara", "modo": "carton_lleno",
+            "precio_carton": 5_00, "tipo_juego": "carton_lleno", "dueno": "",
+            "publica": 1, "creada": 0.0, "activa": 1,
+        })
+        salas = Salas(almacen)
+        self.assertEqual(salas.de("sala-lara").nombre, "Esequibo")
+
+    def test_no_se_pisa_un_nombre_que_cambio_el_admin(self):
+        almacen = Almacen(":memory:")
+        almacen.guardar_sala({
+            "id": "sala-lara", "nombre": "Mi sala", "modo": "carton_lleno",
+            "precio_carton": 5_00, "tipo_juego": "carton_lleno", "dueno": "",
+            "publica": 1, "creada": 0.0, "activa": 1,
+        })
+        salas = Salas(almacen)
+        self.assertEqual(salas.de("sala-lara").nombre, "Mi sala")
+
+    def test_la_migracion_de_esequibo_solo_corre_una_vez(self):
+        almacen = Almacen(":memory:")
+        almacen.guardar_sala({
+            "id": "sala-lara", "nombre": "Lara", "modo": "carton_lleno",
+            "precio_carton": 5_00, "tipo_juego": "carton_lleno", "dueno": "",
+            "publica": 1, "creada": 0.0, "activa": 1,
+        })
+        Salas(almacen)  # la primera vez renombra
+        Salas(almacen).configurar_sala("sala-lara", nombre="Otra cosa")
+        otra = Salas(almacen)  # la segunda ya no toca el nombre
+        self.assertEqual(otra.de("sala-lara").nombre, "Otra cosa")
 
 
 class MigracionPreciosTest(unittest.TestCase):

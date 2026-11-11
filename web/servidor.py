@@ -327,6 +327,7 @@ class Juego:
             if partida is None or partida.cartones:
                 return
             self.mesa.sala.partidas.pop(partida.id, None)
+            self.almacen.borrar_partida(partida.id)
             if self._partida_id == partida.id:
                 self._partida = None
                 self._partida_id = ""
@@ -1597,7 +1598,11 @@ class Manejador(BaseHTTPRequestHandler):
                         cupo_cartones=datos.get("cupo_cartones"),
                         max_cartones=datos.get("max_cartones"),
                         fecha_partida=datos.get("fecha_partida"),
+                        ganadores=datos.get("ganadores"),
                     )
+                    # La partida abierta coge los puestos y el precio nuevos, pero
+                    # solo si todavía no se ha vendido ningún cartón.
+                    self.juego.reabrir_partida(sala.id)
                     info = self.juego.info_evento()
                 self._json({"ok": True, "evento": info, "sala": self._sala_json(sala)})
             except Exception as exc:  # noqa: BLE001

@@ -726,6 +726,16 @@ class Almacen:
     def partida(self, id_: str) -> sqlite3.Row | None:
         return self._uno("SELECT * FROM partidas WHERE id = ?", (id_,))
 
+    def borrar_partida(self, id_: str) -> None:
+        """Elimina una partida sin terminar que todavía no ha vendido cartones.
+
+        Se usa cuando la administración cambia los puestos o el precio de la sala
+        de eventos antes de que empiece: la partida vieja se tira para que la
+        siguiente nazca con los datos nuevos.
+        """
+        with self.transaccion() as c:
+            c.execute("DELETE FROM partidas WHERE id = ?", (id_,))
+
     def partida_abierta(self) -> sqlite3.Row | None:
         return self._uno(
             "SELECT * FROM partidas WHERE estado != 'terminada' ORDER BY rowid DESC LIMIT 1"

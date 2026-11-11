@@ -325,7 +325,9 @@ class ServidorTest(unittest.TestCase):
         estado, r = self.pedir("/api/salas")
         self.assertEqual(estado, 200)
         self.assertEqual([s["nombre"] for s in r["salas"]],
-                         ["Zulia", "Lara", "Carabobo", "Mérida", "Táchira", "Nueva Esparta",
+                         ["Amazonas", "Mérida", "Apure", "Aragua", "Barinas",
+                          "Táchira", "Bolívar", "Cojedes", "Falcón", "Guárico",
+                          "Nueva Esparta", "Monagas", "Carabobo", "Esequibo", "Zulia",
                           "Ganar Dinero Desde Casa con BingoPiramide777",
                           "Sala de Eventos Lago de Maracaibo"])
 
@@ -477,6 +479,27 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(r["evento"]["precio_texto"], "🫰 100,00")
         self.assertEqual(r["evento"]["aforo"], 2)
         self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [70, 20, 10])
+
+    def test_el_admin_elige_un_solo_ganador_en_el_evento(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/evento", {"ganadores": 1}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["evento"]["plazas"], 1)
+        self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [80])
+
+    def test_el_admin_elige_tres_ganadores_en_el_evento(self):
+        at = self.admin()
+        self.pedir("/api/admin/evento", {"ganadores": 1}, at)
+        estado, r = self.pedir("/api/admin/evento", {"ganadores": 3}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["evento"]["plazas"], 3)
+        self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [60, 15, 5])
+
+    def test_el_evento_solo_admite_uno_o_tres_ganadores(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/evento", {"ganadores": 2}, at)
+        self.assertEqual(estado, 400)
+        self.assertIn("1 o 3", r["error"])
 
     def test_los_premios_del_evento_se_reparten_por_porcentaje(self):
         at = self.admin()
