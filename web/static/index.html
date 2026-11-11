@@ -338,6 +338,23 @@
       <div id="billetera-form">
         <button class="boton boton--principal boton--alto boton--ancho" id="btn-billetera-desafio" data-i18n="billetera.vincular">Vincular mi billetera</button>
 
+        <!-- Guía paso a paso, justo debajo del botón, para que nadie se pierda
+             con las ventanas de la billetera. -->
+        <div class="guia-billetera" id="billetera-guia">
+          <h3 data-i18n="billetera.como_titulo">Cómo vincular tu billetera, paso a paso</h3>
+          <ol>
+            <li data-i18n="billetera.como_1">Pulsa «Vincular mi billetera». No tienes que escribir ni copiar nada: la web hace todo sola.</li>
+            <li data-i18n="billetera.como_2">Se abrirá tu billetera (MetaMask, Trust, Coinbase…). Pulsa «Conectar» para autorizar a Bingo Pirámide 777.</li>
+            <li data-i18n="billetera.como_3">Después te pedirá firmar un mensaje. Pulsa «Firmar». Es gratis: no cuesta gas ni mueve dinero.</li>
+            <li data-i18n="billetera.como_4">Listo: tu billetera queda atada a tu cuenta y podrás recibir tus premios.</li>
+          </ol>
+          <ul class="guia-billetera__notas">
+            <li data-i18n="billetera.como_nota_seg">Nunca te pediremos tu frase secreta (las 12 palabras) ni tu contraseña. Firmar un mensaje no da permiso para sacar fondos.</li>
+            <li data-i18n="billetera.como_nota_varias">Si tienes varias billeteras instaladas, primero elige con cuál quieres vincular.</li>
+            <li data-i18n="billetera.como_nota_movil">¿En el teléfono? Abre la web dentro de la app de tu billetera (botón «Abrir en MetaMask») para que se conecte sola.</li>
+          </ul>
+        </div>
+
         <!-- Con varias billeteras instaladas, cada una se anuncia por su cuenta
              (estándar EIP-6963) y aquí el jugador elige con cuál firma. -->
         <div id="billetera-elegir" hidden>

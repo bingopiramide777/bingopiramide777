@@ -575,6 +575,28 @@ input[type="text"], input[type="email"], input[type="password"], select {
 .ayuda { font-size: .82rem; color: var(--gris); margin: .2rem 0 .9rem; }
 .subtitulo { margin-top: 1.8rem; font-size: 1.05rem; }
 
+.guia-billetera {
+  margin: 1rem 0 .4rem; padding: 1rem 1.1rem;
+  background: rgba(255, 255, 255, .04);
+  border: 1px solid rgba(255, 255, 255, .08);
+  border-radius: var(--radio);
+}
+.guia-billetera h3 { margin: 0 0 .7rem; font-size: .98rem; }
+.guia-billetera ol { margin: 0; padding-left: 1.3rem; display: grid; gap: .55rem; }
+.guia-billetera ol li { color: var(--texto-suave); font-size: .9rem; line-height: 1.45; }
+.guia-billetera__notas {
+  list-style: none; margin: .9rem 0 0; padding: .8rem 0 0;
+  border-top: 1px solid rgba(255, 255, 255, .08);
+  display: grid; gap: .5rem;
+}
+.guia-billetera__notas li {
+  color: var(--gris); font-size: .84rem; line-height: 1.45;
+  padding-left: 1.2rem; position: relative;
+}
+.guia-billetera__notas li::before {
+  content: "🔒"; position: absolute; left: 0; font-size: .82rem;
+}
+
 .lista-retiros { list-style: none; padding: 0; margin: .8rem 0 0; display: grid; gap: .6rem; }
 .lista-retiros li {
   display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap;
