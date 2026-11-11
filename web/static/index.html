@@ -61,6 +61,8 @@
   </nav>
   <div class="pais-selector" id="pais-selector" title="País y moneda"></div>
   <div class="idioma-selector" id="idioma-selector" title="Idioma"></div>
+  <button class="boton boton--fantasma cabecera__billetera" id="boton-billetera" type="button"
+          data-i18n="nav.billetera" data-i18n-title="billetera.titulo">Billetera</button>
   <div class="sesion" id="sesion"></div>
 </header>
 
@@ -202,6 +204,26 @@
           <option value="no" data-i18n="salas.privada">Privada (solo con el enlace)</option>
         </select>
       </label>
+      <label><span data-i18n="salas.premios">Premios de la sala</span>
+        <select name="puestos" id="select-puestos">
+          <option value="1" data-i18n="salas.premio_unico">Un solo premio (el ganador se lleva todo)</option>
+          <option value="3" data-i18n="salas.premio_tres">Tres premios (1º, 2º y 3º)</option>
+        </select>
+      </label>
+      <div id="premios-tres" hidden>
+        <p class="ayuda" data-i18n="salas.premios_ayuda">Reparto del 70 % del bote entre los tres puestos. El resto es para el anfitrión y la casa.</p>
+        <div class="fila-campos">
+          <label class="campo"><span data-i18n="puesto.1">Primer lugar</span>
+            <input type="number" name="pct_1" min="0" max="70" step="1" value="50" inputmode="numeric">
+          </label>
+          <label class="campo"><span data-i18n="puesto.2">Segundo lugar</span>
+            <input type="number" name="pct_2" min="0" max="70" step="1" value="15" inputmode="numeric">
+          </label>
+          <label class="campo"><span data-i18n="puesto.3">Tercer lugar</span>
+            <input type="number" name="pct_3" min="0" max="70" step="1" value="5" inputmode="numeric">
+          </label>
+        </div>
+      </div>
       <button class="boton boton--brillo boton--alto" type="submit" data-i18n="salas.crear">Crear mi sala</button>
     </form>
 

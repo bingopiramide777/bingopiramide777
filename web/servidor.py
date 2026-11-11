@@ -338,8 +338,8 @@ class Juego:
         # de jugador (o vieja) y no tiene tipo, se cae al modo de siempre.
         from bingo.cartones import MODOS, PATRONES
         patron = sala.tipo_juego if sala.tipo_juego in PATRONES else MODOS[sala.modo][0]
-        # La sala de eventos reparte varios puestos (1º, 2º, 3º); el resto, uno.
-        plazas = sala.plazas if sala.es_evento and sala.plazas else 1
+        # La sala decide cuántos puestos premia: 1 (un ganador) o 3 (1º, 2º y 3º).
+        plazas = sala.plazas
         partida = self.mesa.sala.abrir_partida(sala.precio_carton / 100, patron=patron,
                                               sala=sala.id, plazas=plazas)
         self._guardar(partida)
@@ -1127,9 +1127,15 @@ class Manejador(BaseHTTPRequestHandler):
                 with self.juego.candado:
                     sala = self.juego.salas.crear(
                         jugador, datos.get("nombre", ""), datos.get("modo", ""),
-                        datos.get("precio", ""), datos.get("publica", True))
-                mensaje = (f"Sala {sala.nombre} creada. El ganador cobra el 70% y tú "
-                           "cobras el 10% de los botes.")
+                        datos.get("precio", ""), datos.get("publica", True),
+                        puestos=datos.get("puestos", 1),
+                        premios_pct=datos.get("premios_pct"))
+                if sala.reparte_varios_puestos:
+                    mensaje = (f"Sala {sala.nombre} creada. Reparte el bote entre 1º, 2º y 3º; "
+                               "tú cobras el 10% de los botes.")
+                else:
+                    mensaje = (f"Sala {sala.nombre} creada. El ganador cobra el 70% y tú "
+                               "cobras el 10% de los botes.")
                 self._json({"ok": True, "sala": self._sala_json(sala), "mensaje": mensaje})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))

@@ -83,10 +83,12 @@ class MesaBingo:
         premio = premios[puesto - 1] if puesto - 1 < len(premios) else 0
         if premio > 0:
             self.monedero.pagar_premio(jugador, premio, motivo=f"bingo {partida_id} ({puesto}º puesto)")
-        # El anfitrión cobra su comisión en el momento, para que no se pierda.
+        # El anfitrión cobra su comisión UNA sola vez por partida, cuando se canta
+        # el primer puesto: si se pagara en cada cantada, en una sala de tres
+        # puestos se llevaría el triple de lo que le toca.
         # Quién cobra lo dice el propio reparto, no un atributo aparte.
         anfitrion = reparto.get("anfitrion_correo", "")
-        if reparto.get("anfitrion", 0) > 0 and anfitrion:
+        if puesto == 1 and reparto.get("anfitrion", 0) > 0 and anfitrion:
             self.monedero.pagar_premio(
                 anfitrion, reparto["anfitrion"], motivo=f"comisión de sala {partida_id}")
         resultado["premio"] = premio

@@ -376,6 +376,25 @@ class ServidorTest(unittest.TestCase):
                                {"nombre": "X", "modo": "normal", "precio": "10,00"})
         self.assertEqual(estado, 401)
 
+    def test_un_jugador_crea_una_sala_de_tres_puestos(self):
+        token = self.usuario("ana@correo.com")
+        estado, r = self.pedir("/api/sala/crear", {
+            "nombre": "Tres premios", "modo": "normal", "precio": "10,00",
+            "publica": True, "puestos": 3, "premios_pct": "50,15,5"}, token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["sala"]["plazas"], 3)
+        self.assertTrue(r["sala"]["reparte_varios_puestos"])
+        self.assertEqual(r["sala"]["premios_pct"], [50, 15, 5])
+        self.assertIn("1º, 2º y 3º", r["mensaje"])
+
+    def test_una_sala_de_un_puesto_sigue_igual(self):
+        token = self.usuario("ana@correo.com")
+        estado, r = self.pedir("/api/sala/crear", {
+            "nombre": "De siempre", "modo": "normal", "precio": "10,00", "puestos": 1}, token)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["sala"]["plazas"], 1)
+        self.assertFalse(r["sala"]["reparte_varios_puestos"])
+
     def test_la_sala_aparece_en_la_lista_publica(self):
         token = self.usuario("ana@correo.com")
         self.pedir("/api/sala/crear",

@@ -29,6 +29,7 @@ from nucleo.salas import (
     Salas,
     reparto_del_bote,
     reparto_evento,
+    reparto_por_puestos,
 )
 
 
@@ -594,6 +595,143 @@ class RepartoEventoTest(unittest.TestCase):
             reparto_evento(10_000, ())
         with self.assertRaises(ErrorDeSalas):
             reparto_evento(10_000, (60, -1, 5))
+
+class RepartoPorPuestosTest(unittest.TestCase):
+    """El reparto de una sala de jugador que premia 1º, 2º y 3º."""
+
+    def test_reparte_los_tres_puestos_y_deja_la_comision_y_la_app(self):
+        r = reparto_por_puestos(10_000, (50, 15, 5), con_anfitrion=True, comision_pct=10)
+        self.assertEqual(r["premios"], [5_000, 1_500, 500])
+        self.assertEqual(r["anfitrion"], 1_000)
+        self.assertEqual(r["app"], 2_000)
+
+    def test_sin_anfitrion_la_app_se_queda_lo_que_sobra(self):
+        r = reparto_por_puestos(10_000, (50, 15, 5))
+        self.assertEqual(r["premios"], [5_000, 1_500, 500])
+        self.assertEqual(r["anfitrion"], 0)
+        self.assertEqual(r["app"], 3_000)
+
+    def test_nunca_pierde_un_centimo(self):
+        for bote in range(0, 20_000):
+            r = reparto_por_puestos(bote, (50, 15, 5), con_anfitrion=True, comision_pct=10)
+            self.assertEqual(sum(r["premios"]) + r["anfitrion"] + r["app"], bote,
+                             f"no cuadra con bote {bote}")
+
+    def test_los_premios_mas_la_comision_no_pasan_de_100(self):
+        with self.assertRaises(ErrorDeSalas):
+            reparto_por_puestos(10_000, (60, 15, 5), con_anfitrion=True, comision_pct=30)
+
+
+class SalaVariosPuestosTest(unittest.TestCase):
+    """Un anfitrión crea su sala con uno o con tres puestos premiados."""
+
+    def setUp(self):
+        self.almacen = Almacen(":memory:")
+        self.salas = Salas(self.almacen)
+
+    def test_una_sala_nueva_premia_un_solo_puesto(self):
+        s = self.salas.crear("ana@correo.com", "La de Ana", "normal", "10,00")
+        self.assertEqual(s.plazas, 1)
+        self.assertFalse(s.reparte_varios_puestos)
+        r = s.reparto(10_000)
+        self.assertEqual(r["premio"], 7_000)
+        self.assertEqual(r["anfitrion"], 1_000)
+        self.assertEqual(r["app"], 2_000)
+
+    def test_una_sala_de_tres_puestos_reparte_50_15_5(self):
+        s = self.salas.crear("ana@correo.com", "Tres premios", "normal", "10,00",
+                             puestos=3)
+        self.assertEqual(s.plazas, 3)
+        self.assertTrue(s.reparte_varios_puestos)
+        r = s.reparto(10_000)
+        self.assertEqual(r["premios"], [5_000, 1_500, 500])
+        self.assertEqual(r["anfitrion"], 1_000)
+        self.assertEqual(r["app"], 2_000)
+
+    def test_los_porcentajes_se_pueden_elegir(self):
+        s = self.salas.crear("ana@correo.com", "A mi gusto", "normal", "10,00",
+                             puestos=3, premios_pct="40,20,10")
+        self.assertEqual(list(s.premios_pct), [40, 20, 10])
+        r = s.reparto(10_000)
+        self.assertEqual(r["premios"], [4_000, 2_000, 1_000])
+
+    def test_los_premios_no_pueden_pasarse_del_70(self):
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.crear("ana@correo.com", "Cara", "normal", "10,00",
+                             puestos=3, premios_pct="60,20,10")
+
+    def test_puestos_inventados_se_rechazan(self):
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.crear("ana@correo.com", "Dos", "normal", "10,00", puestos=2)
+
+    def test_faltan_porcentajes_para_los_puestos(self):
+        with self.assertRaises(ErrorDeSalas):
+            self.salas.crear("ana@correo.com", "Corta", "normal", "10,00",
+                             puestos=3, premios_pct="50,20")
+
+    def test_los_puestos_sobreviven_al_reinicio(self):
+        self.salas.crear("ana@correo.com", "Tres premios", "normal", "10,00", puestos=3)
+        otra = Salas(self.almacen)
+        self.assertEqual(otra.de_dueno("ana@correo.com")[0].plazas, 3)
+
+
+class TresPuestosJuegoTest(unittest.TestCase):
+    """Una sala de tres puestos paga a los tres y cierra al tercero."""
+
+    def setUp(self):
+        self.almacen = Almacen(":memory:")
+        self.salas = Salas(self.almacen)
+        self.monedero = Monedero(self.almacen)
+        self.sala = self.salas.crear("ana@correo.com", "Tres premios", "normal",
+                                     "10,00", puestos=3)
+
+    def test_tres_ganadores_cobran_su_parte_y_el_anfitrion_una_vez(self):
+        from bingo.cartones import patron_cumplido
+
+        bingo = SalaBingo()
+
+        def reparto(pid, bote):
+            r = self.salas.de(self.sala.id).reparto(bote)
+            r["anfitrion_correo"] = self.sala.dueno
+            return r
+
+        mesa = MesaBingo(sala=bingo, monedero=self.monedero, repartidor=reparto)
+        partida = bingo.abrir_partida(self.sala.precio_carton / 100, patron="linea_h1",
+                                      sala=self.sala.id, plazas=self.sala.plazas)
+        jugadores = ["a@correo.com", "b@correo.com", "c@correo.com"]
+        cartones = {}
+        for j in jugadores:
+            self.monedero.recargar(j, 100_000, "prueba")
+            cartones[j], _ = mesa.comprar_carton(partida.id, j)
+        bingo.empezar(partida.id)
+        # Tres cartones a $ 10 = $ 30 = 3.000 céntimos.
+        self.assertEqual(partida.precio_carton * len(partida.cartones), 3_000)
+
+        saldos_antes = {j: self.monedero.saldo(j) for j in jugadores}
+        anfitrion_antes = self.monedero.saldo("ana@correo.com")
+        pagados = {}
+        for j in jugadores:
+            while not patron_cumplido(partida.cartones[cartones[j]], "linea_h1"):
+                bingo.sacar_bola(partida.id)
+            res = mesa.resolver_cantada(partida.id, j, cartones[j])
+            pagados[j] = res["premio"]
+
+        # 50 % de 3.000 = 1.500, 15 % = 450, 5 % = 150.
+        self.assertEqual(pagados["a@correo.com"], 1_500)
+        self.assertEqual(pagados["b@correo.com"], 450)
+        self.assertEqual(pagados["c@correo.com"], 150)
+        self.assertEqual(self.monedero.saldo("a@correo.com") - saldos_antes["a@correo.com"], 1_500)
+        self.assertEqual(self.monedero.saldo("b@correo.com") - saldos_antes["b@correo.com"], 450)
+        self.assertEqual(self.monedero.saldo("c@correo.com") - saldos_antes["c@correo.com"], 150)
+        # El anfitrión cobra su 10 % una sola vez, no tres.
+        self.assertEqual(self.monedero.saldo("ana@correo.com") - anfitrion_antes, 300)
+        self.assertEqual(partida.estado, "terminada")
+
+    def test_la_sala_de_un_puesto_no_cambia(self):
+        s = self.salas.crear("ana@correo.com", "De siempre", "normal", "10,00")
+        r = s.reparto(10_000)
+        self.assertEqual(r["premio"], 7_000)
+        self.assertNotIn("premios", r)
 
 
 class EventoTest(unittest.TestCase):

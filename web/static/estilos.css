@@ -101,6 +101,12 @@ a { color: inherit; }
 
 .sesion { display: flex; align-items: center; gap: .6rem; font-size: .9rem; }
 
+/* Botón de billetera de la cabecera. En el móvil el menú es una tira que se
+   desliza y "Billetera" quedaba fuera de pantalla; este botón lo deja a la vista.
+   En escritorio no hace falta (el enlace del menú ya se ve) y ocupa sitio, así
+   que solo aparece en pantallas estrechas. */
+.cabecera__billetera.boton { display: none; }
+
 /* --- selector de país --- */
 
 .pais-selector { display: flex; align-items: center; margin-left: auto; }
@@ -368,6 +374,10 @@ input:focus { outline: 2px solid var(--dorado); outline-offset: 1px; }
   /* La cabecera se reparte en dos filas y el menú es una tira deslizable. */
   .cabecera { flex-wrap: wrap; gap: .6rem; padding: .7rem 1rem; }
   .sesion { margin-left: auto; }
+  .cabecera__billetera.boton {
+    display: inline-block; padding: .4rem .9rem; font-size: .85rem;
+    white-space: nowrap; flex: 0 0 auto;
+  }
   .nav {
     display: flex; order: 3; width: 100%; margin: 0; overflow-x: auto;
     gap: 1.1rem; padding-bottom: .2rem; -webkit-overflow-scrolling: touch;

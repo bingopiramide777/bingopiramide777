@@ -555,6 +555,8 @@ async function cargarSalas() {
                              : `<div class="sala-tarjeta__dueno">${t("salas.de_casa")}</div>`}
            ${s.tipo_juego === "carton_lleno"
              ? `<div class="sala-tarjeta__carton-lleno">${t("salas.carton_lleno_etiqueta")}</div>` : ""}
+           ${s.reparte_varios_puestos
+             ? `<div class="sala-tarjeta__dueno">${t("salas.tres_premios_etiqueta", { pcts: s.premios_pct.join(" / ") })}</div>` : ""}
            ${s.es_trabajo ? `<div class="sala-tarjeta__dueno">${t("salas.trabajo_pie")}</div>` : ""}
            ${s.max_cartones > 0
              ? `<div class="sala-tarjeta__dueno">${t("salas.max_cartones", { n: s.max_cartones })}</div>`
@@ -694,7 +696,8 @@ async function cargarMisSalas() {
         <tbody>${res.salas.map((s) => `
           <tr><td><strong>${s.nombre}</strong>${s.es_trabajo
                 ? `<br><span class="sala-tarjeta__etiqueta sala-tarjeta__etiqueta--trabajo">${t("salas.trabajo_etiqueta")}</span>` : ""}<br>
-                <span class="ayuda">${s.publica ? t("salas.publica_corta") : t("salas.privada_corta")}</span></td>
+                <span class="ayuda">${s.publica ? t("salas.publica_corta") : t("salas.privada_corta")}</span>${s.reparte_varios_puestos
+                ? `<br><span class="ayuda">${t("salas.tres_premios_etiqueta", { pcts: s.premios_pct.join(" / ") })}</span>` : ""}</td>
           <td>${nombreModo(s.modo)}</td>
           <td>${s.precio_texto}</td><td>${g.partidas}</td><td>${g.botes_texto}</td>
           <td><strong>${g.anfitrion_texto}</strong></td>
@@ -1173,6 +1176,13 @@ function conectarPortada() {
 }
 
 function conectarBotones() {
+  const botonBilletera = $("#boton-billetera");
+  if (botonBilletera) {
+    botonBilletera.onclick = () => {
+      const seccion = $("#billetera");
+      if (seccion) seccion.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+  }
   $("#btn-recargar").onclick = () => {
     if (!token) return abrirAcceso("entrar");
     abrirDeposito();
@@ -1610,16 +1620,25 @@ aplicarIdioma();
 cargarIdiomas().then(() => cargarPaises()).then(() => { cargarConfigRetiro(); cargarSalas(); });
 const formSala = $("#form-sala");
 if (formSala) {
+  const selectPuestos = $("#select-puestos");
+  const premiosTres = $("#premios-tres");
+  if (selectPuestos && premiosTres) {
+    selectPuestos.onchange = () => { premiosTres.hidden = selectPuestos.value !== "3"; };
+  }
   formSala.onsubmit = async (e) => {
     e.preventDefault();
     if (!token) return abrirAcceso("entrar");
     const d = Object.fromEntries(new FormData(e.target));
+    const puestos = Number(d.puestos || 1);
+    const datos = { nombre: d.nombre, modo: d.modo, precio: d.precio, publica: d.publica === "si", puestos };
+    if (puestos === 3) {
+      datos.premios_pct = [d.pct_1, d.pct_2, d.pct_3].map((v) => String(v || "0")).join(",");
+    }
     try {
-      const res = await post("/api/sala/crear", {
-        nombre: d.nombre, modo: d.modo, precio: d.precio, publica: d.publica === "si",
-      });
+      const res = await post("/api/sala/crear", datos);
       avisar(res.mensaje, "bien");
       formSala.reset();
+      if (premiosTres) premiosTres.hidden = true;
       cargarSalas();
       cargarMisSalas();
     } catch (err) { avisar(err.message, "error"); }

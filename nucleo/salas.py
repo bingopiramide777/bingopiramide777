@@ -45,6 +45,13 @@ class ErrorDeSalas(ValueError):
 # Qué parte del bote va al ganador en cada tipo de sala.
 PREMIO_CASA = Decimal("0.80")            # sala de la casa: 80 % al ganador (app 20 %)
 PREMIO_CON_ANFITRION = Decimal("0.70")   # sala de un jugador: 70 % al ganador
+
+# Reparto por defecto de una sala que reparte TRES puestos (1º, 2º y 3º). Suma el
+# 70 % que se llevaba el ganador único, así que deja intacta la parte del
+# anfitrión (10 %) y la de la app (20 %).
+PREMIO_JUGADOR_TRES_PUESTOS = (50, 15, 5)
+# Cuántos puestos puede repartir una sala: uno (ganador único) o tres.
+PUESTOS_VALIDOS = (1, len(PREMIO_JUGADOR_TRES_PUESTOS))
 # Sala normal de un anfitrión: el 30 % que no va al ganador se parte 10 % para el
 # anfitrión y 20 % para la app (que ya cobró su 20 % anticipado al acreditar el
 # depósito: por eso no le toca nada más del bote).
@@ -187,25 +194,45 @@ def reparto_del_bote(bote: int, con_anfitrion: bool, comision_pct: int | None = 
     }
 
 
-def reparto_evento(bote: int, porcentajes: tuple[int, ...] | list[int]) -> dict:
-    """Parte el bote de un evento entre los puestos, por porcentaje.
+def reparto_por_puestos(bote: int, porcentajes: tuple[int, ...] | list[int],
+                        con_anfitrion: bool = False, comision_pct: int = 0) -> dict:
+    """Parte el bote entre varios puestos, con la comisión del anfitrión opcional.
 
-    Cada puesto cobra su porcentaje del bote, truncado al céntimo. Lo que no se
-    reparte queda para la app, así que la suma de los premios más lo de la app es
-    exactamente el bote.
+    Cada puesto cobra su porcentaje del bote, truncado al céntimo. El anfitrión
+    cobra su comisión (si la sala tiene dueño) y lo que queda es de la app: la
+    suma de los premios más la comisión más lo de la app es exactamente el bote.
     """
     if not isinstance(bote, int) or bote < 0:
         raise ErrorDeSalas(f"El bote tiene que ser un entero de céntimos, no {bote!r}.")
     if not porcentajes:
-        raise ErrorDeSalas("Un evento necesita al menos un puesto premiado.")
+        raise ErrorDeSalas("Hace falta al menos un puesto premiado.")
     for pct in porcentajes:
         if not isinstance(pct, int) or isinstance(pct, bool) or pct < 0:
             raise ErrorDeSalas(f"Porcentaje no válido: {pct!r}.")
-    if sum(porcentajes) > 100:
+    if not isinstance(comision_pct, int) or isinstance(comision_pct, bool) \
+            or not 0 <= comision_pct <= 100:
+        raise ErrorDeSalas(f"Porcentaje de anfitrión no válido: {comision_pct!r}.")
+    if sum(porcentajes) + (comision_pct if con_anfitrion else 0) > 100:
         raise ErrorDeSalas("Los porcentajes no pueden sumar más de 100 %.")
     premios = [bote * pct // 100 for pct in porcentajes]
-    return {"bote": bote, "premios": premios, "app": bote - sum(premios),
+    anfitrion = bote * comision_pct // 100 if con_anfitrion else 0
+    return {"bote": bote, "premio": premios[0], "premios": premios,
+            "anfitrion": anfitrion, "app": bote - sum(premios) - anfitrion,
+            "con_anfitrion": con_anfitrion, "comision_pct": comision_pct,
             "porcentajes": list(porcentajes)}
+
+
+def reparto_evento(bote: int, porcentajes: tuple[int, ...] | list[int]) -> dict:
+    """Parte el bote de un evento entre los puestos, por porcentaje.
+
+    Un evento no tiene anfitrión: cada puesto cobra su porcentaje del bote,
+    truncado al céntimo, y lo que no se reparte queda para la app.
+    """
+    if not porcentajes:
+        raise ErrorDeSalas("Un evento necesita al menos un puesto premiado.")
+    r = reparto_por_puestos(bote, list(porcentajes))
+    return {"bote": r["bote"], "premios": r["premios"], "app": r["app"],
+            "porcentajes": r["porcentajes"]}
 
 
 @dataclass
@@ -265,22 +292,31 @@ class Sala:
 
     @property
     def premio_pct(self) -> Decimal:
-        """Qué parte del bote se lleva el ganador (el resto es anfitrión y app)."""
+        """Qué parte del bote se lleva el ganador único (el resto es anfitrión y app)."""
         if self.es_trabajo:
             return PREMIO_TRABAJO
         return PREMIO_CON_ANFITRION if self.es_de_jugador else PREMIO_CASA
 
     @property
+    def reparte_varios_puestos(self) -> bool:
+        """¿La sala reparte el bote entre varios puestos (1º, 2º, 3º)?"""
+        return len(self.premios_pct) > 1
+
+    @property
     def plazas(self) -> int:
-        """Cuántos puestos premiados reparte el evento."""
-        return len(self.premios_pct)
+        """Cuántos puestos premiados reparte la sala (uno si no reparte varios)."""
+        return len(self.premios_pct) if self.premios_pct else 1
 
     def reparto(self, bote: int, comision_pct: int | None = None) -> dict:
-        if self.es_evento:
-            return reparto_evento(bote, self.premios_pct)
         if comision_pct is None:
             # Sala de trabajo: 15 % para el anfitrión. Sala normal: 10 %.
             comision_pct = self.comision_anfitrion if self.es_de_jugador else 0
+        if self.reparte_varios_puestos:
+            return reparto_por_puestos(bote, self.premios_pct,
+                                       con_anfitrion=self.es_de_jugador,
+                                       comision_pct=comision_pct)
+        if self.es_evento:
+            return reparto_evento(bote, self.premios_pct)
         return reparto_del_bote(bote, con_anfitrion=self.es_de_jugador,
                                 comision_pct=comision_pct, premio_pct=self.premio_pct)
 
@@ -301,6 +337,8 @@ class Sala:
             "es_evento": self.es_evento,
             "aforo": self.aforo,
             "premios_pct": list(self.premios_pct),
+            "plazas": self.plazas,
+            "reparte_varios_puestos": self.reparte_varios_puestos,
             "tipo_juego": self.tipo_juego,
             "tipo_juego_texto": self.nombre_tipo_juego,
             "cupo_cartones": self.cupo_cartones,
@@ -461,11 +499,14 @@ class Salas:
     # -- creación --
 
     def crear(self, dueno: str, nombre: str, modo: str, precio: object,
-              publica: bool = True, pais: str | None = None) -> Sala:
+              publica: bool = True, pais: str | None = None,
+              puestos: object = 1, premios_pct: object | None = None) -> Sala:
         """Un jugador crea su sala. El anfitrión se lleva el 10 % de los botes.
 
-        Las salas de jugador son siempre normales: el ganador cobra el 70 %, el
-        anfitrión el 10 % y la app el 20 %.
+        Las salas de jugador reparten un puesto (el ganador cobra el 70 %, el
+        anfitrión el 10 % y la app el 20 %) o tres (1º, 2º y 3º). Con varios
+        puestos los porcentajes se pueden pasar a mano; si no, se usa el reparto
+        por defecto (50/15/5, que deja la comisión y la app igual).
 
         La sala nace con un país (y por tanto una moneda). Si no se indica, se usa
         el país del jugador que la crea, y si tampoco, el de por defecto. El precio
@@ -498,16 +539,53 @@ class Salas:
         if len(self.de_dueno(dueno)) >= 3:
             raise ErrorDeSalas("Ya tienes 3 salas. Borra una para crear otra.")
 
+        reparto_puestos = self._premios_de_puestos(puestos, premios_pct)
         sala = Sala(id=f"s-{secrets.token_hex(4)}", nombre=nombre, modo=modo,
                     precio_carton=centimos, dueno=dueno, publica=bool(publica),
-                    creada=time.time(), pais=pais)
+                    creada=time.time(), pais=pais, premios_pct=reparto_puestos)
         self.almacen.guardar_sala({
             "id": sala.id, "nombre": sala.nombre, "modo": sala.modo,
             "precio_carton": sala.precio_carton, "dueno": sala.dueno,
             "publica": int(sala.publica), "creada": sala.creada, "activa": 1,
             "pais": sala.pais, "es_trabajo": int(sala.es_trabajo),
+            "premios_pct": ",".join(str(p) for p in sala.premios_pct),
         })
         return sala
+
+    def _premios_de_puestos(self, puestos: object, premios_pct: object | None) -> tuple[int, ...]:
+        """Valida los puestos y los porcentajes de una sala.
+
+        Devuelve la tupla de porcentajes: vacía para un solo ganador (el reparto de
+        siempre) o los porcentajes de 1º, 2º y 3º. La comisión del anfitrión y lo
+        de la app no van aquí: van aparte, así que los premios suman como máximo 70.
+        """
+        try:
+            n = int(puestos)
+        except (TypeError, ValueError):
+            raise ErrorDeSalas("El número de puestos tiene que ser 1 o 3.") from None
+        if n not in PUESTOS_VALIDOS:
+            raise ErrorDeSalas("Una sala reparte 1 puesto (un ganador) o 3 (1º, 2º y 3º).")
+        if premios_pct is None:
+            if n == 1:
+                return ()
+            return tuple(PREMIO_JUGADOR_TRES_PUESTOS)
+        if isinstance(premios_pct, str):
+            trozos = [t for t in premios_pct.replace(" ", "").split(",") if t]
+        else:
+            trozos = list(premios_pct)
+        try:
+            porcentajes = tuple(int(t) for t in trozos)
+        except (TypeError, ValueError):
+            raise ErrorDeSalas("Los porcentajes tienen que ser números enteros.") from None
+        if len(porcentajes) != n:
+            raise ErrorDeSalas(f"Elegiste {n} puesto(s): hacen falta {n} porcentaje(s).")
+        if any(p < 0 or p > 100 for p in porcentajes):
+            raise ErrorDeSalas("Cada porcentaje tiene que estar entre 0 y 100.")
+        # Los premios no pueden comerse la comisión del anfitrión (10 %) ni lo de
+        # la app (20 %): entre todos, como mucho el 70 % del bote.
+        if sum(porcentajes) > 70:
+            raise ErrorDeSalas("Los premios no pueden pasar del 70 % del bote.")
+        return porcentajes
 
     def comision_de_sala(self, sala_id: str) -> int:
         """El % de comisión que cobra el anfitrión de una sala (0 si no tiene dueño).
