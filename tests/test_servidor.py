@@ -821,13 +821,13 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(sala["comision_anfitrion"], 15)
         self.assertEqual(sala["premio_pct"], 80)
 
-    def test_una_sala_de_jugador_reparte_75_10_15(self):
+    def test_una_sala_de_jugador_reparte_70_10_20(self):
         token = self.usuario("ana@correo.com")
         _, r = self.pedir("/api/sala/crear",
                           {"nombre": "Normal", "modo": "normal", "precio": "10,00"}, token)
         self.assertFalse(r["sala"]["es_trabajo"])
         self.assertEqual(r["sala"]["comision_anfitrion"], 10)
-        self.assertEqual(r["sala"]["premio_pct"], 75)
+        self.assertEqual(r["sala"]["premio_pct"], 70)
 
     def test_el_anfitrion_de_la_casa_pone_el_juego_y_el_precio(self):
         at = self.admin()
@@ -960,6 +960,34 @@ class ServidorTest(unittest.TestCase):
         estado, _ = self.pedir("/api/admin/referidos", token=token)
         self.assertEqual(estado, 403)
 
+    # -- sistema de cobro --
+
+    def test_el_sistema_de_cobro_es_solo_para_admin(self):
+        token = self.usuario("curioso@correo.com")
+        estado, _ = self.pedir("/api/admin/cobros", token=token)
+        self.assertEqual(estado, 403)
+
+    def test_el_sistema_de_cobro_trae_definicion_totales_y_auditoria(self):
+        estado, r = self.pedir("/api/admin/cobros", token=self.admin())
+        self.assertEqual(estado, 200)
+        claves = {d["clave"] for d in r["definicion"]}
+        self.assertIn("deposito", claves)
+        self.assertIn("anfitrion_trabajo", claves)
+        self.assertIn("app_trabajo", claves)
+        self.assertTrue(r["auditoria"]["sin_duplicados"])
+        self.assertEqual(r["auditoria"]["avisos"], [])
+        self.assertTrue(r["totales"]["app_total_texto"].startswith("$"))
+
+    def test_el_panel_de_admin_trae_la_ventana_de_cobros(self):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.puerto}/admin", timeout=10) as r:
+            html = r.read().decode()
+        self.assertIn('data-ventana="cobros"', html)
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.puerto}/admin.js", timeout=10) as r:
+            js = r.read().decode()
+        self.assertIn("cargarCobros", js)
+        self.assertIn("/api/admin/cobros", js)
+
+
     def test_una_cuenta_sin_codigo_recibe_uno_al_pedir_sus_referidos(self):
         # El caso real: una cuenta creada antes de los referidos (o la de
         # administración) no trae código. Al pedir sus referidos se le genera.
@@ -971,6 +999,46 @@ class ServidorTest(unittest.TestCase):
         # Y queda guardado: la segunda vez es el mismo.
         _, d2 = self.pedir("/api/referidos", token=token)
         self.assertEqual(d2["codigo"], d["codigo"])
+
+    # -- tarjeta de invitación a la sala de trabajo --
+
+    def test_la_tarjeta_de_invitacion_trae_codigo_sala_y_reparto(self):
+        token = self.usuario("trabaja@correo.com")
+        estado, r = self.pedir("/api/invitacion", token=token)
+        self.assertEqual(estado, 200)
+        self.assertTrue(r["codigo"], "sin código de invitación")
+        self.assertEqual(r["sala"], "sala-ganar-desde-casa")
+        self.assertEqual(r["sala_nombre"], "Ganar Dinero Desde Casa con BingoPiramide777")
+        self.assertEqual(r["premio_pct"], 80)
+        self.assertEqual(r["anfitrion_pct"], 15)
+        self.assertEqual(r["app_pct"], 5)
+
+    def test_el_codigo_de_invitacion_no_es_el_de_amigo(self):
+        token = self.usuario("dostrabajos@correo.com")
+        _, ref = self.pedir("/api/referidos", token=token)
+        _, inv = self.pedir("/api/invitacion", token=token)
+        self.assertNotEqual(ref["codigo"], inv["codigo"])
+
+    def test_registrarse_con_un_codigo_de_invitacion_cuenta_al_invitador(self):
+        token = self.usuario("jefa@correo.com")
+        _, inv = self.pedir("/api/invitacion", token=token)
+        self.pedir("/api/registro", {"correo": "nueva@correo.com",
+                                     "clave": "miClaveSegura1",
+                                     "codigo_invitacion": inv["codigo"]})
+        _, r2 = self.pedir("/api/invitacion", token=token)
+        self.assertEqual(r2["invitados"], 1)
+        self.assertEqual(r2["detalle"][0]["invitado"], "nueva@correo.com")
+
+    def test_un_codigo_de_invitacion_que_no_existe_se_rechaza(self):
+        estado, r = self.pedir("/api/registro", {"correo": "tarde2@correo.com",
+                                                 "clave": "miClaveSegura1",
+                                                 "codigo_invitacion": "NOEXISTE"})
+        self.assertEqual(estado, 400)
+        self.assertIn("invitación", r["error"].lower())
+
+    def test_la_tarjeta_de_invitacion_es_solo_para_quien_entro(self):
+        estado, _ = self.pedir("/api/invitacion")
+        self.assertEqual(estado, 401)
 
     # -- foto de perfil --
 

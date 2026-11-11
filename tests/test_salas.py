@@ -41,11 +41,11 @@ class RepartoTest(unittest.TestCase):
         self.assertEqual(r["anfitrion"], 0)
         self.assertEqual(r["app"], 2_000)
 
-    def test_sala_de_jugador_reparte_75_10_15(self):
+    def test_sala_de_jugador_reparte_70_10_20(self):
         r = reparto_del_bote(10_000, con_anfitrion=True)
-        self.assertEqual(r["premio"], 7_500)
+        self.assertEqual(r["premio"], 7_000)
         self.assertEqual(r["anfitrion"], 1_000)
-        self.assertEqual(r["app"], 1_500)
+        self.assertEqual(r["app"], 2_000)
 
     def test_sala_de_trabajo_reparte_80_15_5(self):
         r = reparto_del_bote(10_000, con_anfitrion=True, comision_pct=15,
@@ -280,14 +280,14 @@ class SalaTrabajoTest(unittest.TestCase):
         self.assertEqual(r["anfitrion"], 1_500)
         self.assertEqual(r["app"], 500)
 
-    def test_una_sala_de_jugador_reparte_75_10_15(self):
+    def test_una_sala_de_jugador_reparte_70_10_20(self):
         s = self.salas.crear("ana@correo.com", "Normal", "normal", "10,00")
         self.assertFalse(s.es_trabajo)
         self.assertEqual(s.comision_anfitrion, 10)
         r = s.reparto(10_000)
-        self.assertEqual(r["premio"], 7_500)
+        self.assertEqual(r["premio"], 7_000)
         self.assertEqual(r["anfitrion"], 1_000)
-        self.assertEqual(r["app"], 1_500)
+        self.assertEqual(r["app"], 2_000)
 
     def test_el_reparto_de_trabajo_nunca_pierde_un_centimo(self):
         s = self._trabajo()
@@ -494,10 +494,10 @@ class EconomiaTest(unittest.TestCase):
         sala = self.salas.crear("duena@correo.com", "La de la dueña", "normal", "10,00")
         res = self._jugar(sala.id, ["ana@correo.com", "luis@correo.com"])
         self.assertEqual(res["bote"], 2_000)
-        # Sala de jugador: ganador 75 %, anfitrión 10 %, app 15 %.
-        self.assertEqual(res["premio"], 1_500)
+        # Sala de jugador: ganador 70 %, anfitrión 10 %, app 20 %.
+        self.assertEqual(res["premio"], 1_400)
         self.assertEqual(res["anfitrion"], 200)
-        self.assertEqual(res["app"], 300)
+        self.assertEqual(res["app"], 400)
 
     def test_el_anfitrion_cobra_su_comision_en_el_monedero(self):
         sala = self.salas.crear("duena@correo.com", "La de la dueña", "normal", "10,00")
@@ -517,9 +517,9 @@ class EconomiaTest(unittest.TestCase):
         g = self.salas.ganancias("duena@correo.com")
         self.assertEqual(g["partidas"], 2)
         self.assertEqual(g["botes"], 4_000)
-        # Sala de jugador: el anfitrión se lleva el 10 % y la app el 15 %.
+        # Sala de jugador: el anfitrión se lleva el 10 % y la app el 20 %.
         self.assertEqual(g["anfitrion"], 400)
-        self.assertEqual(g["app"], 600)
+        self.assertEqual(g["app"], 800)
 
     def test_la_economia_suma_todas_las_salas(self):
         sala = self.salas.crear("duena@correo.com", "La de la dueña", "normal", "10,00")
@@ -530,11 +530,11 @@ class EconomiaTest(unittest.TestCase):
         # Lara ($ 5 el cartón, 2 cartones = $ 10) + la sala de la dueña ($ 10 el
         # cartón, 2 cartones = $ 20): 3.000 céntimos.
         self.assertEqual(e["botes"], 3_000)
-        # Lara 80 % (800) + sala de jugador 75 % (1.500) = 2.300 de premios.
-        self.assertEqual(e["premios"], 2_300)
+        # Lara 80 % (800) + sala de jugador 70 % (1.400) = 2.200 de premios.
+        self.assertEqual(e["premios"], 2_200)
         self.assertEqual(e["comisiones"], 200)
-        # Lara 200 + sala de jugador 300 = 500 para la app.
-        self.assertEqual(e["app"], 500)
+        # Lara 200 + sala de jugador 400 = 600 para la app.
+        self.assertEqual(e["app"], 600)
         # Y el reparto siempre cuadra.
         self.assertEqual(e["premios"] + e["comisiones"] + e["app"], e["botes"])
 
@@ -547,11 +547,11 @@ class EconomiaTest(unittest.TestCase):
     def test_los_porcentajes_son_los_documentados(self):
         # Sala de la casa: 80 % al ganador y 20 % para la app.
         self.assertEqual(PREMIO_CASA, Decimal("0.80"))
-        # Sala de jugador: 75 % al ganador, 10 % al anfitrión y 15 % para la app.
-        self.assertEqual(PREMIO_CON_ANFITRION, Decimal("0.75"))
+        # Sala de jugador: 70 % al ganador, 10 % al anfitrión y 20 % para la app.
+        self.assertEqual(PREMIO_CON_ANFITRION, Decimal("0.70"))
         self.assertEqual(COMISION_ANFITRION, Decimal("0.10"))
         self.assertEqual(Decimal("1") - PREMIO_CON_ANFITRION - COMISION_ANFITRION,
-                         Decimal("0.15"))
+                         Decimal("0.20"))
         # Sala de trabajo: 80 % al ganador, 15 % al anfitrión y 5 % para la app.
         self.assertEqual(PREMIO_TRABAJO, Decimal("0.80"))
         self.assertEqual(COMISION_TRABAJO, Decimal("0.15"))

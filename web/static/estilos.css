@@ -217,6 +217,53 @@ a { color: inherit; }
 .mesa { display: grid; grid-template-columns: 320px 1fr; gap: 1.5rem; margin-top: 1.5rem; align-items: start; }
 .mesa__der { display: grid; gap: 1.2rem; }
 
+/* Nombre de la sala en juego, arriba de la mesa. */
+.mesa__nombre {
+  margin: 1.4rem 0 0; font-size: 1.15rem; font-weight: 800; color: var(--dorado);
+  letter-spacing: .02em;
+}
+.mesa__nombre:empty { display: none; }
+
+/* Ficha de un dato con su botón de copiar (códigos, enlaces). */
+.ficha-cobro { display: grid; gap: .8rem; margin-top: 1rem; }
+.ficha-cobro__dato {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .5rem .7rem;
+  padding: .7rem .9rem; border-radius: var(--radio);
+  background: rgba(255, 255, 255, .04); border: 1px solid var(--borde);
+}
+.ficha-cobro__etiqueta {
+  flex: 1 1 100%; font-size: .78rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--gris);
+}
+.ficha-cobro__dato strong { font-size: 1.1rem; letter-spacing: .06em; color: var(--dorado); }
+
+/* Tarjeta de invitación a la sala de trabajo. */
+.tarjeta-invitacion {
+  margin-top: 1.2rem; padding: 1.3rem; border-radius: var(--radio);
+  background: linear-gradient(155deg, var(--morado-700), var(--morado-800));
+  border: 1px solid rgba(255, 107, 0, .45);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .35);
+}
+.tarjeta-invitacion__marca {
+  display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .5rem;
+}
+.tarjeta-invitacion__app { font-weight: 900; letter-spacing: .08em; font-size: 1.05rem; }
+.tarjeta-invitacion__app b { color: var(--naranja); }
+.tarjeta-invitacion__app em { color: var(--dorado); font-style: normal; }
+.tarjeta-invitacion__etiqueta {
+  font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--texto-suave);
+}
+.tarjeta-invitacion__sala {
+  margin: .8rem 0 0; font-size: 1.2rem; font-weight: 800; color: var(--dorado-claro);
+}
+.tarjeta-invitacion__datos { display: grid; gap: .8rem; margin-top: 1rem; }
+.invitacion-enlace {
+  font-size: .82rem; letter-spacing: 0; word-break: break-all; color: var(--texto-suave) !important;
+}
+.tarjeta-invitacion__pie {
+  margin: .9rem 0 0; font-size: .84rem; color: var(--texto-suave); line-height: 1.5;
+}
+
 /* --- bombo --- */
 
 .bombo { text-align: center; }
@@ -444,6 +491,18 @@ input:focus { outline: 2px solid var(--dorado); outline-offset: 1px; }
 .tarjeta-resumen__titulo { margin: 0; font-size: .78rem; letter-spacing: .1em; text-transform: uppercase; color: var(--gris); }
 .tarjeta-resumen__valor { margin: .3rem 0 .1rem; font-size: 1.55rem; font-weight: 800; color: var(--dorado); }
 .tarjeta-resumen__pie { margin: 0; font-size: .78rem; color: var(--gris); }
+
+/* Aviso del sistema de cobro: verde si no hay duplicados, rojo si los hay. */
+.aviso-cobro {
+  margin-top: 1.2rem; padding: .9rem 1.1rem; border-radius: var(--radio);
+  border: 1px solid rgba(255, 255, 255, .14); background: rgba(255, 255, 255, .04);
+}
+.aviso-cobro strong { display: block; font-size: 1.05rem; }
+.aviso-cobro p { margin: .35rem 0 0; font-size: .88rem; color: var(--texto-suave); }
+.aviso-cobro--bien { border-color: rgba(47, 191, 113, .55); background: rgba(47, 191, 113, .1); }
+.aviso-cobro--bien strong { color: #63d99a; }
+.aviso-cobro--mal { border-color: rgba(214, 69, 69, .6); background: rgba(214, 69, 69, .12); }
+.aviso-cobro--mal strong { color: #f08a8a; }
 
 .tabla-envoltorio { overflow-x: auto; margin-top: 1.2rem; border-radius: var(--radio); border: 1px solid rgba(255, 255, 255, .08); }
 .tabla { width: 100%; border-collapse: collapse; font-size: .9rem; min-width: 640px; }

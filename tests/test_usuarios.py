@@ -107,5 +107,68 @@ class RegistroTest(unittest.TestCase):
         self.assertIsNone(self.u.sesion("token-inventado"))
 
 
+class InvitacionTest(unittest.TestCase):
+    """El código de invitación a la sala de trabajo: aparte del de amigo."""
+
+    def setUp(self):
+        self.almacen = Almacen(":memory:")
+        self.u = Usuarios(self.almacen)
+
+    def tearDown(self):
+        self.almacen.cerrar()
+
+    def test_al_registrarse_se_genera_un_codigo_de_invitacion(self):
+        self.u.registrar("ana@correo.com", "miClaveSegura1", "Ana")
+        codigo = self.u.asegurar_codigo_invitacion("ana@correo.com")
+        self.assertTrue(codigo)
+        self.assertEqual(self.almacen.usuario_por_invitacion(codigo)["correo"],
+                         "ana@correo.com")
+
+    def test_el_codigo_de_invitacion_no_es_el_de_amigo(self):
+        # Si fueran el mismo, invitar a la sala de trabajo dispararía las
+        # comisiones de referidos. Tienen que ser distintos.
+        self.u.registrar("ana@correo.com", "miClaveSegura1", "Ana")
+        amigo = self.u.asegurar_codigo_amigo("ana@correo.com")
+        invitacion = self.u.asegurar_codigo_invitacion("ana@correo.com")
+        self.assertNotEqual(amigo, invitacion)
+        self.assertIsNone(self.almacen.usuario_por_codigo(invitacion))
+        self.assertIsNone(self.almacen.usuario_por_invitacion(amigo))
+
+    def test_el_codigo_de_invitacion_no_cambia(self):
+        self.u.registrar("ana@correo.com", "miClaveSegura1", "Ana")
+        primero = self.u.asegurar_codigo_invitacion("ana@correo.com")
+        self.assertEqual(self.u.asegurar_codigo_invitacion("ana@correo.com"), primero)
+
+    def test_registrarse_con_un_codigo_de_invitacion_marca_quien_trajo(self):
+        self.u.registrar("jefa@correo.com", "miClaveSegura1", "Jefa")
+        codigo = self.u.asegurar_codigo_invitacion("jefa@correo.com")
+        self.u.registrar("nueva@correo.com", "miClaveSegura1", "Nueva",
+                         codigo_invitacion=codigo)
+        self.assertEqual(self.u.quien_invito("nueva@correo.com"), "jefa@correo.com")
+        # Y no cuenta como referido: son sistemas aparte.
+        fila = self.almacen.usuario("nueva@correo.com")
+        self.assertEqual(fila["referido_por"], "")
+
+    def test_un_codigo_de_invitacion_que_no_existe_falla(self):
+        with self.assertRaises(ErrorDeUsuario):
+            self.u.registrar("ana@correo.com", "miClaveSegura1",
+                             codigo_invitacion="NOEXISTE")
+
+    def test_los_invitados_se_listan_por_quien_los_trajo(self):
+        self.u.registrar("jefa@correo.com", "miClaveSegura1", "Jefa")
+        codigo = self.u.asegurar_codigo_invitacion("jefa@correo.com")
+        self.u.registrar("a@correo.com", "miClaveSegura1", codigo_invitacion=codigo)
+        self.u.registrar("b@correo.com", "miClaveSegura1", codigo_invitacion=codigo)
+        self.assertEqual(self.almacen.invitados_de_invitacion("jefa@correo.com"),
+                         ["a@correo.com", "b@correo.com"])
+
+    def test_la_cuenta_de_admin_tambien_tiene_codigo_de_invitacion(self):
+        self.u.asegurar_admin("jefe@correo.com", "ClaveAdmin123")
+        codigo = self.u.asegurar_codigo_invitacion("jefe@correo.com")
+        self.assertTrue(codigo)
+        self.assertEqual(self.almacen.usuario_por_invitacion(codigo)["correo"],
+                         "jefe@correo.com")
+
+
 if __name__ == "__main__":
     unittest.main()

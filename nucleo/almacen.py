@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
     datos_cobro TEXT NOT NULL DEFAULT '',
     codigo_amigo TEXT NOT NULL DEFAULT '',
     referido_por TEXT NOT NULL DEFAULT '',
+    codigo_invitacion TEXT NOT NULL DEFAULT '',
+    invitado_por TEXT NOT NULL DEFAULT '',
     foto TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_codigo ON usuarios(codigo_amigo)
@@ -212,11 +214,18 @@ class Almacen:
                   ("datos_cobro", "TEXT NOT NULL DEFAULT ''"),
                   ("codigo_amigo", "TEXT NOT NULL DEFAULT ''"),
                   ("referido_por", "TEXT NOT NULL DEFAULT ''"),
+                  ("codigo_invitacion", "TEXT NOT NULL DEFAULT ''"),
+                  ("invitado_por", "TEXT NOT NULL DEFAULT ''"),
                   ("foto", "TEXT NOT NULL DEFAULT ''"))
         for nombre, definicion in nuevas:
             if nombre not in columnas:
                 with self.transaccion() as c:
                     c.execute(f"ALTER TABLE usuarios ADD COLUMN {nombre} {definicion}")
+        # El código de invitación (el de la sala de trabajo, aparte del de
+        # referidos) nació después: el índice se crea aquí, con la columna ya puesta.
+        with self.transaccion() as c:
+            c.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_usuarios_invitacion"
+                      " ON usuarios(codigo_invitacion) WHERE codigo_invitacion <> ''")
 
         # La partida aprendió a decir a qué sala pertenece.
         columnas_p = {f["name"] for f in self._todos("PRAGMA table_info(partidas)")}
@@ -324,6 +333,13 @@ class Almacen:
             return None
         return self._uno("SELECT * FROM usuarios WHERE codigo_amigo = ?", (codigo,))
 
+    def usuario_por_invitacion(self, codigo: str) -> sqlite3.Row | None:
+        """El dueño de un código de invitación a la sala de trabajo."""
+        codigo = (codigo or "").strip().upper()
+        if not codigo:
+            return None
+        return self._uno("SELECT * FROM usuarios WHERE codigo_invitacion = ?", (codigo,))
+
     def referidos_de(self, padrino: str, limite: int = 200) -> list[sqlite3.Row]:
         return self._todos("SELECT * FROM referidos WHERE padrino = ? ORDER BY cuando DESC LIMIT ?",
                            (padrino, limite))
@@ -360,6 +376,15 @@ class Almacen:
         return self._todos("SELECT correo, nombre, creado FROM usuarios WHERE referido_por = ?"
                            " ORDER BY creado", (padrino,))
 
+    def invitados_de_invitacion(self, quien: str) -> list[str]:
+        """Los correos que entraron a la sala de trabajo con el código de `quien`.
+
+        Va por la columna `invitado_por`, que es del código de invitación (sala de
+        trabajo), no del de amigo: así los referidos y la captación no se mezclan.
+        """
+        return [f["correo"] for f in self._todos(
+            "SELECT correo FROM usuarios WHERE invitado_por = ? ORDER BY creado", (quien,))]
+
     def guardar_pregunta(self, correo: str, pregunta: str, respuesta_huella: str) -> None:
         with self.transaccion() as c:
             c.execute("UPDATE usuarios SET pregunta = ?, respuesta_huella = ? WHERE correo = ?",
@@ -372,6 +397,18 @@ class Almacen:
         """Asigna el código de amigo de una cuenta que aún no lo tenía."""
         with self.transaccion() as c:
             c.execute("UPDATE usuarios SET codigo_amigo = ? WHERE correo = ?", (codigo, correo))
+
+    def fijar_codigo_invitacion(self, correo: str, codigo: str,
+                                invitado_por: str = "") -> None:
+        """Asigna el código de invitación a la sala de trabajo de una cuenta.
+
+        Es un código aparte del de amigo: sirve para invitar a la sala de trabajo
+        (captación de gente nueva), no para el sistema de referidos. `invitado_por`
+        es quién lo trajo, solo para saber de quién es la gente.
+        """
+        with self.transaccion() as c:
+            c.execute("UPDATE usuarios SET codigo_invitacion = ?, invitado_por = ?"
+                      " WHERE correo = ?", (codigo, invitado_por, correo))
 
     def cambiar_foto(self, correo: str, foto: str) -> None:
         """Guarda la foto de perfil (vacío = quitarla)."""
@@ -453,6 +490,15 @@ class Almacen:
 
     def todos_los_movimientos(self, limite: int = 200) -> list[sqlite3.Row]:
         return self._todos("SELECT * FROM movimientos ORDER BY cuando DESC LIMIT ?", (limite,))
+
+    def movimientos_por_motivo(self, fragmento: str) -> list[sqlite3.Row]:
+        """Movimientos cuyo motivo contiene un texto (p. ej. 'comisión de sala').
+
+        Sirve para auditar que un cobro no se haya hecho dos veces.
+        """
+        return self._todos(
+            "SELECT * FROM movimientos WHERE motivo LIKE ? ORDER BY cuando",
+            (f"%{fragmento}%",))
 
     def total_en_cuentas(self) -> int:
         fila = self._uno("SELECT COALESCE(SUM(centimos), 0) AS t FROM cuentas")
