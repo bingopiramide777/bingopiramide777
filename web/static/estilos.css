@@ -559,7 +559,10 @@ select {
 
 /* ===== Ajustes para el teléfono (se usa el pulgar) ===== */
 
-html, body { overflow-x: hidden; }
+/* `clip` (no `hidden`) para no romper el `position: sticky` de la cabecera:
+   con `overflow-x: hidden` el panel de administración perdía el botón de
+   volver al bajar, porque el ancestro se convertía en contenedor de scroll. */
+html, body { overflow-x: clip; }
 
 /* Botones y campos con altura cómoda para el dedo (mínimo 44 px). */
 .boton { min-height: 44px; }

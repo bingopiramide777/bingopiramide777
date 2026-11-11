@@ -893,6 +893,8 @@ async function refrescarBilletera() {
       $("#billetera-vinculada").hidden = true;
       $("#billetera-paso2").hidden = true;
       $("#btn-billetera-desafio").hidden = false;
+      const abrir = $("#billetera-abrir");
+      if (abrir) abrir.hidden = true;
     }
   } catch (err) {
     estado.textContent = "";
@@ -956,6 +958,34 @@ function conectarBilletera() {
     } catch (err) { avisar(err.message, "error"); }
   }
 
+  // En el teléfono no hay billetera dentro del navegador: se ofrecen enlaces
+  // que abren la app dentro de MetaMask/Phantom, donde sí se conecta sola.
+  function esMovil() {
+    return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+  }
+
+  function enlacesDeBilletera() {
+    const destino = location.href.split("#")[0];
+    const sinProtocolo = destino.replace(/^https?:\/\//, "");
+    const mm = `https://metamask.app.link/dapp/${sinProtocolo}`;
+    const ph = `https://phantom.app/ul/browse/${encodeURIComponent(destino)}?ref=${encodeURIComponent(location.origin)}`;
+    return { mm, ph };
+  }
+
+  function mostrarEnlacesSiHaceFalta() {
+    const caja = $("#billetera-abrir");
+    if (!caja) return;
+    const sinBilletera = !billeteraInyectada();
+    const mostrar = sinBilletera && esMovil();
+    caja.hidden = !mostrar;
+    if (!mostrar) return;
+    const { mm, ph } = enlacesDeBilletera();
+    const a = $("#btn-abrir-metamask");
+    const b = $("#btn-abrir-phantom");
+    if (a) a.href = mm;
+    if (b) b.href = ph;
+  }
+
   pedirDesafio.onclick = async () => {
     if (!token) return abrirAcceso("entrar");
     try {
@@ -973,9 +1003,13 @@ function conectarBilletera() {
       if (hayBilletera) {
         const firmado = await firmarConBilletera();
         if (firmado) await enviarBilletera(firmado.direccion, firmado.firma, firmado.red);
+      } else {
+        mostrarEnlacesSiHaceFalta();
       }
     } catch (err) { avisar(err.message || t("billetera.cancelo"), "error"); }
   };
+
+  mostrarEnlacesSiHaceFalta();
 
   const entrar = $("#btn-billetera-entrar");
   if (entrar) entrar.onclick = () => abrirAcceso("entrar");
@@ -1186,6 +1220,15 @@ function conectarBotones() {
   $("#btn-recargar").onclick = () => {
     if (!token) return abrirAcceso("entrar");
     abrirDeposito();
+  };
+
+  // "Retirar" (sale dinero) baja al apartado de retiro: es el flujo contrario
+  // al de "Depositar" (entra dinero), y se mantienen separados a propósito.
+  const irRetirar = $("#btn-ir-retirar");
+  if (irRetirar) irRetirar.onclick = () => {
+    if (!token) return abrirAcceso("entrar");
+    const seccion = $("#retirar");
+    if (seccion) seccion.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const copiarCodigo = $("#btn-copiar-codigo");

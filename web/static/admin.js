@@ -139,6 +139,9 @@ async function cargarRetiros() {
     <div class="panel__cabecera">
       <div class="pastilla">${r.retiros.length} pendiente(s)</div>
     </div>
+    <p class="entrada">💸 Dinero que SALE de la administración: pagos a los jugadores
+       (ganancias y saldos) y al personal de trabajo (la comisión de sus salas).
+       Marca "Pagar" solo cuando ya hayas hecho la transferencia (PayPal o USDT).</p>
     <div class="tabla-envoltorio"><table class="tabla">
       <thead><tr><th>Jugador</th><th>Importe</th><th>Método</th><th>Datos</th>
         <th>Pedido</th><th>Acciones</th></tr></thead>
@@ -200,8 +203,8 @@ async function refrescarDepositos() {
     <div class="panel__cabecera">
       <div class="pastilla">${res.depositos.length} por revisar</div>
     </div>
-    <p class="entrada">Pagos declarados por los jugadores (PayPal o USDT (cripto)).
-       Comprueba la referencia antes de acreditar.</p>
+    <p class="entrada">💵 Dinero que ENTRA de los jugadores: pagos que ellos declararon
+       (PayPal o USDT (cripto)). Comprueba la referencia en tu cuenta antes de acreditar.</p>
     <div class="tabla-scroll"><table class="tabla">
       <thead><tr><th>Jugador</th><th>Monto</th><th>País</th><th>Método</th><th>Referencia</th>
         <th>Día</th><th>Acciones</th></tr></thead>
@@ -754,8 +757,8 @@ const VENTANAS = {
   resumen:     { titulo: "Resumen",               cargar: () => cargarResumen() },
   glenis:      { titulo: "Glenis IA",             cargar: () => cargarGlenis() },
   torneos:     { titulo: "Torneos",               cargar: () => cargarTorneos() },
-  depositos:   { titulo: "Depósitos por revisar", cargar: () => refrescarDepositos() },
-  retiros:     { titulo: "Retiros pendientes",    cargar: () => cargarRetiros() },
+  depositos:   { titulo: "Entradas: cobros por acreditar", cargar: () => refrescarDepositos() },
+  retiros:     { titulo: "Salidas: pagos por hacer",    cargar: () => cargarRetiros() },
   jugadores:   { titulo: "Jugadores",             cargar: () => cargarJugadores() },
   partidas:    { titulo: "Partidas",              cargar: () => cargarPartidas() },
   salas:       { titulo: "Salas en vivo",         cargar: () => cargarSalasAdmin() },

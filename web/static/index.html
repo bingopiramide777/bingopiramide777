@@ -165,7 +165,8 @@
             <p class="saldo" id="saldo">$ 0,00</p>
           </div>
           <div class="recarga">
-            <button class="boton boton--principal boton--alto" id="btn-recargar" data-i18n="mesa.recargar">Recargar saldo</button>
+            <button class="boton boton--principal boton--alto" id="btn-recargar" data-i18n="mesa.recargar">Depositar</button>
+            <button class="boton boton--fantasma boton--alto" id="btn-ir-retirar" data-i18n="mesa.retirar">Retirar</button>
           </div>
         </div>
 
@@ -336,6 +337,17 @@
 
       <div id="billetera-form">
         <button class="boton boton--principal boton--alto boton--ancho" id="btn-billetera-desafio" data-i18n="billetera.vincular">Vincular mi billetera</button>
+
+        <!-- En el teléfono la billetera no vive en el navegador: hay que abrir la
+             app dentro de la propia billetera (MetaMask/Phantom) para que se
+             inyecte y la vinculación sea de un toque. -->
+        <div id="billetera-abrir" hidden>
+          <p class="ayuda" data-i18n="billetera.movil_ayuda">En el teléfono, abre la app dentro de tu billetera: se conectará sola, sin copiar nada.</p>
+          <div class="acciones acciones--pegadas">
+            <a class="boton boton--principal" id="btn-abrir-metamask" href="#" data-i18n="billetera.abrir_metamask">Abrir en MetaMask</a>
+            <a class="boton boton--principal" id="btn-abrir-phantom" href="#" data-i18n="billetera.abrir_phantom">Abrir en Phantom</a>
+          </div>
+        </div>
 
         <div id="billetera-paso2" hidden>
           <p class="ayuda" id="billetera-instrucciones" data-i18n="billetera.instrucciones">Firma este mensaje con tu billetera (MetaMask, Phantom, Trust…). Copia el mensaje en tu billetera, firma y pega aquí la dirección y la firma.</p>
