@@ -881,7 +881,6 @@ function refrescarTodo() {
   refrescarRetiros();
   refrescarDepositos();
   refrescarBilletera();
-  cargarVideoBilletera();
   cargarMisSalas();
   cargarInvitacion();
   cargarReferidos();
@@ -968,31 +967,6 @@ async function refrescarBilletera() {
 function acortar(direccion) {
   if (!direccion || direccion.length <= 14) return direccion || "";
   return direccion.slice(0, 8) + "…" + direccion.slice(-6);
-}
-
-/* Vídeo del paso a paso de la billetera. Se prueba cada formato disponible y
-   solo se muestra si el archivo existe, para que la sección nunca salga rota. */
-let videoBilleteraListo = false;
-const FUENTES_VIDEO_BILLETERA = [
-  "videos/billetera-metamask.mp4",
-  "videos/billetera-metamask.webm",
-  "videos/billetera-metamask.mov",
-];
-async function cargarVideoBilletera() {
-  if (videoBilleteraListo) return;
-  const caja = $("#billetera-video");
-  const video = $("#billetera-video-player");
-  if (!caja || !video) return;
-  videoBilleteraListo = true;
-  for (const fuente of FUENTES_VIDEO_BILLETERA) {
-    try {
-      const r = await fetch(fuente, { method: "HEAD" });
-      if (!r.ok) continue;
-      video.src = fuente;
-      caja.hidden = false;
-      return;
-    } catch (err) { /* se prueba la siguiente */ }
-  }
 }
 
 function conectarBilletera() {
@@ -1367,6 +1341,23 @@ function conectarBotones() {
     botonBilletera.onclick = () => {
       const seccion = $("#billetera");
       if (seccion) seccion.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+  }
+
+  // Enlace del vídeo de la billetera: se copia de un toque para verlo fuera.
+  const botonCopiarEnlace = $("#btn-copiar-enlace-billetera");
+  if (botonCopiarEnlace) {
+    botonCopiarEnlace.onclick = async () => {
+      const enlace = $("#billetera-video-url");
+      const url = enlace ? enlace.href : "";
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        avisar(t("billetera.enlace_copiado"), "bien");
+      } catch (err) {
+        // Sin permiso de portapapeles (o sin HTTPS): se muestra para copiar a mano.
+        prompt(t("billetera.copiar_manual"), url);
+      }
     };
   }
   $("#btn-recargar").onclick = () => {

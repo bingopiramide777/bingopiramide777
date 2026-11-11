@@ -1,20 +1,11 @@
 # Vídeo de la billetera
 
-Aquí va el vídeo del paso a paso para conectar la billetera.
+La sección **Billetera → Cómo vincular tu billetera** muestra un **enlace** al
+vídeo del paso a paso (TikTok): «Cómo vincular billetera MetaMask».
 
-Ponlo con uno de estos nombres (en este orden de preferencia):
+El enlace está en `web/static/index.html` (id `billetera-video-enlace`). Para
+cambiarlo, edita el `href` de ese enlace.
 
-- `billetera-metamask.mp4`  ← recomendado (H.264 + AAC)
-- `billetera-metamask.webm`
-- `billetera-metamask.mov`
-
-En cuanto el archivo exista, la web lo muestra solo en la sección
-**Billetera → Cómo vincular tu billetera**. Si no hay ningún archivo, esa
-sección se ve igual que siempre (sin recuadro vacío).
-
-Recomendaciones del archivo:
-
-- Duración: 30 a 90 segundos.
-- Formato: MP4 (H.264), resolución 720p o 1080p vertical (9:16) para el móvil.
-- Peso: menos de 15 MB, para que cargue rápido en el teléfono.
-- Sin audio es suficiente, pero si lleva audio, mucho mejor con subtítulos.
+Esta carpeta queda libre por si más adelante se prefiere alojar el vídeo aquí
+(en vez de TikTok): si se sube `billetera-metamask.mp4`, habría que volver a
+poner el reproductor `<video>` en `index.html`.
