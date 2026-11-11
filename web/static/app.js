@@ -256,6 +256,7 @@ function abrirAcceso(modo) {
       <label>${t("acceso.correo")}<input type="email" name="correo" required placeholder="${t("acceso.correo_ph")}" autocomplete="email"></label>
       <label>${t("acceso.clave")}<input type="password" name="clave" required minlength="8" placeholder="••••••••" autocomplete="new-password"></label>
       <label>${t("acceso.codigo_amigo")}<input type="text" name="codigo_amigo" maxlength="10" placeholder="${t("acceso.codigo_amigo_ph")}" style="text-transform:uppercase"></label>
+      <label>${t("acceso.codigo_invitacion")}<input type="text" name="codigo_invitacion" maxlength="12" placeholder="${t("acceso.codigo_invitacion_ph")}" style="text-transform:uppercase"></label>
       <label>${t("acceso.pregunta")}
         <select name="pregunta"><option value="">${t("acceso.sin_pregunta")}</option></select>
       </label>
@@ -627,6 +628,11 @@ async function entrarASala(id) {
     topeSalaActual = res.partida ? (res.partida.max_cartones || 0) : 0;
     document.querySelectorAll("[data-sala]").forEach((b) =>
       b.classList.toggle("sala-tarjeta--activa", b.dataset.sala === id));
+    const sala = salasDisponibles.find((s) => s.id === id);
+    const nombreArriba = $("#nombre-sala-actual");
+    if (nombreArriba) {
+      nombreArriba.textContent = (res.partida && res.partida.sala_nombre) || (sala ? sala.nombre : "");
+    }
     carton = null;
     const caja = $("#carton-jugador");
     if (caja) caja.innerHTML = `<p class="vacio">${t("mesa.sin_carton")}</p>`;
@@ -815,6 +821,7 @@ function refrescarTodo() {
   refrescarDepositos();
   refrescarBilletera();
   cargarMisSalas();
+  cargarInvitacion();
   cargarReferidos();
   cargarEstadisticas();
   cargarTorneo();
@@ -1002,6 +1009,43 @@ function conectarBilletera() {
   };
 }
 
+/* --- tarjeta de invitación a la sala de trabajo --- */
+
+// El enlace de registro lleva el código de invitación: quien se registre con él
+// entra a la sala de trabajo como invitado de quien lo comparte.
+function enlaceDeInvitacion(codigo) {
+  return `${location.origin}${location.pathname}?invitacion=${encodeURIComponent(codigo)}#registro`;
+}
+
+async function cargarInvitacion() {
+  const caja = $("#tarjeta-invitacion");
+  if (!caja) return;
+  const codigo = $("#invitacion-codigo");
+  const enlace = $("#invitacion-enlace");
+  const pie = $("#invitacion-pie");
+  const pastilla = $("#invitacion-pastilla");
+  const nombre = $("#invitacion-sala-nombre");
+  if (!token) {
+    if (codigo) codigo.textContent = "—";
+    if (enlace) enlace.textContent = "—";
+    if (pie) pie.textContent = t("invitacion.entra");
+    if (pastilla) pastilla.textContent = "—";
+    return;
+  }
+  try {
+    const r = await get("/api/invitacion");
+    if (codigo) codigo.textContent = r.codigo || "—";
+    if (nombre) nombre.textContent = r.sala_nombre || "";
+    const url = enlaceDeInvitacion(r.codigo);
+    if (enlace) enlace.textContent = url;
+    if (pastilla) pastilla.textContent = t("invitacion.pastilla", { n: r.invitados });
+    if (pie) pie.textContent = t("invitacion.pie", {
+      premio: r.premio_pct, anfitrion: r.anfitrion_pct, app: r.app_pct,
+      invitados: r.invitados,
+    });
+  } catch (err) { /* sin sesión */ }
+}
+
 /* --- referidos: invita y gana --- */
 
 async function cargarReferidos() {
@@ -1144,6 +1188,30 @@ function conectarBotones() {
     } catch (err) {
       // Sin permiso de portapapeles: se muestra para copiar a mano.
       prompt(t("referidos.copiar_manual"), codigo);
+    }
+  };
+
+  const copiarInvitacion = $("#btn-copiar-invitacion");
+  if (copiarInvitacion) copiarInvitacion.onclick = async () => {
+    if (!token) return abrirAcceso("entrar");
+    const codigo = $("#invitacion-codigo").textContent.trim();
+    try {
+      await navigator.clipboard.writeText(codigo);
+      avisar(t("invitacion.codigo_copiado"), "bien");
+    } catch (err) {
+      prompt(t("invitacion.copiar_manual"), codigo);
+    }
+  };
+
+  const copiarEnlaceInvitacion = $("#btn-copiar-enlace-invitacion");
+  if (copiarEnlaceInvitacion) copiarEnlaceInvitacion.onclick = async () => {
+    if (!token) return abrirAcceso("entrar");
+    const enlace = $("#invitacion-enlace").textContent.trim();
+    try {
+      await navigator.clipboard.writeText(enlace);
+      avisar(t("invitacion.enlace_copiado"), "bien");
+    } catch (err) {
+      prompt(t("invitacion.copiar_manual"), enlace);
     }
   };
 
@@ -1577,6 +1645,19 @@ if (formTrabajo) {
   $("#trabajo-cerrar").onclick = () => ($("#dialogo-trabajo").hidden = true);
 }
 comprobarSesion().then(refrescarTodo);
+// El enlace de una tarjeta de invitación trae ?invitacion=<código>: se abre el
+// registro con el código ya puesto. El ancla #registro abre el registro a secas.
+(function arrancarInvitacion() {
+  const codigo = new URLSearchParams(location.search).get("invitacion") || "";
+  const quiereRegistrar = location.hash === "#registro";
+  if (!codigo && !quiereRegistrar) return;
+  if (token) return;   // ya hay sesión: no se le molesta con el registro
+  abrirAcceso("registrar");
+  if (codigo) {
+    const campo = $("#form-acceso [name=codigo_invitacion]");
+    if (campo) campo.value = codigo.toUpperCase();
+  }
+})();
 setInterval(refrescarPartida, 5000);
 // El escaparate se refresca de vez en cuando: los tiempos ("hace 2 min") se
 // quedan al día y aparece un ganador nuevo sin recargar la página.

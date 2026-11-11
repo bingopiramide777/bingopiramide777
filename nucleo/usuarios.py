@@ -150,7 +150,8 @@ class Usuarios:
 
     def registrar(self, correo: str, clave: str, nombre: str = "", rol: str = "jugador",
                   pregunta: str = "", respuesta: str = "",
-                  verificado: bool = True, codigo_amigo: str = "") -> Usuario:
+                  verificado: bool = True, codigo_amigo: str = "",
+                  codigo_invitacion: str = "") -> Usuario:
         correo = (correo or "").strip().lower()
         if not CORREO_VALIDO.match(correo):
             raise ErrorDeUsuario("Ese correo no tiene buena pinta.")
@@ -173,13 +174,25 @@ class Usuarios:
             if fila_padrino is None:
                 raise ErrorDeUsuario("Ese código de amigo no existe.")
             padrino = fila_padrino["correo"]
+        # Quién lo trajo a la sala de trabajo. Es OTRO código (el de invitación),
+        # no el de amigo: no dispara comisiones de referidos, solo dice de quién es
+        # la gente que entra a trabajar desde casa.
+        invitado_por = ""
+        codigo_invitacion = (codigo_invitacion or "").strip().upper()
+        if codigo_invitacion:
+            fila_invita = self.almacen.usuario_por_invitacion(codigo_invitacion)
+            if fila_invita is None:
+                raise ErrorDeUsuario("Ese código de invitación no existe.")
+            invitado_por = fila_invita["correo"]
         # El código propio se genera aquí y se garantiza único.
         mi_codigo = self._codigo_libre(correo)
+        mi_codigo_casa = self._codigo_invitacion_libre(correo)
         self.almacen.crear_usuario(
             correo, hash_clave(clave), (nombre or "").strip(), rol, time.time(),
             pregunta, hash_clave(_normalizar_respuesta(respuesta)) if pregunta else "",
             verificado=verificado, codigo_amigo=mi_codigo, referido_por=padrino,
         )
+        self.almacen.fijar_codigo_invitacion(correo, mi_codigo_casa, invitado_por)
         return Usuario(correo=correo, nombre=(nombre or "").strip(), rol=rol, activo=True,
                        creado=time.time(), verificado=verificado)
 
@@ -212,6 +225,48 @@ class Usuarios:
         codigo = self._codigo_libre(correo)
         self.almacen.fijar_codigo_amigo(correo, codigo)
         return codigo
+
+    def _codigo_invitacion_libre(self, correo: str) -> str:
+        """Un código de invitación a la sala de trabajo, corto y único.
+
+        Es distinto del código de amigo a propósito: el de amigo dispara las
+        comisiones de referidos y este solo sirve para la sala de trabajo.
+        """
+        base = re.sub(r"[^A-Z0-9]", "", (correo.split("@")[0] or "").upper())[:6]
+        base = base or "CASA"
+        for intento in range(30):
+            sufijo = "" if intento == 0 else f"{secrets.randbelow(900) + 100}"
+            codigo = f"CASA{base}{sufijo}"[:12]
+            if self.almacen.usuario_por_invitacion(codigo) is None:
+                return codigo
+        return f"CASA{secrets.token_hex(3).upper()}"
+
+    def asegurar_codigo_invitacion(self, correo: str) -> str:
+        """Devuelve el código de invitación a la sala de trabajo de una cuenta.
+
+        Se genera la primera vez que hace falta. Todas las cuentas lo tienen
+        (también la de administración), porque cualquiera puede invitar gente a la
+        sala de trabajo.
+        """
+        correo = (correo or "").strip().lower()
+        fila = self.almacen.usuario(correo)
+        if fila is None:
+            return ""
+        claves = fila.keys()
+        actual = (fila["codigo_invitacion"] if "codigo_invitacion" in claves else "") or ""
+        if actual:
+            return actual
+        codigo = self._codigo_invitacion_libre(correo)
+        self.almacen.fijar_codigo_invitacion(correo, codigo)
+        return codigo
+
+    def quien_invito(self, correo: str) -> str:
+        """El correo de quien trajo a esta cuenta a la sala de trabajo ('' si no)."""
+        correo = (correo or "").strip().lower()
+        fila = self.almacen.usuario(correo)
+        if fila is None or "invitado_por" not in fila.keys():
+            return ""
+        return fila["invitado_por"] or ""
 
     def asegurar_admin(self, correo: str, clave: str) -> bool:
         """Crea la cuenta de administración si no existe. Devuelve si la creó."""

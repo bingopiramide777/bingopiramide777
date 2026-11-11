@@ -23,6 +23,7 @@ from nucleo.correo import Correo, ErrorDeCorreo
 from nucleo.datos_cobro import CAMPOS as _CAMPOS_COBRO
 from nucleo.datos_cobro import METODOS as _METODOS_COBRO
 from nucleo.billeteras import Billeteras
+from nucleo.cobros import Cobros
 from nucleo.depositos import METODOS as METODOS_DEPOSITO
 from nucleo.depositos import ErrorDeDeposito, Depositos
 from nucleo.fichas import ErrorDeFicha, FichasCobro
@@ -32,7 +33,7 @@ from nucleo.glenis_herramientas import Herramientas
 from nucleo.idiomas import IDIOMAS
 from nucleo.referidos import Referidos
 from nucleo.retiros import ErrorDeRetiro, Retiros
-from nucleo.salas import ErrorDeSalas, Salas
+from nucleo.salas import (SALA_CASA_ID, SALA_CASA_NOMBRE, ErrorDeSalas, Salas)
 
 RAIZ_WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 CORREO_ADMIN_POR_DEFECTO = "bingopiramide777@gmail.com"
@@ -64,6 +65,8 @@ class Juego:
         # La cuenta de administración es el anfitrión de la sala de trabajo.
         self.salas = Salas(self.almacen, usuarios=self.usuarios,
                            anfitrion_casa=self.correo_admin)
+        # El sistema de cobro: define, suma y audita todos los cobros del proyecto.
+        self.cobros = Cobros(self.almacen, salas=self.salas, depositos=self.depositos)
         self.herramientas = Herramientas(self)
         self.glenis = Glenis(self.herramientas.esquemas(), self.herramientas.ejecutar)
         self.correo = Correo()
@@ -90,7 +93,7 @@ class Juego:
             reparto["con_anfitrion"] = False
             return reparto
         from nucleo.salas import reparto_del_bote
-        # El reparto lo decide la sala: 80/20 en las de la casa, 75/10/15 en las de
+        # El reparto lo decide la sala: 80/20 en las de la casa, 70/10/20 en las de
         # jugador y 80/15/5 en la sala de trabajo.
         if not sala_id or fila is None:
             reparto = reparto_del_bote(bote, con_anfitrion=False)
@@ -210,8 +213,9 @@ class Juego:
         """
         if self.usuarios.usuario(self.correo_admin):
             # Ya existe: puede ser de antes de los referidos, así que se asegura
-            # que tenga código de amigo.
+            # que tenga su código de amigo y el de invitación a la sala de trabajo.
             self.usuarios.asegurar_codigo_amigo(self.correo_admin)
+            self.usuarios.asegurar_codigo_invitacion(self.correo_admin)
             return
         clave = self.clave_admin
         generada = False
@@ -219,9 +223,11 @@ class Juego:
             clave = secrets.token_urlsafe(12)
             generada = True
         self.usuarios.asegurar_admin(self.correo_admin, clave)
-        # La cuenta de administración también participa en los referidos: se le
-        # da su código para que su pantalla no salga vacía.
+        # La cuenta de administración también participa en los referidos y en la
+        # sala de trabajo: se le dan sus dos códigos para que sus pantallas no
+        # salgan vacías.
         self.usuarios.asegurar_codigo_amigo(self.correo_admin)
+        self.usuarios.asegurar_codigo_invitacion(self.correo_admin)
         if generada:
             print(f"\n  CUENTA DE ADMINISTRACIÓN CREADA\n"
                   f"  Correo: {self.correo_admin}\n"
@@ -673,6 +679,30 @@ class Manejador(BaseHTTPRequestHandler):
             self._json({"ok": True, **resumen})
             return
 
+        if ruta == "/api/invitacion":
+            jugador = self._jugador()
+            if not jugador:
+                self._error("Hace falta entrar.", 401)
+                return
+            with self.juego.candado:
+                # Todas las cuentas tienen su código de invitación a la sala de
+                # trabajo: se genera al vuelo la primera vez.
+                codigo = self.juego.usuarios.asegurar_codigo_invitacion(jugador)
+                sala = self.juego.salas.de(SALA_CASA_ID)
+                invitados = self.juego.almacen.invitados_de_invitacion(jugador)
+            self._json({
+                "ok": True,
+                "codigo": codigo,
+                "sala": SALA_CASA_ID,
+                "sala_nombre": sala.nombre if sala else SALA_CASA_NOMBRE,
+                "invitados": len(invitados),
+                "detalle": [{"invitado": i} for i in invitados],
+                "premio_pct": 80,
+                "anfitrion_pct": 15,
+                "app_pct": 5,
+            })
+            return
+
         if ruta == "/api/config":
             from nucleo.usuarios import PREGUNTAS
             from nucleo import paises as _paises
@@ -956,6 +986,16 @@ class Manejador(BaseHTTPRequestHandler):
                     "economia_pais": self.juego.salas.economia_por_pais().get("paises", [])})
             return
 
+        if ruta == "/api/admin/cobros":
+            # El sistema de cobro completo: qué se cobra, cuánto se ha cobrado y
+            # si algún cobro se ha hecho dos veces (auditoría).
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            with self.juego.candado:
+                self._json(self.juego.cobros.resumen())
+            return
+
         if ruta == "/admin":
             self._estatico("admin.html")
             return
@@ -990,7 +1030,8 @@ class Manejador(BaseHTTPRequestHandler):
                         datos.get("nombre", ""), "jugador",
                         datos.get("pregunta", ""), datos.get("respuesta", ""),
                         verificado=not exige_verificacion,
-                        codigo_amigo=datos.get("codigo_amigo", ""))
+                        codigo_amigo=datos.get("codigo_amigo", ""),
+                        codigo_invitacion=datos.get("codigo_invitacion", ""))
                     enviado = False
                     if exige_verificacion:
                         codigo = self.juego.usuarios.pedir_codigo_verificacion(
@@ -1087,7 +1128,7 @@ class Manejador(BaseHTTPRequestHandler):
                     sala = self.juego.salas.crear(
                         jugador, datos.get("nombre", ""), datos.get("modo", ""),
                         datos.get("precio", ""), datos.get("publica", True))
-                mensaje = (f"Sala {sala.nombre} creada. El ganador cobra el 75% y tú "
+                mensaje = (f"Sala {sala.nombre} creada. El ganador cobra el 70% y tú "
                            "cobras el 10% de los botes.")
                 self._json({"ok": True, "sala": self._sala_json(sala), "mensaje": mensaje})
             except Exception as exc:  # noqa: BLE001

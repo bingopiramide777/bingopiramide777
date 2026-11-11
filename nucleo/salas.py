@@ -10,7 +10,7 @@ El reparto:
 Hay tres clases de sala, y en cada una el bote se parte así:
 
     sala de la casa:      ganador 80 %  ·  app 20 %
-    sala de un jugador:   ganador 75 %  ·  anfitrión 10 %  ·  app 15 %
+    sala de un jugador:   ganador 70 %  ·  anfitrión 10 %  ·  app 20 %
     sala de trabajo:      ganador 80 %  ·  anfitrión 15 %  ·  app 5 %
 
 Las **salas de la casa** (los estados) dejan todo su margen a la app. Las
@@ -44,9 +44,10 @@ class ErrorDeSalas(ValueError):
 
 # Qué parte del bote va al ganador en cada tipo de sala.
 PREMIO_CASA = Decimal("0.80")            # sala de la casa: 80 % al ganador (app 20 %)
-PREMIO_CON_ANFITRION = Decimal("0.75")   # sala de un jugador: 75 % al ganador
-# Sala normal de un anfitrión: el 25 % que no va al ganador se parte 10 % para el
-# anfitrión y 15 % para la app.
+PREMIO_CON_ANFITRION = Decimal("0.70")   # sala de un jugador: 70 % al ganador
+# Sala normal de un anfitrión: el 30 % que no va al ganador se parte 10 % para el
+# anfitrión y 20 % para la app (que ya cobró su 20 % anticipado al acreditar el
+# depósito: por eso no le toca nada más del bote).
 COMISION_ANFITRION = Decimal("0.10")    # comisión por defecto del anfitrión
 # Sala de trabajo ("Ganar Dinero Desde Casa"): el ganador cobra como en una sala
 # de la casa (80 %) y el 20 % restante se parte 15 % para el anfitrión y 5 % para
@@ -160,7 +161,7 @@ def reparto_del_bote(bote: int, con_anfitrion: bool, comision_pct: int | None = 
     céntimo, es del jugador. Así la app nunca gana por un error de redondeo.
     La comisión del anfitrión se puede ajustar por cuenta (comision_pct, en %);
     si no se pasa, se usa la de por defecto. El premio del ganador también se
-    puede ajustar (premio_pct): las salas de jugador dan el 75 % y las de trabajo
+    puede ajustar (premio_pct): las salas de jugador dan el 70 % y las de trabajo
     el 80 %.
     """
     if not isinstance(bote, int) or bote < 0:
@@ -463,8 +464,8 @@ class Salas:
               publica: bool = True, pais: str | None = None) -> Sala:
         """Un jugador crea su sala. El anfitrión se lleva el 10 % de los botes.
 
-        Las salas de jugador son siempre normales: el ganador cobra el 75 %, el
-        anfitrión el 10 % y la app el 15 %.
+        Las salas de jugador son siempre normales: el ganador cobra el 70 %, el
+        anfitrión el 10 % y la app el 20 %.
 
         La sala nace con un país (y por tanto una moneda). Si no se indica, se usa
         el país del jugador que la crea, y si tampoco, el de por defecto. El precio

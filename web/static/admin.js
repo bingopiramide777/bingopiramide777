@@ -435,6 +435,64 @@ async function cargarMovimientos() {
     </tbody></table></div>`;
 }
 
+/* --- sistema de cobro --- */
+
+// Todo lo que se cobra, en un solo sitio, y la prueba de que no se cobra dos veces.
+async function cargarCobros() {
+  const caja = cuerpo("cobros");
+  if (!caja) return;
+  const r = await get("/api/admin/cobros");
+  const a = r.auditoria || {};
+  const t = r.totales || {};
+
+  const definicion = (r.definicion || []).map((d) => `
+    <tr>
+      <td><strong>${d.titulo}</strong></td>
+      <td>${d.pct === null ? "según el entorno" : d.pct + " %"}</td>
+      <td>${d.quien}</td>
+      <td>${d.cuando}</td>
+      <td>${d.sobre}</td>
+    </tr>`).join("");
+
+  const tarjetas = [
+    ["Comisión de depósito", t.deposito_comision_texto, `${t.deposito_pct} % de cada depósito (una vez)`],
+    ["Comisiones a anfitriones", t.anfitrion_texto, "una vez por partida"],
+    ["Ganancia de la app (bingo)", t.app_bingo_texto, "incluye el 5 % de la sala de trabajo"],
+    ["Ganancia de la app (depósitos)", t.app_depositos_texto, "comisión anti-lavado"],
+    ["Ganancia total de la app", t.app_total_texto, "bingo + depósitos"],
+    ["Comisiones a padrinos", t.padrinos_texto, "de la parte de la app"],
+  ];
+
+  caja.innerHTML = `
+    <div class="aviso-cobro ${a.sin_duplicados ? "aviso-cobro--bien" : "aviso-cobro--mal"}">
+      <strong>${a.sin_duplicados ? "Sin cobros duplicados" : "¡Ojo: hay cobros duplicados!"}</strong>
+      <p>${a.sin_duplicados
+        ? "La auditoría no encuentra ningún cobro repetido: el 20 % del depósito se cobra una sola vez y cada comisión de sala, una vez por partida."
+        : (a.avisos || []).join(" ")}</p>
+      <p class="ayuda">Depósitos acreditados: ${a.depositos_acreditados || 0} ·
+         partidas terminadas: ${a.partidas_terminadas || 0} ·
+         referidos anotados: ${a.referidos_anotados || 0}</p>
+    </div>
+
+    <div class="tarjetas-resumen">${tarjetas.map(([titulo, valor, pie]) => `
+      <div class="tarjeta-resumen">
+        <p class="tarjeta-resumen__titulo">${titulo}</p>
+        <p class="tarjeta-resumen__valor">${valor}</p>
+        <p class="tarjeta-resumen__pie">${pie}</p>
+      </div>`).join("")}</div>
+
+    <h3>Qué se cobra y a quién</h3>
+    <div class="tabla-envoltorio"><table class="tabla">
+      <thead><tr><th>Cobro</th><th>%</th><th>Quién cobra</th><th>Cuándo</th><th>Sobre qué</th></tr></thead>
+      <tbody>${definicion}</tbody>
+    </table></div>
+    <p class="ayuda">La sala "Gana dinero desde casa con BingoPiramide777" reparte el bote
+       así: ganador 80 %, anfitrión 15 % y app 5 %. Como el anfitrión de esa sala es la
+       propia administración, esa cuenta se queda el 20 % del bote (15 % + 5 %). Es dinero
+       distinto del 20 % que se retiene en los depósitos: uno es sobre lo que entra y el
+       otro sobre el bote. Los dos se cobran una sola vez.</p>`;
+}
+
 /* --- ganancias --- */
 
 async function cargarGanancias() {
@@ -701,6 +759,7 @@ const VENTANAS = {
   jugadores:   { titulo: "Jugadores",             cargar: () => cargarJugadores() },
   partidas:    { titulo: "Partidas",              cargar: () => cargarPartidas() },
   salas:       { titulo: "Salas en vivo",         cargar: () => cargarSalasAdmin() },
+  cobros:      { titulo: "Sistema de cobro",      cargar: () => cargarCobros() },
   ganancias:   { titulo: "Ganancias del bingo",   cargar: () => cargarGanancias() },
   referidos:   { titulo: "Referidos",             cargar: () => cargarReferidosAdmin() },
   movimientos: { titulo: "Últimos movimientos",   cargar: () => cargarMovimientos() },
@@ -922,7 +981,7 @@ function cartonHtml(c) {
 /* --- arranque --- */
 
 const ORDEN_VENTANAS = ["resumen", "glenis", "torneos", "depositos", "retiros", "jugadores",
-                        "partidas", "salas", "ganancias", "referidos", "movimientos"];
+                        "partidas", "salas", "cobros", "ganancias", "referidos", "movimientos"];
 
 function pintarLanzadera() {
   const caja = $("#lanzadera");

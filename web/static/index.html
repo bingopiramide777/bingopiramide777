@@ -100,6 +100,8 @@
 
     <div id="evento-info"></div>
 
+    <h3 class="mesa__nombre" id="nombre-sala-actual"></h3>
+
     <p class="aviso-carton-lleno" id="aviso-carton-lleno" hidden data-i18n="salas.trabajo_carton_lleno">Cartón lleno: hay que completar los 25 números</p>
 
     <div class="mesa">
@@ -204,6 +206,34 @@
     </form>
 
     <div id="tabla-mis-salas"></div>
+  </section>
+
+  <section class="panel panel--suave" id="invitacion">
+    <div class="panel__cabecera">
+      <h2 data-i18n="invitacion.titulo">Tarjeta de invitación</h2>
+      <div class="pastilla" id="invitacion-pastilla">—</div>
+    </div>
+    <p class="entrada" data-i18n="invitacion.entrada">Comparte tu tarjeta con quien quieras. Con tu código entra gente nueva a la sala de trabajo y tú ganas una comisión por cada partida que jueguen.</p>
+    <div class="tarjeta-invitacion" id="tarjeta-invitacion">
+      <div class="tarjeta-invitacion__marca">
+        <span class="tarjeta-invitacion__app">BINGO<b>PIRÁMIDE</b><em>777</em></span>
+        <span class="tarjeta-invitacion__etiqueta" data-i18n="invitacion.marca">Gana dinero desde casa</span>
+      </div>
+      <p class="tarjeta-invitacion__sala" id="invitacion-sala-nombre">—</p>
+      <div class="tarjeta-invitacion__datos">
+        <div class="ficha-cobro__dato">
+          <span class="ficha-cobro__etiqueta" data-i18n="invitacion.tu_codigo">Tu código de invitación</span>
+          <strong id="invitacion-codigo">—</strong>
+          <button class="boton boton--fantasma boton--mini" id="btn-copiar-invitacion" data-i18n="invitacion.copiar">Copiar</button>
+        </div>
+        <div class="ficha-cobro__dato">
+          <span class="ficha-cobro__etiqueta" data-i18n="invitacion.tu_enlace">Tu enlace de registro</span>
+          <strong id="invitacion-enlace" class="invitacion-enlace">—</strong>
+          <button class="boton boton--fantasma boton--mini" id="btn-copiar-enlace-invitacion" data-i18n="invitacion.copiar_enlace">Copiar enlace</button>
+        </div>
+      </div>
+      <p class="tarjeta-invitacion__pie" id="invitacion-pie"></p>
+    </div>
   </section>
 
   <div class="dialogo" id="dialogo-trabajo" hidden>
