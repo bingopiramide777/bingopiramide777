@@ -1343,6 +1343,23 @@ function conectarBotones() {
       if (seccion) seccion.scrollIntoView({ behavior: "smooth", block: "start" });
     };
   }
+
+  // Enlace del vídeo de la billetera: se copia de un toque para verlo fuera.
+  const botonCopiarEnlace = $("#btn-copiar-enlace-billetera");
+  if (botonCopiarEnlace) {
+    botonCopiarEnlace.onclick = async () => {
+      const enlace = $("#billetera-video-url");
+      const url = enlace ? enlace.href : "";
+      if (!url) return;
+      try {
+        await navigator.clipboard.writeText(url);
+        avisar(t("billetera.enlace_copiado"), "bien");
+      } catch (err) {
+        // Sin permiso de portapapeles (o sin HTTPS): se muestra para copiar a mano.
+        prompt(t("billetera.copiar_enlace_manual"), url);
+      }
+    };
+  }
   $("#btn-recargar").onclick = () => {
     if (!token) return abrirAcceso("entrar");
     abrirDeposito();
@@ -1667,7 +1684,21 @@ async function cargarConfigRetiro() {
       minimo: configRetiro.retiro_minimo_texto,
       tope: configRetiro.retiro_tope_texto,
     });
+    pintarEnlaceBilletera(configRetiro.billetera_video_enlace);
   } catch (err) { /* sin config no pasa nada */ }
+}
+
+// El enlace del vídeo de la Billetera lo pone la administración (panel o Glenis
+// IA). Si no hay ninguno, el bloque no se muestra.
+function pintarEnlaceBilletera(enlace) {
+  const caja = $("#billetera-video-enlace");
+  const a = $("#billetera-video-url");
+  if (!caja || !a) return;
+  const url = (enlace || "").trim();
+  if (!url) { caja.hidden = true; return; }
+  a.href = url;
+  a.textContent = url;
+  caja.hidden = false;
 }
 
 /* --- país y moneda --- */

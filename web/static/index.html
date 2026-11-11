@@ -357,6 +357,18 @@
             <li data-i18n="billetera.como_nota_varias">Si tienes varias billeteras instaladas, primero elige con cuál quieres vincular.</li>
             <li data-i18n="billetera.como_nota_movil">¿En el teléfono? Abre la web dentro de la app de tu billetera (botón «Abrir en MetaMask») para que se conecte sola.</li>
           </ul>
+
+          <!-- Enlace al vídeo del paso a paso. Se muestra solo si hay uno puesto:
+               se cambia desde el panel o pidiéndoselo a Glenis IA. -->
+          <div class="guia-billetera__enlace" id="billetera-video-enlace" hidden>
+            <span class="guia-billetera__enlace-titulo" data-i18n="billetera.video_enlace">Cómo vincular billetera MetaMask</span>
+            <div class="guia-billetera__enlace-fila">
+              <a class="guia-billetera__enlace-url" id="billetera-video-url"
+                 href="#" target="_blank" rel="noopener noreferrer"></a>
+              <button class="boton boton--fantasma boton--mini" id="btn-copiar-enlace-billetera"
+                      type="button" data-i18n="billetera.copiar_enlace">Copiar enlace</button>
+            </div>
+          </div>
         </div>
 
         <!-- Con varias billeteras instaladas, cada una se anuncia por su cuenta

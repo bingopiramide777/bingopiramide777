@@ -43,6 +43,18 @@ NOMBRES_PUESTO = ("Primer lugar", "Segundo lugar", "Tercer lugar")
 # revancha en la misma sala.
 ESPERA_ANUNCIO_GANADORES = 20
 
+# Enlace al vídeo que se muestra en la sección Billetera. Se guarda en la tabla
+# 'meta' para poder cambiarlo desde el panel o pidiéndoselo a Glenis IA.
+CLAVE_VIDEO_BILLETERA = "billetera_video_enlace"
+
+
+def enlace_valido(url: str) -> bool:
+    """Comprueba que el enlace sea web (http/https) y no algo raro (javascript:)."""
+    if not re.match(r"^https?://", url, re.IGNORECASE):
+        return False
+    resto = re.sub(r"^https?://", "", url, flags=re.IGNORECASE)
+    return bool(re.match(r"^[^\s/]+\.[^\s/]+", resto))
+
 
 class Juego:
     """Estado de la aplicación: base de datos, usuarios, monedero, bingo y retiros.
@@ -945,6 +957,8 @@ class Manejador(BaseHTTPRequestHandler):
                 "cuentas_admin": [c.a_dict() for c in _paises.cuentas_admin()],
                 "pais_base": _paises.PAIS_BASE,
                 "tasas": _paises.tasas(),
+                # Enlace al vídeo de la billetera (editable desde el panel/Glenis).
+                "billetera_video_enlace": (self.juego.almacen.meta(CLAVE_VIDEO_BILLETERA) or "").strip(),
             })
             return
 
@@ -1209,6 +1223,16 @@ class Manejador(BaseHTTPRequestHandler):
                 return
             with self.juego.candado:
                 self._json(self.juego.cobros.resumen())
+            return
+
+        if ruta == "/api/admin/enlace-billetera":
+            # Enlace al vídeo que se muestra en la sección Billetera del juego.
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            with self.juego.candado:
+                enlace = (self.juego.almacen.meta(CLAVE_VIDEO_BILLETERA) or "").strip()
+            self._json({"enlace": enlace})
             return
 
         if ruta == "/admin":
@@ -1897,6 +1921,22 @@ class Manejador(BaseHTTPRequestHandler):
                                         "saldo": a_texto(self.juego.monedero.saldo(correo))}})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/enlace-billetera":
+            # Cambia el enlace del vídeo de la sección Billetera. Enviar el campo
+            # vacío lo deja sin enlace (la sección no lo muestra).
+            admin = self._admin()
+            if not admin:
+                self._error("Solo para administración.", 403)
+                return
+            enlace = (datos.get("enlace") or "").strip()
+            if enlace and not enlace_valido(enlace):
+                self._error("El enlace tiene que empezar por http:// o https:// y ser una dirección válida.")
+                return
+            with self.juego.candado:
+                self.juego.almacen.guardar_meta(CLAVE_VIDEO_BILLETERA, enlace)
+            self._json({"ok": True, "enlace": enlace})
             return
 
         if ruta == "/api/admin/usuario":

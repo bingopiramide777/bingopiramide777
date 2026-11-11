@@ -211,6 +211,39 @@ class HerramientasTest(unittest.TestCase):
         r = self.h.ejecutar("datos_de_acreditacion", {})
         self.assertIn("aviso", r)
 
+    def test_ver_enlace_billetera_sin_enlace(self):
+        r = self.h.ejecutar("ver_enlace_billetera", {})
+        self.assertFalse(r["hay_enlace"])
+        self.assertIn("aviso", r)
+
+    def test_cambiar_enlace_billetera(self):
+        url = "https://vt.tiktok.com/ZSpmgj18p/"
+        r = self.h.ejecutar("cambiar_enlace_billetera", {"enlace": url})
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["enlace"], url)
+        # Se guarda de verdad: la herramienta de verlo lo confirma.
+        visto = self.h.ejecutar("ver_enlace_billetera", {})
+        self.assertTrue(visto["hay_enlace"])
+        self.assertEqual(visto["enlace"], url)
+
+    def test_cambiar_enlace_billetera_lo_quita_con_vacio(self):
+        self.h.ejecutar("cambiar_enlace_billetera", {"enlace": "https://ejemplo.com/v"})
+        r = self.h.ejecutar("cambiar_enlace_billetera", {"enlace": ""})
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["enlace"], "")
+        self.assertFalse(self.h.ejecutar("ver_enlace_billetera", {})["hay_enlace"])
+
+    def test_cambiar_enlace_billetera_rechaza_lo_que_no_es_web(self):
+        r = self.h.ejecutar("cambiar_enlace_billetera", {"enlace": "javascript:alert(1)"})
+        self.assertIn("error", r)
+        self.assertFalse(self.h.ejecutar("ver_enlace_billetera", {})["hay_enlace"])
+
+    def test_cambiar_enlace_billetera_tolera_nulo(self):
+        # La IA puede mandar el enlace como null: no debe reventar.
+        r = self.h.ejecutar("cambiar_enlace_billetera", {"enlace": None})
+        self.assertTrue(r["ok"])
+        self.assertEqual(r["enlace"], "")
+
 
 class GlenisTest(unittest.TestCase):
     def setUp(self):
