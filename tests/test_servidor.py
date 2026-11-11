@@ -487,6 +487,13 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(r["evento"]["plazas"], 1)
         self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [80])
 
+    def test_el_admin_elige_dos_ganadores_en_el_evento(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/evento", {"ganadores": 2}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["evento"]["plazas"], 2)
+        self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [60, 20])
+
     def test_el_admin_elige_tres_ganadores_en_el_evento(self):
         at = self.admin()
         self.pedir("/api/admin/evento", {"ganadores": 1}, at)
@@ -495,11 +502,11 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(r["evento"]["plazas"], 3)
         self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [60, 15, 5])
 
-    def test_el_evento_solo_admite_uno_o_tres_ganadores(self):
+    def test_el_evento_admite_entre_uno_y_tres_ganadores(self):
         at = self.admin()
-        estado, r = self.pedir("/api/admin/evento", {"ganadores": 2}, at)
+        estado, r = self.pedir("/api/admin/evento", {"ganadores": 4}, at)
         self.assertEqual(estado, 400)
-        self.assertIn("1 o 3", r["error"])
+        self.assertIn("1 y 3", r["error"])
 
     def test_los_premios_del_evento_se_reparten_por_porcentaje(self):
         at = self.admin()

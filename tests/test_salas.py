@@ -852,6 +852,39 @@ class EventoJuegoTest(unittest.TestCase):
         self.assertEqual(pagados["c@correo.com"], 30)
         self.assertEqual(partida.estado, "terminada", "con los 3 puestos cubiertos, cierra")
 
+    def test_dos_ganadores_cobran_su_porcentaje(self):
+        from bingo.cartones import patron_cumplido
+
+        self.salas.configurar_evento(ganadores=2)
+        evento = self.salas.evento()  # 60/20
+        bingo = SalaBingo()
+
+        def reparto(pid, bote):
+            return self.salas.de(evento.id).reparto(bote)
+
+        mesa = MesaBingo(sala=bingo, monedero=self.monedero, repartidor=reparto)
+        partida = bingo.abrir_partida(evento.precio_carton / 100, patron="linea_h1",
+                                      sala=evento.id, plazas=evento.plazas)
+        self.assertEqual(partida.plazas, 2)
+        jugadores = ["a@correo.com", "b@correo.com"]
+        cartones = {}
+        for j in jugadores:
+            self.monedero.recargar(j, 100_000, "prueba")
+            cartones[j], _ = mesa.comprar_carton(partida.id, j)
+        bingo.empezar(partida.id)
+
+        pagados = {}
+        for j in jugadores:
+            while not patron_cumplido(partida.cartones[cartones[j]], "linea_h1"):
+                bingo.sacar_bola(partida.id)
+            res = mesa.resolver_cantada(partida.id, j, cartones[j])
+            pagados[j] = res["premio"]
+
+        # Bote de 2 cartones x $ 2 = 400: 60% = 240 y 20% = 80.
+        self.assertEqual(pagados["a@correo.com"], 240)
+        self.assertEqual(pagados["b@correo.com"], 80)
+        self.assertEqual(partida.estado, "terminada", "con los 2 puestos cubiertos, cierra")
+
     def test_un_jugador_no_puede_llevarse_dos_puestos(self):
         from bingo.cartones import patron_cumplido
 

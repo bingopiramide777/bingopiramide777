@@ -339,7 +339,7 @@ class Juego:
         # de jugador (o vieja) y no tiene tipo, se cae al modo de siempre.
         from bingo.cartones import MODOS, PATRONES
         patron = sala.tipo_juego if sala.tipo_juego in PATRONES else MODOS[sala.modo][0]
-        # La sala decide cuántos puestos premia: 1 (un ganador) o 3 (1º, 2º y 3º).
+        # La sala decide cuántos puestos premia: 1 (un ganador) o varios (1º, 2º…).
         plazas = sala.plazas
         partida = self.mesa.sala.abrir_partida(sala.precio_carton / 100, patron=patron,
                                               sala=sala.id, plazas=plazas)

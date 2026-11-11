@@ -607,7 +607,7 @@ async function cargarTorneos() {
   $("#btn-config-torneo").onclick = () => editarTorneo(evento);
 }
 
-async function editarTorneo(evento) {
+async function editarTorneo(evento, alGuardar = null) {
   const tipos = await tiposDeJuego();
   const opciones = tipos.map((t) =>
     `<option value="${t.id}" ${t.id === evento.tipo_juego ? "selected" : ""}>${t.nombre}</option>`).join("");
@@ -626,6 +626,7 @@ async function editarTorneo(evento) {
       <label>¿Cuántos ganadores?
         <select name="ganadores">
           <option value="1" ${(evento.plazas || 3) === 1 ? "selected" : ""}>1 ganador (se lleva el 80 %)</option>
+          <option value="2" ${(evento.plazas || 3) === 2 ? "selected" : ""}>2 ganadores (1º y 2º)</option>
           <option value="3" ${(evento.plazas || 3) === 3 ? "selected" : ""}>3 ganadores (1º, 2º y 3º)</option>
         </select>
       </label>
@@ -661,14 +662,15 @@ async function editarTorneo(evento) {
       });
       $("#dialogo").hidden = true;
       avisar("Torneo actualizado.", "bien");
-      cargarTorneos();
+      if (alGuardar) alGuardar(); else cargarTorneos();
     } catch (err) { avisar(err.message, "error"); }
   };
   // Al elegir cuántos ganadores se rellenan los porcentajes por defecto; el campo
   // sigue siendo editable para afinar el reparto.
   const selGanadores = $("#form-torneo [name=ganadores]");
   selGanadores.onchange = () => {
-    $("#form-torneo [name=premios_pct]").value = selGanadores.value === "1" ? "80" : "60,15,5";
+    const porDefecto = { "1": "80", "2": "60,20", "3": "60,15,5" };
+    $("#form-torneo [name=premios_pct]").value = porDefecto[selGanadores.value] || "60,15,5";
   };
 }
 
@@ -876,7 +878,9 @@ async function cargarSalasAdmin() {
             s.activa ? "abierta" : "cerrada"}</span></td>
           <td class="acciones-celda">
             <button class="boton boton--fantasma boton--mini" data-ver="${s.id}">Ver sala</button>
-            ${s.dueno ? "" : `<button class="boton boton--fantasma boton--mini" data-editar="${s.id}">Editar</button>`}
+            ${s.es_evento
+              ? `<button class="boton boton--principal boton--mini" data-editar-evento="1">Configurar evento</button>`
+              : (s.dueno ? "" : `<button class="boton boton--fantasma boton--mini" data-editar="${s.id}">Editar</button>`)}
             ${s.activa && s.dueno
               ? `<button class="boton boton--fantasma boton--mini" data-cerrar-sala="${s.id}">Cerrar</button>`
               : ""}
@@ -887,6 +891,8 @@ async function cargarSalasAdmin() {
   caja.querySelectorAll("[data-ver]").forEach((b) => (b.onclick = () => verSala(b.dataset.ver)));
   caja.querySelectorAll("[data-editar]").forEach((b) =>
     (b.onclick = () => editarSala(res.salas.find((s) => s.id === b.dataset.editar))));
+  caja.querySelectorAll("[data-editar-evento]").forEach((b) =>
+    (b.onclick = () => editarTorneo(res.evento || {}, () => cargarSalasAdmin())));
   caja.querySelectorAll("[data-cerrar-sala]").forEach((b) =>
     (b.onclick = async () => {
       if (!confirm("¿Cerrar esta sala de jugador?")) return;

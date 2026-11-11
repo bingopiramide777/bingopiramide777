@@ -173,6 +173,7 @@ SALA_EVENTO_PRECIO = 2_00                 # $ 2,00 por cartón
 SALA_EVENTO_AFORO = 50                     # jugadores como máximo (0 = sin límite)
 SALA_EVENTO_CUPO = 0                       # cartones como máximo (0 = sin tope)
 PREMIO_EVENTO_POR_DEFECTO = (60, 15, 5)    # % del bote para 1º, 2º y 3º
+PREMIO_EVENTO_DOS = (60, 20)               # % del bote para 1º y 2º
 PLAZAS_EVENTO = len(PREMIO_EVENTO_POR_DEFECTO)
 # Cuando el evento reparte un solo ganador, se lleva este % del bote (el resto es
 # de la app, como en una sala de la casa).
@@ -768,9 +769,8 @@ class Salas:
         """Ajusta la sala de eventos: precio, aforo, premios, tipo de juego y fecha.
 
         Solo se cambia lo que se pasa. Los porcentajes son para 1º, 2º y 3º y no
-        pueden sumar más de 100 %. Con ``ganadores`` se elige entre un único ganador
-        (el 80 % del bote) o tres puestos (1º, 2º y 3º); si se pasan los porcentajes
-        a mano, mandan ellos.
+        pueden sumar más de 100 %. Con ``ganadores`` se elige entre uno, dos o tres
+        puestos (1º, 2º y 3º); si se pasan los porcentajes a mano, mandan ellos.
         """
         sala = self.evento()
         campos: dict = {}
@@ -778,13 +778,16 @@ class Salas:
             try:
                 n = int(ganadores)
             except (TypeError, ValueError):
-                raise ErrorDeSalas("Los ganadores tienen que ser 1 o 3.") from None
+                raise ErrorDeSalas("Los ganadores tienen que ser 1, 2 o 3.") from None
             if n == 1:
                 premios_pct = ",".join(str(p) for p in PREMIO_EVENTO_UNO)
+            elif n == 2:
+                premios_pct = ",".join(str(p) for p in PREMIO_EVENTO_DOS)
             elif n == PLAZAS_EVENTO:
                 premios_pct = ",".join(str(p) for p in PREMIO_EVENTO_POR_DEFECTO)
             else:
-                raise ErrorDeSalas(f"El evento reparte 1 o {PLAZAS_EVENTO} ganadores.")
+                raise ErrorDeSalas("El evento reparte entre 1 y "
+                                   f"{PLAZAS_EVENTO} ganadores.")
         if precio is not None:
             campos["precio_carton"] = self._precio_valido(precio, PRECIO_MAXIMO_CASA,
                                                           "del evento")
