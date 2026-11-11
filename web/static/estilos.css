@@ -89,7 +89,12 @@ a { color: inherit; }
 .marca__texto b { color: var(--dorado); }
 .marca__texto em { font-style: normal; color: var(--verde); font-weight: 700; }
 
-.nav { display: flex; gap: 1.4rem; margin-left: auto; font-size: .95rem; }
+/* Menú de la cabecera: enlaces, país, idioma y billetera juntos. En el móvil
+   se convierte en una sola tira deslizable (ver media query más abajo). */
+.cabecera__menu { display: flex; align-items: center; gap: 1.4rem; margin-left: auto; }
+/* El panel de administración pone el menú directamente en la cabecera. */
+.cabecera > .nav { margin-left: auto; }
+.nav { display: flex; gap: 1.4rem; font-size: .95rem; }
 .nav a { text-decoration: none; color: var(--gris); transition: color .15s; }
 .nav a:hover { color: var(--dorado); }
 /* Los apartados del panel son botones que abren su ventana, no enlaces. */
@@ -343,9 +348,9 @@ input:focus { outline: 2px solid var(--dorado); outline-offset: 1px; }
 
 /* --- diálogo --- */
 
-.dialogo { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(8, 2, 18, .78); backdrop-filter: blur(6px); padding: 1rem; }
+.dialogo { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(8, 2, 18, .78); backdrop-filter: blur(6px); padding: 1rem; overflow-y: auto; }
 .dialogo[hidden] { display: none; }
-.dialogo__caja { position: relative; background: linear-gradient(160deg, var(--morado-700), var(--morado-800)); border: 1px solid rgba(247, 201, 72, .3); border-radius: 20px; box-shadow: var(--sombra); padding: 2rem; width: min(420px, 100%); }
+.dialogo__caja { position: relative; background: linear-gradient(160deg, var(--morado-700), var(--morado-800)); border: 1px solid rgba(247, 201, 72, .3); border-radius: 20px; box-shadow: var(--sombra); padding: 2rem; width: min(420px, 100%); max-height: calc(100dvh - 2rem); overflow-y: auto; }
 .dialogo__cerrar { position: absolute; top: .6rem; right: .9rem; background: none; border: 0; color: var(--gris); font-size: 1.6rem; cursor: pointer; line-height: 1; }
 .dialogo__cerrar:hover { color: var(--dorado); }
 .dialogo h2 { font-size: 1.4rem; }
@@ -371,18 +376,37 @@ input:focus { outline: 2px solid var(--dorado); outline-offset: 1px; }
   .mesa { grid-template-columns: 1fr; }
   .datos { gap: 1.2rem; }
 
-  /* La cabecera se reparte en dos filas y el menú es una tira deslizable. */
-  .cabecera { flex-wrap: wrap; gap: .6rem; padding: .7rem 1rem; }
+  /* Cabecera compacta: una fila con la marca y la sesión, y debajo el menú en
+     una sola tira que se desliza. Antes se partía en varias filas y ocupaba
+     media pantalla (tapaba la portada). */
+  .cabecera {
+    flex-wrap: wrap; gap: .5rem; padding: .55rem .9rem;
+    row-gap: .45rem;
+  }
   .sesion { margin-left: auto; }
+  .cabecera__menu {
+    order: 3; flex-basis: 100%; margin-left: 0; gap: .9rem;
+    overflow-x: auto; overflow-y: hidden; white-space: nowrap;
+    padding-bottom: .15rem; -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .cabecera__menu::-webkit-scrollbar { display: none; }
+  /* El panel de administración pone .nav directamente en la cabecera (no lleva
+     .cabecera__menu): se le da el mismo trato de tira deslizable. */
+  .cabecera > .nav {
+    order: 3; flex-basis: 100%; width: 100%; margin: 0;
+    overflow-x: auto; overflow-y: hidden; white-space: nowrap;
+    padding-bottom: .15rem; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .cabecera > .nav::-webkit-scrollbar { display: none; }
+  .nav { gap: 1.1rem; }
+  .nav a, .nav button { white-space: nowrap; }
+  .pais-selector, .idioma-selector { flex: 0 0 auto; margin-left: 0; }
+  .pais-selector select, .idioma-selector select { font-size: .8rem; padding: .3rem .55rem; }
   .cabecera__billetera.boton {
     display: inline-block; padding: .4rem .9rem; font-size: .85rem;
     white-space: nowrap; flex: 0 0 auto;
   }
-  .nav {
-    display: flex; order: 3; width: 100%; margin: 0; overflow-x: auto;
-    gap: 1.1rem; padding-bottom: .2rem; -webkit-overflow-scrolling: touch;
-  }
-  .nav::-webkit-scrollbar { display: none; }
 }
 
 /* ===== Portada con el puente sobre el lago de Maracaibo ===== */
@@ -434,6 +458,14 @@ input:focus { outline: 2px solid var(--dorado); outline-offset: 1px; }
   position: absolute; right: .8rem; bottom: .5rem; z-index: 2;
   font-size: .68rem; color: rgba(253, 246, 227, .55);
 }
+
+/* Sin sesión, la portada es la primera pantalla completa: la cabecera queda
+   debajo y no la tapa. Es la "portada de entrada" que se ve antes de entrar. */
+body.sin-sesion .portada {
+  min-height: 100vh; min-height: 100svh;
+  align-items: center;
+}
+body.sin-sesion .portada__emblema { margin-top: 0; }
 
 /* ===== Escaparate de ganadores recientes ===== */
 
@@ -609,6 +641,7 @@ input[type="text"], input[type="email"], input[type="password"], select {
 /* La cabecera se reparte en dos filas en pantallas pequeñas. */
 @media (max-width: 720px) {
   .portada { min-height: 300px; }
+  .portada__nombre { font-size: clamp(1.7rem, 8.5vw, 3rem); }
   .portada__slogan { letter-spacing: .1em; padding: .45rem 1rem; }
   .portada__emblema { margin-top: .8rem; }
   .portada__credito { font-size: .6rem; }
@@ -774,6 +807,10 @@ input[type="text"], input[type="email"], input[type="password"], select {
 .premio__pct { font-size: .72rem; color: var(--gris); }
 .formulario--linea { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); align-items: end; margin-bottom: 1.1rem; }
 .formulario--linea button { align-self: end; }
+/* Sin esto, un <select> con una opción larga ensancha su columna y se sale
+   del panel en pantallas pequeñas. */
+.formulario--linea > * { min-width: 0; }
+.formulario--linea select, .formulario--linea input { width: 100%; max-width: 100%; }
 
 /* ===== Ventanas del panel de administración ===== */
 

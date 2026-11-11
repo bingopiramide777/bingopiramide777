@@ -116,6 +116,9 @@ function pintarSesion() {
     acceso.hidden = !!token;
     jugar.hidden = !token;
   }
+  // Sin sesión, la portada es la primera pantalla completa y la cabecera se
+  // queda debajo (no la tapa): así el primer contacto es la portada de entrada.
+  document.body.classList.toggle("sin-sesion", !token);
   if (token) {
     const correo = document.createElement("span");
     correo.textContent = localStorage.getItem("bp777_correo") || "";
@@ -372,6 +375,10 @@ function abrirAcceso(modo) {
         refrescarTodo();
         refrescarRetiros();
   refrescarDepositos();
+        // Al entrar, la portada deja de ser la pantalla de inicio: se baja al
+        // juego para que se note el cambio y no parezca que no pasó nada.
+        const jugar = $("#jugar");
+        if (jugar) jugar.scrollIntoView({ behavior: "smooth", block: "start" });
         if (salaInvitada) {
           const id = salaInvitada;
           salaInvitada = "";
