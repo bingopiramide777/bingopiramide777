@@ -19,6 +19,7 @@ const TEXTOS = {
   es: {
     /* -- marca y portada -- */
     "app.eslogan": "Somos la pepa del queso",
+    "moneda.nombre": "dólares",
     "app.nota_portada": "Bingo de 75 bolas · Premios en {moneda}",
     "app.credito_portada": "Puente sobre el lago de Maracaibo",
     "nav.jugar": "Jugar",
@@ -368,6 +369,7 @@ const TEXTOS = {
 
   en: {
     "app.eslogan": "We're the bee's knees",
+    "moneda.nombre": "dollars",
     "app.nota_portada": "75-ball bingo · Prizes in {moneda}",
     "app.credito_portada": "Bridge over Lake Maracaibo",
     "nav.jugar": "Play",
@@ -703,6 +705,7 @@ const TEXTOS = {
 
   zh: {
     "app.eslogan": "我们是最棒的",
+    "moneda.nombre": "美元",
     "app.nota_portada": "75 球宾果 · 奖金以{moneda}计算",
     "app.credito_portada": "马拉开波湖大桥",
     "nav.jugar": "开始游戏",

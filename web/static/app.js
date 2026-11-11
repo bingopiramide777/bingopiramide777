@@ -34,9 +34,9 @@ function localeMoneda() {
   return localeDeIdioma();
 }
 
-/* Nombre de la moneda para los textos. Siempre el dólar. */
+/* Nombre de la moneda para los textos. Siempre el dólar, en el idioma elegido. */
 function nombreMoneda() {
-  return (paisInfo && paisInfo.currencyName) || "dólares";
+  return t("moneda.nombre");
 }
 
 /* El nombre del país en el idioma elegido ("Japón", "Japan", "日本"). */
@@ -1580,12 +1580,21 @@ function pintarSelectorPais() {
   pintarTextosMoneda();
 }
 
+/* Rellena las etiquetas con data-i18n. Las que llevan {moneda} reciben el
+   símbolo del país activo, para que no se quede el marcador a la vista. */
+function pintarEtiquetas() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    el.textContent = t(el.dataset.i18n, { moneda: simboloMoneda() });
+  });
+}
+
 /* Los textos que nombran la moneda (títulos, etiquetas) se actualizan al país
    activo y al idioma, para que no digan "dólares" a un jugador colombiano ni
    "cartón" a uno que lee en inglés. */
 function pintarTextosMoneda() {
   const sim = simboloMoneda();
   const nombre = nombreMoneda();
+  pintarEtiquetas();
   const etiquetaPrecio = $("#etiqueta-precio");
   if (etiquetaPrecio) etiquetaPrecio.textContent = t("salas.precio", { moneda: sim });
   const etiquetaRetiro = $("#etiqueta-retiro-importe");
@@ -1654,9 +1663,7 @@ function aplicarIdioma() {
   // El árabe se escribe de derecha a izquierda; el resto, de izquierda a derecha.
   const idioma = IDIOMAS.find((i) => i.code === idiomaElegido());
   document.documentElement.dir = (idioma && idioma.rtl) ? "rtl" : "ltr";
-  document.querySelectorAll("[data-i18n]").forEach((el) => {
-    el.textContent = t(el.dataset.i18n);
-  });
+  pintarEtiquetas();
   document.querySelectorAll("[data-i18n-ph]").forEach((el) => {
     el.placeholder = t(el.dataset.i18nPh);
   });
