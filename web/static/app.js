@@ -25,16 +25,27 @@ let catalogoPaises = [];       // todos los países soportados
 // en dólares. Las funciones t() y el selector viven en i18n.js.
 
 function simboloMoneda() {
-  return (paisInfo && paisInfo.currencySymbol) || "Bs";
+  return (paisInfo && paisInfo.currencySymbol) || "🫰";
 }
 
+/* El formato de los números sigue al idioma (no al país), porque el dinero es el
+   mismo en todo el mundo. El país solo cambia la bandera. */
 function localeMoneda() {
-  return (paisInfo && paisInfo.locale) || "es-VE";
+  return localeDeIdioma();
 }
 
 /* Nombre de la moneda para los textos. Siempre el dólar. */
 function nombreMoneda() {
   return (paisInfo && paisInfo.currencyName) || "dólares";
+}
+
+/* El nombre del país en el idioma elegido ("Japón", "Japan", "日本"). */
+function nombrePais(code, porDefecto) {
+  try {
+    const n = new Intl.DisplayNames([idiomaElegido()], { type: "region" }).of(code);
+    if (n && n !== code) return n;
+  } catch (err) { /* sin Intl se usa el nombre que manda el servidor */ }
+  return porDefecto || code;
 }
 
 /* --- peticiones --- */
@@ -1561,9 +1572,9 @@ function pintarSelectorPais() {
   const caja = $("#pais-selector");
   if (!caja || !catalogoPaises.length) return;
   caja.innerHTML = `
-    <select id="select-pais" aria-label="País y moneda">
+    <select id="select-pais" aria-label="${t("pais.etiqueta")}">
       ${catalogoPaises.map((p) => `<option value="${p.code}"
-        ${p.code === paisActual ? "selected" : ""}>${p.flag} ${p.name} (${p.currencySymbol})</option>`).join("")}
+        ${p.code === paisActual ? "selected" : ""}>${p.flag} ${nombrePais(p.code, p.name)} 🫰</option>`).join("")}
     </select>`;
   $("#select-pais").onchange = (e) => cambiarPais(e.target.value);
   pintarTextosMoneda();
@@ -1604,7 +1615,7 @@ async function cambiarPais(code) {
   await cargarConfigRetiro();
   refrescarTodo();
   cargarSalas();
-  avisar(t("aviso.pais_cambiado", { pais: paisInfo ? paisInfo.name : code }), "bien");
+  avisar(t("aviso.pais_cambiado", { pais: paisInfo ? nombrePais(paisInfo.code, paisInfo.name) : code }), "bien");
 }
 
 /* --- idioma --- */
@@ -1640,6 +1651,9 @@ async function cambiarIdioma(code) {
 /* Vuelca el diccionario a todo lo que lleve data-i18n y repinta lo dinámico. */
 function aplicarIdioma() {
   document.documentElement.lang = idiomaElegido();
+  // El árabe se escribe de derecha a izquierda; el resto, de izquierda a derecha.
+  const idioma = IDIOMAS.find((i) => i.code === idiomaElegido());
+  document.documentElement.dir = (idioma && idioma.rtl) ? "rtl" : "ltr";
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     el.textContent = t(el.dataset.i18n);
   });
@@ -1647,6 +1661,7 @@ function aplicarIdioma() {
     el.placeholder = t(el.dataset.i18nPh);
   });
   pintarTextosMoneda();
+  pintarSelectorPais();
   pintarSesion();
   cargarConfigRetiro();
   refrescarTodo();

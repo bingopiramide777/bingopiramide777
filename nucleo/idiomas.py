@@ -36,12 +36,25 @@ IDIOMAS: tuple[Idioma, ...] = (
     Idioma("es", "Español", "es-VE", "🇪🇸"),
     Idioma("en", "English", "en-US", "🇺🇸"),
     Idioma("zh", "中文", "zh-CN", "🇨🇳"),
+    Idioma("pt", "Português", "pt-BR", "🇧🇷"),
+    Idioma("fr", "Français", "fr-FR", "🇫🇷"),
+    Idioma("de", "Deutsch", "de-DE", "🇩🇪"),
+    Idioma("it", "Italiano", "it-IT", "🇮🇹"),
+    Idioma("ru", "Русский", "ru-RU", "🇷🇺"),
+    Idioma("ar", "العربية", "ar-SA", "🇸🇦"),
+    Idioma("hi", "हिन्दी", "hi-IN", "🇮🇳"),
+    Idioma("ja", "日本語", "ja-JP", "🇯🇵"),
+    Idioma("ko", "한국어", "ko-KR", "🇰🇷"),
+    Idioma("id", "Bahasa Indonesia", "id-ID", "🇮🇩"),
+    Idioma("tr", "Türkçe", "tr-TR", "🇹🇷"),
 )
 
 # Primeras letras de la cabecera Accept-Language -> nuestro código. Se mira el
 # idioma base ("zh-CN" -> "zh") porque los navegadores mandan variantes.
 PREFIJOS: dict[str, str] = {
-    "es": "es", "en": "en", "zh": "zh",
+    "es": "es", "en": "en", "zh": "zh", "pt": "pt", "fr": "fr", "de": "de",
+    "it": "it", "ru": "ru", "ar": "ar", "hi": "hi", "ja": "ja", "ko": "ko",
+    "id": "id", "tr": "tr",
 }
 
 

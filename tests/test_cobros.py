@@ -148,7 +148,7 @@ class CobrosTest(unittest.TestCase):
         self.assertIn("definicion", r)
         self.assertIn("totales", r)
         self.assertIn("auditoria", r)
-        self.assertTrue(r["totales"]["anfitrion_texto"].startswith("$"))
+        self.assertTrue(r["totales"]["anfitrion_texto"].startswith("🫰"))
 
 
 if __name__ == "__main__":

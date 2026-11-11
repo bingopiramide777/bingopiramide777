@@ -118,7 +118,7 @@ class ServidorTest(unittest.TestCase):
         g = datos["ganadores"][0]
         self.assertEqual(g["nombre"], "Ana P.")
         self.assertEqual(g["sala"], "Sala Roma")
-        self.assertEqual(g["premio_texto"], "$ 1.500,00")
+        self.assertEqual(g["premio_texto"], "🫰 1.500,00")
         self.assertNotIn("@", g["nombre"])
 
     def test_sin_ganadores_la_lista_viene_vacia(self):
@@ -334,7 +334,7 @@ class ServidorTest(unittest.TestCase):
         sala = next(s for s in r["salas"] if s["id"] == "sala-ganar-desde-casa")
         self.assertEqual(sala["modo"], "carton_lleno")
         self.assertEqual(sala["max_cartones"], 6)
-        self.assertEqual(sala["precio_texto"], "$ 2,00")
+        self.assertEqual(sala["precio_texto"], "🫰 2,00")
 
     def test_no_se_pueden_comprar_mas_de_seis_cartones_en_la_sala_de_casa(self):
         """El tope por jugador es lo que impide acaparar el bote."""
@@ -367,7 +367,7 @@ class ServidorTest(unittest.TestCase):
         estado, r = self.pedir("/api/sala/crear", {
             "nombre": "La de Ana", "modo": "normal", "precio": "25,00", "publica": True}, token)
         self.assertEqual(estado, 200)
-        self.assertEqual(r["sala"]["precio_texto"], "$ 25,00")
+        self.assertEqual(r["sala"]["precio_texto"], "🫰 25,00")
         self.assertEqual(r["sala"]["dueno"], "ana@correo.com")
         self.assertIn("10%", r["mensaje"])
 
@@ -433,7 +433,7 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(estado, 200)
         self.assertEqual(len(r["salas"]), 1)
         self.assertEqual(r["ganancias"]["anfitrion"], 0)
-        self.assertEqual(r["ganancias"]["anfitrion_texto"], "$ 0,00")
+        self.assertEqual(r["ganancias"]["anfitrion_texto"], "🫰 0,00")
 
     def test_el_jugador_juega_en_la_sala_que_elige(self):
         token = self.usuario("ana@correo.com", recarga="5000,00")
@@ -474,7 +474,7 @@ class ServidorTest(unittest.TestCase):
         estado, r = self.pedir("/api/admin/evento",
                                {"precio": "100,00", "aforo": 2, "premios_pct": "70,20,10"}, at)
         self.assertEqual(estado, 200)
-        self.assertEqual(r["evento"]["precio_texto"], "$ 100,00")
+        self.assertEqual(r["evento"]["precio_texto"], "🫰 100,00")
         self.assertEqual(r["evento"]["aforo"], 2)
         self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [70, 20, 10])
 
@@ -725,7 +725,10 @@ class ServidorTest(unittest.TestCase):
     def test_el_catalogo_de_paises_se_ve_sin_entrar(self):
         estado, r = self.pedir("/api/paises")
         self.assertEqual(estado, 200)
-        self.assertEqual([p["code"] for p in r["paises"]], ["VE", "CO", "CL", "US"])
+        codigos = [p["code"] for p in r["paises"]]
+        self.assertGreaterEqual(len(codigos), 200)
+        for esperado in ("VE", "CO", "CL", "US", "JP"):
+            self.assertIn(esperado, codigos)
         # Dos métodos, iguales para todos: PayPal y cripto (USDT).
         self.assertEqual(len(r["metodos_pago"]), 2)
 
@@ -742,7 +745,7 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(estado, 200)
         self.assertEqual(r["pais"], "VE")
         self.assertEqual(r["moneda"], "USD")
-        self.assertEqual(r["simbolo"], "$")
+        self.assertEqual(r["simbolo"], "🫰")
         self.assertEqual(r["metodo_pago"]["id"], "paypal")
 
     def test_la_cabecera_de_pais_cambia_la_moneda(self):
@@ -751,7 +754,7 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(r["pais"], "CO")
         # El país cambia el idioma, pero el dinero es siempre el dólar.
         self.assertEqual(r["moneda"], "USD")
-        self.assertEqual(r["simbolo"], "$")
+        self.assertEqual(r["simbolo"], "🫰")
         self.assertEqual(r["metodo_pago"]["id"], "paypal")
 
     def test_el_idioma_detecta_el_pais(self):
@@ -767,7 +770,7 @@ class ServidorTest(unittest.TestCase):
     def test_los_importes_se_muestran_en_la_moneda_del_pais(self):
         estado, r = self.pedir("/api/config", cabeceras_extra={"X-Pais": "US"})
         self.assertEqual(estado, 200)
-        self.assertTrue(r["deposito_minimo_texto"].startswith("$"))
+        self.assertTrue(r["deposito_minimo_texto"].startswith("🫰"))
 
     def test_el_deposito_guarda_el_pais(self):
         token = self.usuario("ana@correo.com")
@@ -784,10 +787,10 @@ class ServidorTest(unittest.TestCase):
         estado, r = self.pedir("/api/admin/sala/editar",
                                {"sala": "sala-zulia", "precio": "3000,00"}, at)
         self.assertEqual(estado, 200)
-        self.assertEqual(r["sala"]["precio_texto"], "$ 3.000,00")
+        self.assertEqual(r["sala"]["precio_texto"], "🫰 3.000,00")
         _, salas = self.pedir("/api/salas")
         zulia = [s for s in salas["salas"] if s["id"] == "sala-zulia"][0]
-        self.assertEqual(zulia["precio_texto"], "$ 3.000,00")
+        self.assertEqual(zulia["precio_texto"], "🫰 3.000,00")
 
     def test_el_precio_nuevo_lo_paga_el_jugador(self):
         at = self.admin()
@@ -811,7 +814,7 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(estado, 403)
         _, salas = self.pedir("/api/salas")
         zulia = [s for s in salas["salas"] if s["id"] == "sala-zulia"][0]
-        self.assertEqual(zulia["precio_texto"], "$ 10,00", "el precio no debió cambiar")
+        self.assertEqual(zulia["precio_texto"], "🫰 10,00", "el precio no debió cambiar")
 
     def test_un_precio_desmedido_se_rechaza(self):
         at = self.admin()
@@ -854,7 +857,7 @@ class ServidorTest(unittest.TestCase):
                                {"sala": "sala-ganar-desde-casa", "precio": "25,00",
                                 "tipo_juego": "diagonal"}, at)
         self.assertEqual(estado, 200)
-        self.assertEqual(r["sala"]["precio_texto"], "$ 25,00")
+        self.assertEqual(r["sala"]["precio_texto"], "🫰 25,00")
         self.assertEqual(r["sala"]["tipo_juego"], "diagonal")
 
     def test_el_precio_nuevo_de_trabajo_lo_paga_el_jugador(self):
@@ -995,7 +998,7 @@ class ServidorTest(unittest.TestCase):
         self.assertIn("app_trabajo", claves)
         self.assertTrue(r["auditoria"]["sin_duplicados"])
         self.assertEqual(r["auditoria"]["avisos"], [])
-        self.assertTrue(r["totales"]["app_total_texto"].startswith("$"))
+        self.assertTrue(r["totales"]["app_total_texto"].startswith("🫰"))
 
     def test_el_panel_de_admin_trae_la_ventana_de_cobros(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.puerto}/admin", timeout=10) as r:

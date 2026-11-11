@@ -176,7 +176,7 @@ class TestSalaConPais(unittest.TestCase):
         # Sin conversión: 10 dólares son 1.000 céntimos, mire quien mire.
         sala = self.salas.crear("ana@correo.com", "Mi sala", "normal", "10,00", pais="CO")
         self.assertEqual(sala.precio_carton, 1_000)
-        self.assertEqual(sala.precio_nativo_texto, "$ 10,00")
+        self.assertEqual(sala.precio_nativo_texto, "🫰 10,00")
 
     def test_un_pais_desconocido_cae_en_el_de_por_defecto(self):
         sala = self.salas.crear("ana@correo.com", "Mi sala", "normal", "10,00", pais="XX")
@@ -193,10 +193,10 @@ class TestSalaConPais(unittest.TestCase):
         sala = self.salas.de("sala-zulia")  # $ 10,00 de cartón
         paises.usar_pais("US")
         try:
-            self.assertEqual(sala.precio_texto, "$ 10,00")
+            self.assertEqual(sala.precio_texto, "🫰 10,00")
         finally:
             paises.usar_pais("VE")
-        self.assertEqual(sala.precio_texto, "$ 10,00")
+        self.assertEqual(sala.precio_texto, "🫰 10,00")
 
 
 if __name__ == "__main__":

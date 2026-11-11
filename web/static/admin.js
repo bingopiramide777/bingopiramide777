@@ -6,12 +6,16 @@ const CLAVE_TOKEN = "bp777_token";
 let token = localStorage.getItem(CLAVE_TOKEN) || "";
 let jugadores = [];
 
-// Métodos de pago de todos los países y su bandera, para la cola de depósitos.
+// Bandera de un país a partir de su código ISO ('VE' -> 🇻🇪), para la cola de
+// depósitos. Vale para cualquier país del mundo, no solo unos pocos.
 const NOMBRES_METODO = {
   paypal: "PayPal", cripto: "USDT (cripto)",
 };
-const BANDERAS_PAIS = { VE: "🇻🇪", CO: "🇨🇴", CL: "🇨🇱", US: "🇺🇸" };
-const banderaPais = (code) => BANDERAS_PAIS[code] || "🏳️";
+const banderaPais = (code) => {
+  const c = (code || "").trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(c)) return "🏳️";
+  return String.fromCodePoint(...[...c].map((ch) => 0x1F1E6 + ch.charCodeAt(0) - 65));
+};
 
 async function pedir(ruta, opciones = {}) {
   const cabeceras = { "Content-Type": "application/json" };

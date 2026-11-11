@@ -84,13 +84,13 @@ class HerramientasTest(unittest.TestCase):
         r = self.h.ejecutar("resumen", {})
         self.assertEqual(r["jugadores"], 1)
         self.assertEqual(r["administradores"], 0)
-        self.assertEqual(r["dinero_en_cuentas"], "$ 0,00")
+        self.assertEqual(r["dinero_en_cuentas"], "🫰 0,00")
         self.assertEqual(r["depositos_pendientes"], 0)
 
     def test_buscar_jugador(self):
         r = self.h.ejecutar("buscar_jugador", {"correo": "ana@correo.com"})
         self.assertEqual(r["correo"], "ana@correo.com")
-        self.assertEqual(r["saldo"], "$ 0,00")
+        self.assertEqual(r["saldo"], "🫰 0,00")
 
     def test_buscar_jugador_que_no_existe(self):
         r = self.h.ejecutar("buscar_jugador", {"correo": "nadie@correo.com"})
@@ -247,7 +247,7 @@ class GlenisTest(unittest.TestCase):
         pasos = [
             self._respuesta({"content": None, "tool_calls": [
                 {"id": "1", "function": {"name": "resumen", "arguments": "{}"}}]}),
-            self._respuesta({"content": "Hay 1 jugador y $ 0,00."}),
+            self._respuesta({"content": "Hay 1 jugador y 🫰 0,00."}),
         ]
         with patch.object(self.glenis, "_pedir", side_effect=pasos):
             r = self.glenis.conversar([{"role": "user", "content": "resumen"}])

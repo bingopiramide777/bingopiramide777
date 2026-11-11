@@ -208,7 +208,7 @@ class ConfigurarSalasTest(unittest.TestCase):
         self.assertEqual(sala.nombre, "Mérida")
 
     def test_la_sala_de_la_casa_admite_precios_altos(self):
-        """$ 50.000 no cabe en el tope de las salas de jugador, pero sí aquí."""
+        """🫰 50.000 no cabe en el tope de las salas de jugador, pero sí aquí."""
         sala = self.salas.configurar_sala("sala-zulia", precio="50000,00")
         self.assertEqual(sala.precio_carton, 5_000_000)
 
@@ -543,7 +543,7 @@ class EconomiaTest(unittest.TestCase):
         e = self.salas.economia()
         self.assertEqual(e["app"], 0)
         self.assertEqual(e["botes"], 0)
-        self.assertEqual(a_texto(e["app"]), "$ 0,00")
+        self.assertEqual(a_texto(e["app"]), "🫰 0,00")
 
     def test_los_porcentajes_son_los_documentados(self):
         # Sala de la casa: 80 % al ganador y 20 % para la app.
