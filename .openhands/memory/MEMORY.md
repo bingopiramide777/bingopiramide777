@@ -185,6 +185,27 @@ El usuario trabaja desde el teléfono. Botones ≥44 px, `font-size:16px` en inp
   `taktakmessenger` y solo tiene lectura (`push=false`). El usuario aporta el PAT de
   `bingopiramide777` (admin/push) cuando toca empujar; **no guardar el token**.
 
+## Entorno, pagos y flecha del panel (2026-11-11)
+- **El entorno se reinicia y borra `/tmp` y `HOME`. `/workspace/project/` SÍ
+  persiste** → guardar el trabajo en `/workspace/project/bingo777`, nunca en `/tmp`.
+  Recuperación: reaplicar en orden los edits del `file_editor` del registro
+  `/workspace/conversations/<id>/events/` (los `i18n.js` hechos por heredoc NO están
+  ahí y hay que reañadirlos a mano). Detalle en `2026-11-11.md`.
+- **Flecha "Volver al juego" del panel**: `html, body { overflow-x: hidden }` rompía
+  el `position: sticky` de la cabecera (el botón se iba a `y=-2000`). Arreglo:
+  `overflow-x: clip`. El panel ya tenía `popstate` para la flecha del móvil.
+- **Dos pagos separados** (petición del usuario): *entra* dinero = depósito
+  (botón "Depositar" en el juego; ventana "Entradas (cobros)" en el panel);
+  *sale* dinero = retiro (botón "Retirar" en el juego; ventana "Salidas (pagos)").
+  La comisión del anfitrión/trabajador ya se acredita sola al cantar el 1er puesto,
+  así que al personal de trabajo se le paga por el flujo de salida (retiro).
+- **Billetera en móvil**: el backend funciona (firma EVM real verificada). El móvil
+  fallaba por no tener proveedor inyectado; se añaden deep links de MetaMask/Phantom
+  (`#billetera-abrir`) que solo salen si `!billeteraInyectada() && esMovil()`.
+- **Subida a GitHub: bloqueada**. `$GITHUB_TOKEN` es solo lectura; el resto de tokens
+  dan "Bad credentials". Hace falta un PAT fine-grained de `bingopiramide777` con
+  *Contents: read and write*.
+
 ## Pendiente / avisos
 Falta pasarela de pago real, verificación de identidad en retiros, límite de
 recargas y HTTPS. En Venezuela las apuestas requieren autorización: el usuario
