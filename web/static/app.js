@@ -895,6 +895,8 @@ async function refrescarBilletera() {
       $("#btn-billetera-desafio").hidden = false;
       const abrir = $("#billetera-abrir");
       if (abrir) abrir.hidden = true;
+      const elegirCaja = $("#billetera-elegir");
+      if (elegirCaja) elegirCaja.hidden = true;
     }
   } catch (err) {
     estado.textContent = "";
@@ -910,41 +912,88 @@ function conectarBilletera() {
   const pedirDesafio = $("#btn-billetera-desafio");
   if (!pedirDesafio) return;
 
-  // Billetera que el navegador trae puesta (MetaMask para EVM, Phantom para Solana).
-  function billeteraInyectada() {
-    if (window.ethereum && window.ethereum.request) return "evm";
-    const sol = window.phantom?.solana || (window.solana && window.solana.isPhantom ? window.solana : null);
-    if (sol && sol.signMessage) return "solana";
-    return "";
+  // --- Descubrimiento de billeteras ---
+  // MetaMask, Coinbase, Rabby, Trust, OKX… se anuncian por su cuenta con el
+  // estándar EIP-6963, así que se listan todas aunque convivan en el navegador.
+  const elegir = $("#billetera-elegir");
+  const anunciadas = [];
+  window.addEventListener("eip6963:announceProvider", (e) => {
+    const d = e.detail;
+    if (!d || !d.provider || !d.info) return;
+    if (anunciadas.some((x) => x.uuid === d.info.uuid)) return;
+    anunciadas.push({ uuid: d.info.uuid, nombre: d.info.name,
+                      icono: d.info.icon, provider: d.provider, red: "evm" });
+    if (elegir && !elegir.hidden) pintarOpciones();
+  });
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+
+  // Todas las billeteras que se pueden usar aquí: las anunciadas, la inyectada
+  // de siempre (navegadores viejos) y Phantom para Solana.
+  function billeterasDisponibles() {
+    const lista = [...anunciadas];
+    if (!lista.length && window.ethereum && window.ethereum.request) {
+      const e = window.ethereum;
+      const nombre = (e.isMetaMask && "MetaMask") || (e.isCoinbaseWallet && "Coinbase Wallet")
+        || (e.isRabby && "Rabby") || (e.isTrust && "Trust Wallet")
+        || (e.isOKExWallet && "OKX Wallet") || "Billetera del navegador";
+      lista.push({ uuid: "inyectada", nombre, icono: "", provider: e, red: "evm" });
+    }
+    const sol = window.phantom?.solana
+      || (window.solana && window.solana.isPhantom ? window.solana : null);
+    if (sol && sol.signMessage) {
+      lista.push({ uuid: "phantom", nombre: "Phantom", icono: "", provider: sol, red: "solana" });
+    }
+    return lista;
   }
 
-  // Conecta y firma el mensaje con la billetera del navegador.
+  function hayBilletera() { return billeterasDisponibles().length > 0; }
+
+  function pintarOpciones() {
+    const caja = $("#billetera-opciones");
+    if (!caja) return;
+    const lista = billeterasDisponibles();
+    caja.innerHTML = lista.map((b, i) => `
+      <button class="boton boton--principal" type="button" data-billetera="${i}">
+        ${b.icono ? `<img src="${b.icono}" alt="" width="20" height="20" style="vertical-align:middle;margin-right:.4rem">` : ""}${b.nombre}
+      </button>`).join("");
+    caja.querySelectorAll("[data-billetera]").forEach((btn) =>
+      (btn.onclick = () => firmarYElegir(lista[Number(btn.dataset.billetera)])));
+  }
+
+  // Conecta y firma el mensaje con la billetera elegida.
   // Devuelve {direccion, firma, red} o null.
-  async function firmarConBilletera() {
-    const red = billeteraInyectada();
-    if (!red) return null;
+  async function firmarConBilletera(billetera) {
+    if (!billetera) return null;
+    const { provider, red } = billetera;
     let direccion;
     let firma;
     if (red === "evm") {
-      const cuentas = await window.ethereum.request({ method: "eth_requestAccounts" });
+      const cuentas = await provider.request({ method: "eth_requestAccounts" });
       direccion = cuentas && cuentas[0];
       if (!direccion) { avisar(t("billetera.sin_cuenta"), "error"); return null; }
-      firma = await window.ethereum.request({
+      firma = await provider.request({
         method: "personal_sign",
         params: [mensajeBilletera, direccion],
       });
     } else {
-      const sol = window.phantom?.solana || window.solana;
-      const resp = await sol.connect();
-      direccion = (resp && resp.publicKey ? resp.publicKey : sol.publicKey).toString();
+      const resp = await provider.connect();
+      direccion = (resp && resp.publicKey ? resp.publicKey : provider.publicKey).toString();
       if (!direccion) { avisar(t("billetera.sin_cuenta"), "error"); return null; }
-      const firmado = await sol.signMessage(new TextEncoder().encode(mensajeBilletera), "utf8");
+      const firmado = await provider.signMessage(new TextEncoder().encode(mensajeBilletera), "utf8");
       firma = "0x" + Array.from(firmado.signature, (b) => b.toString(16).padStart(2, "0")).join("");
     }
     $("#billetera-direccion").value = direccion;
     $("#billetera-firma").value = firma;
     return { direccion, firma, red };
   }
+
+  async function firmarYElegir(billetera) {
+    try {
+      const firmado = await firmarConBilletera(billetera);
+      if (firmado) await enviarBilletera(firmado.direccion, firmado.firma, firmado.red);
+    } catch (err) { avisar(err.message || t("billetera.cancelo"), "error"); }
+  }
+
 
   async function enviarBilletera(direccion, firma, red) {
     if (!direccion) return avisar(t("billetera.falta_direccion"), "error");
@@ -975,8 +1024,7 @@ function conectarBilletera() {
   function mostrarEnlacesSiHaceFalta() {
     const caja = $("#billetera-abrir");
     if (!caja) return;
-    const sinBilletera = !billeteraInyectada();
-    const mostrar = sinBilletera && esMovil();
+    const mostrar = !hayBilletera() && esMovil();
     caja.hidden = !mostrar;
     if (!mostrar) return;
     const { mm, ph } = enlacesDeBilletera();
@@ -986,26 +1034,34 @@ function conectarBilletera() {
     if (b) b.href = ph;
   }
 
+  // Ofrece elegir billetera; con una sola, firma directamente.
+  async function conectarConAlguna() {
+    const lista = billeterasDisponibles();
+    if (lista.length === 1) return firmarYElegir(lista[0]);
+    if (lista.length > 1) {
+      if (elegir) elegir.hidden = false;
+      pintarOpciones();
+      return null;
+    }
+    mostrarEnlacesSiHaceFalta();
+    return null;
+  }
+
   pedirDesafio.onclick = async () => {
     if (!token) return abrirAcceso("entrar");
     try {
       // Con billetera en el navegador se conecta y firma de una sola vez, sin
       // más pasos: el jugador solo confirma en su billetera.
-      const hayBilletera = billeteraInyectada();
+      const hay = hayBilletera();
       const r = await post("/api/billetera/desafio", {});
       mensajeBilletera = r.mensaje;
       $("#billetera-mensaje").value = r.mensaje;
       $("#billetera-paso2").hidden = false;
       pedirDesafio.hidden = true;
-      $("#btn-billetera-firmar").hidden = !hayBilletera;
+      $("#btn-billetera-firmar").hidden = !hay;
       const instr = $("#billetera-instrucciones");
-      if (instr) instr.textContent = t(hayBilletera ? "billetera.confirma" : "billetera.instrucciones");
-      if (hayBilletera) {
-        const firmado = await firmarConBilletera();
-        if (firmado) await enviarBilletera(firmado.direccion, firmado.firma, firmado.red);
-      } else {
-        mostrarEnlacesSiHaceFalta();
-      }
+      if (instr) instr.textContent = t(hay ? "billetera.confirma" : "billetera.instrucciones");
+      await conectarConAlguna();
     } catch (err) { avisar(err.message || t("billetera.cancelo"), "error"); }
   };
 
@@ -1025,8 +1081,9 @@ function conectarBilletera() {
 
   $("#btn-billetera-firmar").onclick = async () => {
     try {
-      const firmado = await firmarConBilletera();
-      if (firmado) await enviarBilletera(firmado.direccion, firmado.firma, firmado.red);
+      const lista = billeterasDisponibles();
+      if (lista.length === 1) return firmarYElegir(lista[0]);
+      return conectarConAlguna();
     } catch (err) { avisar(err.message || t("billetera.cancelo"), "error"); }
   };
 

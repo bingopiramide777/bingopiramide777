@@ -338,6 +338,13 @@
       <div id="billetera-form">
         <button class="boton boton--principal boton--alto boton--ancho" id="btn-billetera-desafio" data-i18n="billetera.vincular">Vincular mi billetera</button>
 
+        <!-- Con varias billeteras instaladas, cada una se anuncia por su cuenta
+             (estándar EIP-6963) y aquí el jugador elige con cuál firma. -->
+        <div id="billetera-elegir" hidden>
+          <p class="ayuda" data-i18n="billetera.elegir">Elige tu billetera:</p>
+          <div class="acciones acciones--pegadas" id="billetera-opciones"></div>
+        </div>
+
         <!-- En el teléfono la billetera no vive en el navegador: hay que abrir la
              app dentro de la propia billetera (MetaMask/Phantom) para que se
              inyecte y la vinculación sea de un toque. -->
