@@ -630,6 +630,19 @@ input[type="text"], input[type="email"], input[type="password"], select {
   content: "🔒"; position: absolute; left: 0; font-size: .82rem;
 }
 
+/* Vídeo del paso a paso: ancho completo y en vertical, cómodo en el teléfono. */
+.guia-billetera__video {
+  margin: 1rem 0 0; padding: 0;
+  display: grid; gap: .5rem;
+}
+.guia-billetera__video video {
+  width: 100%; max-height: 60vh; border-radius: 12px;
+  background: #000; border: 1px solid rgba(255, 255, 255, .12);
+}
+.guia-billetera__video figcaption {
+  color: var(--texto-suave); font-size: .84rem; text-align: center;
+}
+
 .lista-retiros { list-style: none; padding: 0; margin: .8rem 0 0; display: grid; gap: .6rem; }
 .lista-retiros li {
   display: flex; align-items: center; justify-content: space-between; gap: .8rem; flex-wrap: wrap;

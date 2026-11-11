@@ -357,6 +357,14 @@
             <li data-i18n="billetera.como_nota_varias">Si tienes varias billeteras instaladas, primero elige con cuál quieres vincular.</li>
             <li data-i18n="billetera.como_nota_movil">¿En el teléfono? Abre la web dentro de la app de tu billetera (botón «Abrir en MetaMask») para que se conecte sola.</li>
           </ul>
+
+          <!-- Vídeo con el paso a paso. Solo aparece cuando el archivo existe
+               (ver cargarVideoBilletera en app.js): así, si todavía no está
+               subido, la sección se ve igual que antes. -->
+          <figure class="guia-billetera__video" id="billetera-video" hidden>
+            <video id="billetera-video-player" controls playsinline preload="metadata"></video>
+            <figcaption data-i18n="billetera.video_titulo">Vídeo: cómo conectar tu billetera</figcaption>
+          </figure>
         </div>
 
         <!-- Con varias billeteras instaladas, cada una se anuncia por su cuenta
