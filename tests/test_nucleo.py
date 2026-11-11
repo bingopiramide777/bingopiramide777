@@ -143,5 +143,31 @@ class GanadoresRecientesTest(unittest.TestCase):
         self.assertEqual(len(self.almacen.ganadores_recientes(limite=3)), 3)
 
 
+class CartonesAlmacenTest(unittest.TestCase):
+    """Guardar y borrar cartones: lo usa la administración al colocarlos a mano."""
+
+    def setUp(self):
+        import os, tempfile
+        self.almacen = Almacen(os.path.join(tempfile.mkdtemp(), "prueba.db"))
+
+    def tearDown(self):
+        self.almacen.cerrar()
+
+    def test_se_borra_un_carton_por_su_id(self):
+        self.almacen.guardar_carton("c1", "p1", "ana@x.com", "1|2|3|4|5")
+        self.almacen.guardar_carton("c2", "p1", "ana@x.com", "6|7|8|9|10")
+        self.almacen.borrar_carton("c1")
+        ids = [f["id"] for f in self.almacen.cartones("p1")]
+        self.assertEqual(ids, ["c2"])
+
+    def test_se_borran_los_cartones_de_un_jugador(self):
+        self.almacen.guardar_carton("c1", "p1", "ana@x.com", "1|2|3|4|5")
+        self.almacen.guardar_carton("c2", "p1", "ana@x.com", "6|7|8|9|10")
+        self.almacen.guardar_carton("c3", "p1", "luis@x.com", "1|2|3|4|5")
+        self.almacen.borrar_cartones_de("p1", "ana@x.com")
+        quedan = self.almacen.cartones("p1")
+        self.assertEqual([f["id"] for f in quedan], ["c3"])
+
+
 if __name__ == "__main__":
     unittest.main()

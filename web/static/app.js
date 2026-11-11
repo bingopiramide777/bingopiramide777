@@ -83,7 +83,8 @@ function pintarCarton(destino, numeros, marcados = []) {
       const esLibre = f === 2 && c === 2;
       if (esLibre) {
         celda.classList.add("celda--libre");
-        celda.textContent = t("mesa.libre");
+        // El centro libre lleva el emblema de la app; si no cargara, queda la estrella.
+        celda.innerHTML = '<img class="celda__logo" src="/emblema.svg" alt="' + t("mesa.libre") + '">';
       } else {
         celda.textContent = numeros[f][c];
       }
@@ -619,11 +620,52 @@ async function pintarEvento(salaId) {
               : t("torneo.jugadores", { n: e.jugadores, aforo: e.aforo || "∞" })}
           </span>
         </div>
+        <p class="evento__cuenta" id="evento-cuenta" hidden></p>
         <p class="evento__bote">${t("torneo.bote", { precio: e.precio_texto, bote: e.bote_texto })}</p>
         <div class="evento__premios">${premios || `<p class="ayuda">${t("torneo.sin_premios")}</p>`}</div>
       </div>`;
+    fijarCuentaEvento(e.fecha_partida, e.hora_partida);
   } catch (err) { caja.innerHTML = ""; }
 }
+
+/* La cuenta atrás del evento: va en la cabecera de la sala de Lago de Maracaibo.
+   Se calcula una vez el momento de inicio y un reloj global la refresca cada
+   segundo, aunque la cabecera se vuelva a dibujar. */
+let marcaEvento = NaN;
+let textoEvento = "";
+
+function fijarCuentaEvento(fecha, hora) {
+  marcaEvento = marcaDe(fecha, hora);
+  textoEvento = [fecha, hora].filter(Boolean).join(" ");
+  refrescarCuentaEvento();
+}
+
+function refrescarCuentaEvento() {
+  const caja = $("#evento-cuenta");
+  if (!caja) return;
+  if (Number.isFinite(marcaEvento)) {
+    const segundos = Math.max(0, Math.round(marcaEvento - Date.now() / 1000));
+    if (segundos <= 0) {
+      caja.textContent = t("cuenta.ya");
+      caja.classList.add("evento__cuenta--ya");
+      return;
+    }
+    caja.classList.remove("evento__cuenta--ya");
+    const h = Math.floor(segundos / 3600);
+    const m = String(Math.floor((segundos % 3600) / 60)).padStart(2, "0");
+    const s = String(segundos % 60).padStart(2, "0");
+    const tiempo = h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+    caja.textContent = t("cuenta.empieza", { tiempo });
+    caja.hidden = false;
+  } else if (textoEvento) {
+    caja.textContent = t("torneo.se_juega", { cuando: textoEvento });
+    caja.hidden = false;
+  } else {
+    caja.hidden = true;
+  }
+}
+
+setInterval(refrescarCuentaEvento, 1000);
 
 function nombrePuesto(n) {
   return t("puesto." + n) || n + "º";
@@ -768,7 +810,7 @@ async function refrescarPartida() {
     const mio = (p.a_cuanto_estan || []).find(
       (f) => f.jugador === (localStorage.getItem("bp777_correo") || ""));
     refrescarCercania(mio ? mio.faltan : null);
-    pintarCuentaAtras(p.fecha_partida);
+    pintarCuentaAtras(p.fecha_partida, p.hora_partida);
     const botonBola = $("#btn-bola");
     botonBola.disabled = !token || p.estado === "terminada";
     if (p.ganador) $("#estado-partida").textContent = t("mesa.gano", { nombre: p.ganador });
@@ -1489,15 +1531,32 @@ function pintarOponentes(filas) {
 
 /* --- cuenta atrás de la partida --- */
 
-function pintarCuentaAtras(fecha) {
+// Cuándo empieza, en segundos epoch. Acepta fecha + hora ISO ("2026-12-31" y
+// "20:00") o una marca de tiempo ya hecha. NaN si no se puede calcular.
+function marcaDe(fecha, hora) {
+  const numero = Number(fecha);
+  if (Number.isFinite(numero) && numero > 0) return numero;
+  if (fecha && hora) {
+    const t = Date.parse(`${fecha}T${hora}`);
+    if (Number.isFinite(t)) return t / 1000;
+  }
+  return NaN;
+}
+
+function pintarCuentaAtras(fecha, hora) {
   const caja = $("#cuenta-atras");
   if (!caja) return;
   clearInterval(cuentaAtras);
-  // La sala guarda la fecha como texto libre ("hoy 8 pm") o como marca de
-  // tiempo. Solo se cuenta atrás cuando es un número que podemos restar.
-  const marca = Number(fecha);
-  if (!fecha || !Number.isFinite(marca) || marca <= 0) {
-    caja.hidden = true;
+  const marca = marcaDe(fecha, hora);
+  if (!Number.isFinite(marca)) {
+    // Sin momento calculable: si hay texto, se enseña tal cual.
+    if (fecha || hora) {
+      caja.hidden = false;
+      caja.textContent = [fecha, hora].filter(Boolean).join(" ");
+      caja.classList.remove("cuenta-atras--ya");
+    } else {
+      caja.hidden = true;
+    }
     return;
   }
   caja.hidden = false;

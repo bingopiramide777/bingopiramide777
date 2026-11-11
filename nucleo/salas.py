@@ -283,7 +283,8 @@ class Sala:
     tipo_juego: str = TIPO_JUEGO_POR_DEFECTO  # patrón que premia la sala
     cupo_cartones: int = 0             # cartones a la venta como máximo; 0 = sin tope
     max_cartones: int = 0              # cartones por jugador como máximo; 0 = sin tope
-    fecha_partida: str = ""            # cuándo se juega (texto libre: "hoy 8 pm")
+    fecha_partida: str = ""            # qué día se juega (texto: "2026-11-15")
+    hora_partida: str = ""             # a qué hora se juega (texto: "8:00 pm")
     pais: str = "VE"                   # país y moneda de la sala (Opción A)
     es_trabajo: bool = False           # sala de trabajo: el anfitrión pone juego y precio
 
@@ -370,6 +371,7 @@ class Sala:
             "cupo_cartones": self.cupo_cartones,
             "max_cartones": self.max_cartones,
             "fecha_partida": self.fecha_partida,
+            "hora_partida": self.hora_partida,
             "es_trabajo": self.es_trabajo,
         }
 
@@ -698,7 +700,8 @@ class Salas:
                         nombre: object | None = None, activa: object | None = None,
                         tipo_juego: object | None = None, cupo_cartones: object | None = None,
                         max_cartones: object | None = None,
-                        fecha_partida: object | None = None) -> Sala:
+                        fecha_partida: object | None = None,
+                        hora_partida: object | None = None) -> Sala:
         """Cambia precio, nombre, tipo de juego, cupo o fecha de una sala de la casa.
 
         Es lo que usa el panel de administración, para no tener que tocar el
@@ -729,6 +732,8 @@ class Salas:
             campos["max_cartones"] = self._max_cartones_valido(max_cartones)
         if fecha_partida is not None:
             campos["fecha_partida"] = str(fecha_partida).strip()[:60]
+        if hora_partida is not None:
+            campos["hora_partida"] = str(hora_partida).strip()[:20]
         if activa is not None:
             campos["activa"] = int(bool(activa))
         if campos:
@@ -737,7 +742,8 @@ class Salas:
 
     def configurar_trabajo(self, id_: str, quien: str, precio: object | None = None,
                            tipo_juego: object | None = None,
-                           fecha_partida: object | None = None) -> Sala:
+                           fecha_partida: object | None = None,
+                           hora_partida: object | None = None) -> Sala:
         """El anfitrión pone el juego y el precio del cartón en SU sala de trabajo.
 
         Solo la puede ajustar su dueño. El precio se mueve dentro de los límites de
@@ -755,6 +761,8 @@ class Salas:
             campos["tipo_juego"] = self._tipo_juego_valido(tipo_juego)
         if fecha_partida is not None:
             campos["fecha_partida"] = str(fecha_partida).strip()[:60]
+        if hora_partida is not None:
+            campos["hora_partida"] = str(hora_partida).strip()[:20]
         if campos:
             self.almacen.actualizar_sala(sala.id, campos)
         return self.de(sala.id)
@@ -765,6 +773,7 @@ class Salas:
                           cupo_cartones: object | None = None,
                           max_cartones: object | None = None,
                           fecha_partida: object | None = None,
+                          hora_partida: object | None = None,
                           ganadores: object | None = None) -> Sala:
         """Ajusta la sala de eventos: precio, aforo, premios, tipo de juego y fecha.
 
@@ -806,6 +815,8 @@ class Salas:
             campos["max_cartones"] = self._max_cartones_valido(max_cartones)
         if fecha_partida is not None:
             campos["fecha_partida"] = str(fecha_partida).strip()[:60]
+        if hora_partida is not None:
+            campos["hora_partida"] = str(hora_partida).strip()[:20]
         if aforo is not None:
             try:
                 n = int(aforo)
@@ -966,5 +977,6 @@ class Salas:
                     cupo_cartones=int(fila["cupo_cartones"]) if "cupo_cartones" in claves else 0,
                     max_cartones=int(fila["max_cartones"]) if "max_cartones" in claves else 0,
                     fecha_partida=(fila["fecha_partida"] or "") if "fecha_partida" in claves else "",
+                    hora_partida=(fila["hora_partida"] or "") if "hora_partida" in claves else "",
                     pais=(fila["pais"] or "VE") if "pais" in claves else "VE",
                     es_trabajo=bool(fila["es_trabajo"]) if "es_trabajo" in claves else False)

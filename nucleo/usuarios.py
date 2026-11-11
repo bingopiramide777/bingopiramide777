@@ -22,6 +22,25 @@ from .almacen import Almacen
 ITERACIONES = 200_000
 LARGO_CLAVE_MINIMO = 8
 CORREO_VALIDO = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+# Dominios de correo que en realidad son el mismo buzón. Evita que la misma
+# persona cree dos cuentas escribiendo gmail.com y googlemail.com.
+DOMINIOS_GEMELOS = {"googlemail.com": "gmail.com"}
+
+
+def normalizar_correo(correo: str) -> str:
+    """Deja el correo en la forma que se guarda: sin espacios, en minúsculas.
+
+    Los puntos no se quitan (cambiarían la identidad de muchas cuentas reales);
+    solo se unifican los dominios que llevan al mismo buzón.
+    """
+    correo = (correo or "").strip().lower()
+    if "@" in correo:
+        usuario, _, dominio = correo.partition("@")
+        correo = f"{usuario}@{DOMINIOS_GEMELOS.get(dominio, dominio)}"
+    return correo
+
+
 COMUNES = {"12345678", "123456789", "password", "qwertyui", "contrasena", "11111111"}
 
 # Preguntas para recuperar la cuenta sin depender del correo. Son fáciles de
@@ -152,7 +171,7 @@ class Usuarios:
                   pregunta: str = "", respuesta: str = "",
                   verificado: bool = True, codigo_amigo: str = "",
                   codigo_invitacion: str = "") -> Usuario:
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         if not CORREO_VALIDO.match(correo):
             raise ErrorDeUsuario("Ese correo no tiene buena pinta.")
         if self.almacen.usuario(correo):
@@ -214,7 +233,7 @@ class Usuarios:
         (y para la de administración, que se crea por otro camino): sin esto su
         pantalla de referidos saldría en blanco.
         """
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         fila = self.almacen.usuario(correo)
         if fila is None:
             return ""
@@ -248,7 +267,7 @@ class Usuarios:
         (también la de administración), porque cualquiera puede invitar gente a la
         sala de trabajo.
         """
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         fila = self.almacen.usuario(correo)
         if fila is None:
             return ""
@@ -262,7 +281,7 @@ class Usuarios:
 
     def quien_invito(self, correo: str) -> str:
         """El correo de quien trajo a esta cuenta a la sala de trabajo ('' si no)."""
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         fila = self.almacen.usuario(correo)
         if fila is None or "invitado_por" not in fila.keys():
             return ""
@@ -270,7 +289,7 @@ class Usuarios:
 
     def asegurar_admin(self, correo: str, clave: str) -> bool:
         """Crea la cuenta de administración si no existe. Devuelve si la creó."""
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         if self.almacen.usuario(correo):
             return False
         validar_clave(clave)
@@ -278,7 +297,7 @@ class Usuarios:
         return True
 
     def usuario(self, correo: str) -> Usuario | None:
-        fila = self.almacen.usuario((correo or "").strip().lower())
+        fila = self.almacen.usuario(normalizar_correo(correo))
         return _usuario(fila) if fila else None
 
     def usuarios(self) -> list[Usuario]:
@@ -294,7 +313,7 @@ class Usuarios:
         Es lo importante: si alguien te había robado la cuenta, cambiar la clave
         sin cerrar sesiones no lo echa. Con esto, sí.
         """
-        correo = correo.strip().lower()
+        correo = normalizar_correo(correo)
         validar_clave(nueva)
         self.almacen.cambiar_huella(correo, hash_clave(nueva))
         self.almacen.borrar_sesiones_de(correo)
@@ -305,7 +324,7 @@ class Usuarios:
 
     def cambiar_foto(self, correo: str, foto: str) -> str:
         """Guarda la foto de perfil de una cuenta. Devuelve la foto guardada."""
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         if not self.almacen.usuario(correo):
             raise ErrorDeUsuario("Esa cuenta no existe.")
         limpia = validar_foto(foto)
@@ -318,11 +337,11 @@ class Usuarios:
     # -- recuperación: pregunta secreta --
 
     def pregunta_de(self, correo: str) -> str | None:
-        fila = self.almacen.usuario((correo or "").strip().lower())
+        fila = self.almacen.usuario(normalizar_correo(correo))
         return (fila["pregunta"] or None) if fila else None
 
     def verificar_respuesta(self, correo: str, respuesta: str) -> bool:
-        fila = self.almacen.usuario((correo or "").strip().lower())
+        fila = self.almacen.usuario(normalizar_correo(correo))
         if fila is None or not fila["respuesta_huella"]:
             return False
         return verificar_clave(_normalizar_respuesta(respuesta), fila["respuesta_huella"])
@@ -345,7 +364,7 @@ class Usuarios:
         nadie puede usar esta pantalla para averiguar qué correos están dados de
         alta. Quien llama debe responder siempre lo mismo.
         """
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         if not CORREO_VALIDO.match(correo):
             raise ErrorDeUsuario("Ese correo no tiene buena pinta.")
         if not self.almacen.usuario(correo):
@@ -359,7 +378,7 @@ class Usuarios:
         return codigo
 
     def cambiar_con_codigo(self, correo: str, codigo: str, nueva: str) -> None:
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         fila = self.almacen.codigo_pendiente(correo)
         if fila is None:
             raise ErrorDeUsuario("Pide un código nuevo.")
@@ -395,7 +414,7 @@ class Usuarios:
         Se guarda aparte de los de recuperación (tipo 'verificacion'), para que
         pedir uno no anule el otro.
         """
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         if not CORREO_VALIDO.match(correo):
             raise ErrorDeUsuario("Ese correo no tiene buena pinta.")
         if not self.almacen.usuario(correo):
@@ -410,7 +429,7 @@ class Usuarios:
 
     def confirmar_correo(self, correo: str, codigo: str) -> None:
         """Marca la cuenta como verificada si el código es correcto."""
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         fila = self.almacen.codigo_pendiente(correo, "verificacion")
         if fila is None:
             raise ErrorDeUsuario("Pide un código nuevo.")
@@ -435,7 +454,7 @@ class Usuarios:
 
     def fijar_comision(self, correo: str, pct: int) -> None:
         """Fija el % de comisión de anfitrión de una cuenta. -1 vuelve al de defecto."""
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         if not self.almacen.usuario(correo):
             raise ErrorDeUsuario("No existe esa cuenta.")
         if not isinstance(pct, int) or isinstance(pct, bool) or not -1 <= pct <= 90:
@@ -445,7 +464,7 @@ class Usuarios:
     # -- entrada --
 
     def entrar(self, correo: str, clave: str) -> Sesion:
-        correo = (correo or "").strip().lower()
+        correo = normalizar_correo(correo)
         fallos, hasta = self._intentos.get(correo, (0, 0.0))
         ahora = time.time()
         if hasta > ahora:

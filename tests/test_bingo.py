@@ -13,6 +13,8 @@ from bingo import (
     MesaBingo,
     Sala,
     generar_carton,
+    generar_carton_unico,
+    huella_carton,
     patron_cumplido,
     patrones_cumplidos,
     fichas_que_faltan,
@@ -73,6 +75,27 @@ class CartonTest(unittest.TestCase):
                     if (fila, col) == (2, 2):
                         continue
                     self.assertTrue(lo <= c.numeros[fila][col] <= hi)
+
+    def test_generar_carton_unico_no_repite_ninguno(self):
+        usados = set()
+        for _ in range(300):
+            c = generar_carton_unico(usados=usados)
+            self.assertNotIn(huella_carton(c), usados)
+            usados.add(huella_carton(c))
+        self.assertEqual(len(usados), 300)
+
+    def test_generar_carton_unico_esquiva_el_repetido(self):
+        """Aunque el azar insista en el mismo cartón, se cambia para no repetirlo."""
+        fijo = generar_carton(generador=AzarFijo())
+        usados = {huella_carton(fijo)}
+        c = generar_carton_unico(generador=AzarFijo(), usados=usados)
+        self.assertNotEqual(huella_carton(c), huella_carton(fijo))
+        # Y sigue siendo un cartón válido (cada número en su columna).
+        for col, (lo, hi) in enumerate(((1, 15), (16, 30), (31, 45), (46, 60), (61, 75))):
+            for fila in range(5):
+                if (fila, col) == (2, 2):
+                    continue
+                self.assertTrue(lo <= c.numeros[fila][col] <= hi)
 
 
 class PatronTest(unittest.TestCase):
@@ -149,6 +172,16 @@ class SalaTest(unittest.TestCase):
         self.sala.empezar(p.id)
         with self.assertRaises(ErrorDeSala):
             self.sala.comprar_carton(p.id, "luis@correo.com")
+
+    def test_la_sala_no_reparte_dos_cartas_iguales(self):
+        """Ninguna partida puede vender dos cartones con los mismos números."""
+        p = self.sala.abrir_partida("10.00")
+        huellas = set()
+        for i in range(150):
+            carton, _ = self.sala.comprar_carton(p.id, f"j{i}@correo.com")
+            h = huella_carton(carton)
+            self.assertNotIn(h, huellas)
+            huellas.add(h)
 
     def test_no_empieza_sin_cartones(self):
         p = self.sala.abrir_partida("10.00")

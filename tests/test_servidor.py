@@ -540,6 +540,123 @@ class ServidorTest(unittest.TestCase):
         self.assertEqual(self.pedir("/api/carton", {"sala": "sala-evento-lago"}, t1)[0], 200)
         self.assertEqual(self.pedir("/api/carton", {"sala": "sala-evento-lago"}, t1)[0], 200)
 
+    # -- la administración coloca jugadores y cartas en el evento --
+
+    def test_el_admin_coloca_un_jugador_con_cartas_en_el_evento(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/sala/jugador",
+                               {"sala": "sala-evento-lago", "correo": "nuevo@correo.com",
+                                "nombre": "Nuevo", "cartones": 2}, at)
+        self.assertEqual(estado, 200)
+        self.assertTrue(r["creado"])
+        self.assertEqual(r["cantidad"], 2)
+        self.assertTrue(r["clave_temporal"])
+        # Se ve en la sala, como cualquier jugador.
+        _, v = self.pedir("/api/admin/sala?sala=sala-evento-lago", token=at)
+        self.assertEqual([j["correo"] for j in v["jugadores"]], ["nuevo@correo.com"])
+        self.assertEqual(v["jugadores"][0]["cartones"], 2)
+
+    def test_colocar_jugador_a_mano_sin_cobrar_no_toca_el_saldo(self):
+        at = self.admin()
+        _, r = self.pedir("/api/admin/sala/jugador",
+                          {"sala": "sala-evento-lago", "correo": "regalo@correo.com",
+                           "cartones": 3, "cobrar": False}, at)
+        self.assertEqual(r["cobrado"], 0)
+        self.assertEqual(r["saldo"], 0)
+
+    def test_colocar_jugador_cobrando_descuenta_del_saldo(self):
+        at = self.admin()
+        self.usuario("paga@correo.com")
+        self.pedir("/api/admin/ajuste",
+                   {"correo": "paga@correo.com", "importe": "50,00", "signo": "sumar"}, at)
+        estado, r = self.pedir("/api/admin/sala/jugador",
+                               {"sala": "sala-evento-lago", "correo": "paga@correo.com",
+                                "cartones": 2, "cobrar": True}, at)
+        self.assertEqual(estado, 200)
+        # 2 cartones a Bs 2,00 (precio por defecto del evento) = Bs 4,00.
+        self.assertEqual(r["cobrado"], 400)
+        self.assertEqual(r["saldo"], 5000 - 400)
+
+    def test_solo_el_admin_coloca_jugadores(self):
+        token = self.usuario("ana@correo.com")
+        estado, _ = self.pedir("/api/admin/sala/jugador",
+                               {"sala": "sala-evento-lago", "correo": "x@correo.com"}, token)
+        self.assertEqual(estado, 403)
+
+    def test_el_admin_quita_un_jugador_y_le_devuelve_el_dinero(self):
+        at = self.admin()
+        self.usuario("fuera@correo.com")
+        self.pedir("/api/admin/ajuste",
+                   {"correo": "fuera@correo.com", "importe": "20,00", "signo": "sumar"}, at)
+        self.pedir("/api/admin/sala/jugador",
+                   {"sala": "sala-evento-lago", "correo": "fuera@correo.com",
+                    "cartones": 2, "cobrar": True}, at)
+        estado, r = self.pedir("/api/admin/sala/quitar-jugador",
+                               {"sala": "sala-evento-lago", "correo": "fuera@correo.com"}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["quitados"], 2)
+        self.assertEqual(r["devuelto"], 400)
+        _, v = self.pedir("/api/admin/sala?sala=sala-evento-lago", token=at)
+        self.assertEqual(v["jugadores"], [])
+
+    def test_el_admin_quita_una_sola_carta(self):
+        at = self.admin()
+        _, r = self.pedir("/api/admin/sala/jugador",
+                          {"sala": "sala-evento-lago", "correo": "parcial@correo.com",
+                           "cartones": 3}, at)
+        carton = r["cartones"][0]
+        estado, q = self.pedir("/api/admin/sala/quitar-carton",
+                               {"sala": "sala-evento-lago", "correo": "parcial@correo.com",
+                                "carton": carton}, at)
+        self.assertEqual(estado, 200)
+        _, v = self.pedir("/api/admin/sala?sala=sala-evento-lago", token=at)
+        self.assertEqual(v["jugadores"][0]["cartones"], 2)
+
+    def test_colocar_jugador_respeta_el_aforo(self):
+        at = self.admin()
+        self.pedir("/api/admin/evento", {"aforo": 1}, at)
+        self.pedir("/api/admin/sala/jugador",
+                   {"sala": "sala-evento-lago", "correo": "uno@correo.com"}, at)
+        estado, r = self.pedir("/api/admin/sala/jugador",
+                               {"sala": "sala-evento-lago", "correo": "dos@correo.com"}, at)
+        self.assertEqual(estado, 400)
+        self.assertIn("llena", r["error"].lower())
+
+    def test_el_admin_fija_fecha_y_hora_del_evento(self):
+        at = self.admin()
+        estado, r = self.pedir("/api/admin/evento",
+                               {"fecha_partida": "2026-12-31", "hora_partida": "20:00"}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["evento"]["fecha_partida"], "2026-12-31")
+        self.assertEqual(r["evento"]["hora_partida"], "20:00")
+
+    def test_la_partida_muestra_fecha_y_hora_de_la_sala(self):
+        at = self.admin()
+        self.pedir("/api/admin/evento",
+                   {"fecha_partida": "2026-12-31", "hora_partida": "20:00"}, at)
+        token = self.usuario("ana@correo.com", recarga="1000,00")
+        self.pedir("/api/carton", {"sala": "sala-evento-lago"}, token)
+        _, p = self.pedir("/api/partida")
+        self.assertEqual(p["fecha_partida"], "2026-12-31")
+        self.assertEqual(p["hora_partida"], "20:00")
+
+    def test_cambiar_los_ganadores_con_cartones_vendidos_actualiza_la_partida(self):
+        """El torneo debe repartir entre los ganadores que diga el panel ahora.
+
+        Si ya hay cartones vendidos no se puede tirar la partida (el precio y el
+        patrón no cambian), pero los puestos premiados sí se sincronizan.
+        """
+        at = self.admin()
+        self.pedir("/api/admin/sala/jugador",
+                   {"sala": "sala-evento-lago", "correo": "juan@correo.com", "cartones": 1}, at)
+        estado, r = self.pedir("/api/admin/evento", {"ganadores": 1}, at)
+        self.assertEqual(estado, 200)
+        self.assertEqual(r["evento"]["plazas"], 1)
+        self.assertEqual([p["pct"] for p in r["evento"]["premios"]], [80])
+        # Y la partida que ven los jugadores reparte un solo puesto.
+        _, p = self.pedir("/api/partida")
+        self.assertEqual(p["plazas"], 1)
+
     # -- ver una sala por dentro (solo admin) --
 
     def test_solo_el_admin_ve_el_interior_de_una_sala(self):

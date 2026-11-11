@@ -203,6 +203,7 @@ class Juego:
             "cupo_cartones": sala.cupo_cartones,
             "max_cartones": sala.max_cartones,
             "fecha_partida": sala.fecha_partida,
+            "hora_partida": sala.hora_partida,
         }
 
     def _crear_admin(self) -> None:
@@ -316,21 +317,37 @@ class Juego:
             return partida
 
     def reabrir_partida(self, sala_id: str) -> None:
-        """Tira la partida abierta de una sala para que coja el juego/precio nuevos.
+        """Ajusta la partida abierta de una sala al juego/precio/puestos nuevos.
 
-        Se usa cuando el anfitrión cambia el tipo de juego o el precio de su sala
-        de trabajo. Solo se descarta si todavía no se ha vendido ningún cartón, para
-        no borrar una partida que ya está en marcha.
+        Se usa cuando el anfitrión o la administración cambian algo de la sala. Si
+        todavía no se ha vendido ningún cartón, la partida se tira y se abre otra
+        con los valores nuevos. Si ya hay cartones, no se puede cambiar el precio ni
+        el patrón sin agraviar a quien ya compró, pero sí se sincronizan los puestos
+        premiados: el torneo debe repartir entre los ganadores que diga el panel.
         """
         with self.candado:
             partida = self._partida_de_sala(sala_id)
-            if partida is None or partida.cartones:
+            if partida is None:
                 return
-            self.mesa.sala.partidas.pop(partida.id, None)
-            self.almacen.borrar_partida(partida.id)
-            if self._partida_id == partida.id:
-                self._partida = None
-                self._partida_id = ""
+            if not partida.cartones:
+                self.mesa.sala.partidas.pop(partida.id, None)
+                self.almacen.borrar_partida(partida.id)
+                if self._partida_id == partida.id:
+                    self._partida = None
+                    self._partida_id = ""
+                return
+            plazas = self.salas.de(sala_id).plazas
+            if partida.plazas != plazas:
+                partida.plazas = plazas
+                # Si ya se cantaron más puestos que los que ahora se premian, se
+                # recortan para no pagar de más; la partida se cierra si ya no
+                # quedan puestos por cubrir.
+                if len(partida.ganadores) > plazas:
+                    partida.ganadores = partida.ganadores[:plazas]
+                if partida.completa and partida.estado == "jugando":
+                    partida.estado = "terminada"
+                    partida.terminada = time.time()
+                self._guardar(partida)
 
     def _nueva_partida(self, sala_id: str | None = None) -> object:
         """Abre una partida nueva en la sala indicada (o la de por defecto)."""
@@ -397,6 +414,121 @@ class Juego:
         carton = partida.cartones[carton_id]
         numeros = ";".join("|".join(str(n) for n in fila) for fila in carton.numeros)
         self.almacen.guardar_carton(carton_id, partida.id, partida.dueno[carton_id], numeros)
+
+    # -- la administración coloca jugadores y cartas a mano --
+
+    def colocar_jugador(self, sala_id: str, correo: str, nombre: str = "",
+                        cuantos: int = 1, cobrar: bool = True) -> dict:
+        """Mete a un jugador en una sala y le reparte cartones.
+
+        Es la vía de la administración para montar la partida desde el panel (por
+        ejemplo, la del evento): se puede crear la cuenta si no existe, elegir
+        cuántos cartones darle y si se le cobran del saldo o van de regalo.
+        """
+        from nucleo.salas import ErrorDeSalas
+        from nucleo.usuarios import validar_clave
+
+        correo = (correo or "").strip().lower()
+        if not correo:
+            raise ErrorDeSalas("Falta el correo del jugador.")
+        try:
+            cuantos = int(cuantos)
+        except (TypeError, ValueError):
+            raise ErrorDeSalas("La cantidad de cartones tiene que ser un número entero.") from None
+        cuantos = max(1, min(cuantos, 10))
+
+        creado = False
+        clave_temporal = ""
+        with self.candado:
+            if self.usuarios.usuario(correo) is None:
+                # Cuenta al vuelo con clave temporal legible, para pasársela.
+                clave_temporal = "Pepa-" + secrets.token_hex(3)
+                validar_clave(clave_temporal)
+                self.usuarios.registrar(correo, clave_temporal, nombre or correo)
+                creado = True
+
+            partida = self.partida(sala_id)
+            self.comprobar_aforo(partida, correo)
+            self.comprobar_max_cartones(partida, correo, cuantos)
+            comprados = []
+            cobrado = 0
+            for _ in range(cuantos):
+                self.comprobar_cupo(partida)
+                if cobrar:
+                    carton_id, precio = self.mesa.comprar_carton(partida.id, correo)
+                    cobrado += precio
+                else:
+                    carton, _ = self.mesa.sala.comprar_carton(partida.id, correo)
+                    carton_id = carton.id
+                carton = partida.cartones[carton_id]
+                self.guardar_carton(partida, carton_id)
+                comprados.append(carton_id)
+            self._guardar(partida)
+            saldo = self.monedero.saldo(correo)
+        return {
+            "correo": correo,
+            "creado": creado,
+            "clave_temporal": clave_temporal,
+            "cartones": comprados,
+            "cantidad": len(comprados),
+            "cobrado": cobrado,
+            "cobrado_texto": a_texto(cobrado),
+            "saldo": saldo,
+            "saldo_texto": a_texto(saldo),
+        }
+
+    def quitar_jugador(self, sala_id: str, correo: str, devolver: bool = True) -> dict:
+        """Saca a un jugador de una sala con todos sus cartones.
+
+        Si se cobró el cartón, se le devuelve el dinero (solo si la partida no ha
+        empezado: una vez en juego no se devuelve nada).
+        """
+        from nucleo.salas import ErrorDeSalas
+
+        correo = (correo or "").strip().lower()
+        if not correo:
+            raise ErrorDeSalas("Falta el correo del jugador.")
+        with self.candado:
+            partida = self._partida_de_sala(sala_id)
+            if partida is None:
+                raise ErrorDeSalas("Esa sala no tiene una partida abierta.")
+            ids = partida.cartones_de(correo)
+            if not ids:
+                raise ErrorDeSalas("Ese jugador no está en esta sala.")
+            devuelto = 0
+            if devolver and partida.abierta:
+                devuelto = partida.precio_carton * len(ids)
+                self.monedero.devolver(correo, devuelto, motivo=f"cartones devueltos {partida.id}")
+            for cid in ids:
+                partida.cartones.pop(cid, None)
+                partida.dueno.pop(cid, None)
+                self.almacen.borrar_carton(cid)
+            self._guardar(partida)
+        return {"correo": correo, "quitados": len(ids),
+                "devuelto": devuelto, "devuelto_texto": a_texto(devuelto)}
+
+    def quitar_carton(self, sala_id: str, correo: str, carton_id: str,
+                      devolver: bool = True) -> dict:
+        """Quita un solo cartón a un jugador de una sala."""
+        from nucleo.salas import ErrorDeSalas
+
+        correo = (correo or "").strip().lower()
+        with self.candado:
+            partida = self._partida_de_sala(sala_id)
+            if partida is None:
+                raise ErrorDeSalas("Esa sala no tiene una partida abierta.")
+            if partida.dueno.get(carton_id) != correo:
+                raise ErrorDeSalas("Ese cartón no es de ese jugador.")
+            devuelto = 0
+            if devolver and partida.abierta:
+                devuelto = partida.precio_carton
+                self.monedero.devolver(correo, devuelto, motivo=f"cartón devuelto {partida.id}")
+            partida.cartones.pop(carton_id, None)
+            partida.dueno.pop(carton_id, None)
+            self.almacen.borrar_carton(carton_id)
+            self._guardar(partida)
+        return {"carton": carton_id, "devuelto": devuelto,
+                "devuelto_texto": a_texto(devuelto)}
 
     def resumen(self) -> dict:
         """Datos para el panel de administración."""
@@ -626,9 +758,12 @@ class Manejador(BaseHTTPRequestHandler):
                 vista = self.juego.mesa.partida_publica(self.juego.partida().id)
                 self._enriquecer_mesa(vista)
                 try:
-                    vista["fecha_partida"] = self.juego.salas.de(vista.get("sala") or None).fecha_partida
+                    sala = self.juego.salas.de(vista.get("sala") or None)
+                    vista["fecha_partida"] = sala.fecha_partida
+                    vista["hora_partida"] = sala.hora_partida
                 except Exception:  # noqa: BLE001
                     vista["fecha_partida"] = ""
+                    vista["hora_partida"] = ""
                 self._json(vista)
             return
 
@@ -1198,7 +1333,8 @@ class Manejador(BaseHTTPRequestHandler):
                         datos.get("sala", ""), jugador,
                         precio=datos.get("precio"),
                         tipo_juego=datos.get("tipo_juego"),
-                        fecha_partida=datos.get("fecha_partida"))
+                        fecha_partida=datos.get("fecha_partida"),
+                        hora_partida=datos.get("hora_partida"))
                     # La partida abierta coge el juego y el precio nuevos.
                     self.juego.reabrir_partida(sala.id)
                 self._json({"ok": True, "sala": self._sala_json(sala),
@@ -1575,6 +1711,7 @@ class Manejador(BaseHTTPRequestHandler):
                         cupo_cartones=datos.get("cupo_cartones"),
                         max_cartones=datos.get("max_cartones"),
                         fecha_partida=datos.get("fecha_partida"),
+                        hora_partida=datos.get("hora_partida"),
                     )
                 self._json({"ok": True, "sala": self._sala_json(sala),
                             "mensaje": f"Sala {sala.nombre} actualizada."})
@@ -1598,6 +1735,7 @@ class Manejador(BaseHTTPRequestHandler):
                         cupo_cartones=datos.get("cupo_cartones"),
                         max_cartones=datos.get("max_cartones"),
                         fecha_partida=datos.get("fecha_partida"),
+                        hora_partida=datos.get("hora_partida"),
                         ganadores=datos.get("ganadores"),
                     )
                     # La partida abierta coge los puestos y el precio nuevos, pero
@@ -1605,6 +1743,57 @@ class Manejador(BaseHTTPRequestHandler):
                     self.juego.reabrir_partida(sala.id)
                     info = self.juego.info_evento()
                 self._json({"ok": True, "evento": info, "sala": self._sala_json(sala)})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/sala/jugador":
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            try:
+                with self.juego.candado:
+                    res = self.juego.colocar_jugador(
+                        datos.get("sala") or "",
+                        datos.get("correo") or "",
+                        nombre=datos.get("nombre") or "",
+                        cuantos=datos.get("cartones", 1),
+                        cobrar=bool(datos.get("cobrar", False)),
+                    )
+                self._json({"ok": True, **res})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/sala/quitar-jugador":
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            try:
+                with self.juego.candado:
+                    res = self.juego.quitar_jugador(
+                        datos.get("sala") or "",
+                        datos.get("correo") or "",
+                        devolver=bool(datos.get("devolver", True)),
+                    )
+                self._json({"ok": True, **res})
+            except Exception as exc:  # noqa: BLE001
+                self._error(str(exc))
+            return
+
+        if ruta == "/api/admin/sala/quitar-carton":
+            if not self._admin():
+                self._error("Solo para administración.", 403)
+                return
+            try:
+                with self.juego.candado:
+                    res = self.juego.quitar_carton(
+                        datos.get("sala") or "",
+                        datos.get("correo") or "",
+                        datos.get("carton") or "",
+                        devolver=bool(datos.get("devolver", True)),
+                    )
+                self._json({"ok": True, **res})
             except Exception as exc:  # noqa: BLE001
                 self._error(str(exc))
             return
