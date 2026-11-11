@@ -140,6 +140,35 @@ class ServidorTest(unittest.TestCase):
                 self.assertEqual(r.status, 200)
                 self.assertEqual(r.read(), b"")
 
+    def test_los_videos_se_sirven_por_trozos(self):
+        # El vídeo de la billetera se pide por trozos (Range) para poder
+        # reproducir y adelantar sin bajar el archivo entero.
+        from web.servidor import RAIZ_WEB
+        nombre = "prueba-rango.mp4"
+        camino = os.path.join(RAIZ_WEB, nombre)
+        datos = bytes(range(256)) * 8  # 2048 bytes
+        with open(camino, "wb") as f:
+            f.write(datos)
+        try:
+            # Sin Range: se sirve completo y con el tipo de vídeo correcto.
+            with urllib.request.urlopen(
+                    f"http://127.0.0.1:{self.puerto}/{nombre}", timeout=10) as r:
+                self.assertEqual(r.status, 200)
+                self.assertEqual(r.headers["Content-Type"], "video/mp4")
+                self.assertEqual(r.headers["Accept-Ranges"], "bytes")
+                self.assertEqual(r.read(), datos)
+
+            # Con Range: solo el trozo pedido, en 206.
+            peticion = urllib.request.Request(
+                f"http://127.0.0.1:{self.puerto}/{nombre}",
+                headers={"Range": "bytes=10-19"})
+            with urllib.request.urlopen(peticion, timeout=10) as r:
+                self.assertEqual(r.status, 206)
+                self.assertEqual(r.headers["Content-Range"], f"bytes 10-19/{len(datos)}")
+                self.assertEqual(r.read(), datos[10:20])
+        finally:
+            os.remove(camino)
+
     def test_sin_token_no_hay_saldo(self):
         estado, datos = self.pedir("/api/saldo")
         self.assertEqual(estado, 401)

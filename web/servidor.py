@@ -685,20 +685,59 @@ class Manejador(BaseHTTPRequestHandler):
             return
         tipos = {".html": "text/html", ".css": "text/css", ".js": "text/javascript",
                  ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg",
-                 ".webp": "image/webp", ".ico": "image/x-icon"}
+                 ".jpeg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon",
+                 ".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm",
+                 ".ogv": "video/ogg", ".mov": "video/quicktime", ".vtt": "text/vtt"}
         ext = os.path.splitext(camino)[1].lower()
-        with open(camino, "rb") as f:
-            cuerpo = f.read()
-        self.send_response(200)
-        self.send_header("Content-Type", f"{tipos.get(ext, 'application/octet-stream')}; charset=utf-8")
-        self.send_header("Content-Length", str(len(cuerpo)))
+        tipo = tipos.get(ext, "application/octet-stream")
+        # Los textos llevan juego de caracteres; los vídeos y binarios, no.
+        if tipo.startswith("text/"):
+            tipo = f"{tipo}; charset=utf-8"
+        tamano = os.path.getsize(camino)
+        # Los vídeos se piden por trozos (Range) para reproducir y adelantar sin
+        # bajar el archivo entero. El resto de archivos se sirve completo.
+        inicio, fin, parcial = 0, tamano - 1, False
+        rango = self.headers.get("Range")
+        if rango and rango.startswith("bytes="):
+            try:
+                desde, _, hasta = rango[len("bytes="):].partition("-")
+                if desde:
+                    inicio = int(desde)
+                    fin = int(hasta) if hasta else tamano - 1
+                else:  # sufijo: "bytes=-N" son los últimos N bytes.
+                    inicio = max(0, tamano - int(hasta))
+                if inicio > fin or inicio >= tamano:
+                    raise ValueError
+                fin = min(fin, tamano - 1)
+                parcial = True
+            except ValueError:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{tamano}")
+                self.end_headers()
+                return
+        largo = fin - inicio + 1
+        self.send_response(206 if parcial else 200)
+        self.send_header("Content-Type", tipo)
+        self.send_header("Content-Length", str(largo))
+        if parcial:
+            self.send_header("Content-Range", f"bytes {inicio}-{fin}/{tamano}")
+        self.send_header("Accept-Ranges", "bytes")
         self.send_header("X-Content-Type-Options", "nosniff")
         # Sin caché: al cambiar el programa, el navegador tiene que traer la
         # versión nueva y no una vieja guardada.
         self.send_header("Cache-Control", "no-store, must-revalidate")
         self.end_headers()
-        if not self._cabeza:
-            self.wfile.write(cuerpo)
+        if self._cabeza:
+            return
+        with open(camino, "rb") as f:
+            f.seek(inicio)
+            restante = largo
+            while restante > 0:
+                trozo = f.read(min(65536, restante))
+                if not trozo:
+                    break
+                self.wfile.write(trozo)
+                restante -= len(trozo)
 
     def _deposito_json(self, d) -> dict:
         return {"id": d.id, "correo": d.correo, "centimos": d.centimos,
