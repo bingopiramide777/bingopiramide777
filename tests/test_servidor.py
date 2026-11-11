@@ -1323,6 +1323,65 @@ class ServidorTest(unittest.TestCase):
             partida = self.juego.mesa.sala.partidas[self.juego._partida_id]
             partida.cartones[carton_id].marcados |= PATRONES[patron]
 
+    def _jugar_hasta_bingo(self, sala, jugadores, patron):
+        """Compra cartón a cada jugador y los hace cantar, sin depender del azar.
+
+        Marca el patrón en cada cartón (como el resto de pruebas) y canta bingo
+        puesto a puesto hasta que la partida termina. Devuelve la partida vista.
+        """
+        tokens = {c: self.usuario(c, recarga="50") for c in jugadores}
+        cartones = {}
+        for c in jugadores:
+            _, d = self.pedir("/api/carton", {"cantidad": 1, "sala": sala}, tokens[c])
+            cartones[c] = d["carton"]
+        self.pedir("/api/bola", {}, tokens[jugadores[0]])
+        vista = None
+        for c in jugadores:
+            self._marcar_patron(sala, cartones[c], patron)
+            self.pedir("/api/bingo", {"carton": cartones[c], "sala": sala}, tokens[c])
+            _, vista = self.pedir("/api/partida")
+            if vista["estado"] == "terminada":
+                break
+        return vista
+
+    def test_el_anuncio_de_ganadores_lleva_puesto_y_premio(self):
+        # El evento reparte el bote entre el 1º, el 2º y el 3º. Al terminar, el
+        # anuncio dice quién ganó, en qué puesto y cuánto cobra.
+        vista = self._jugar_hasta_bingo(
+            "sala-evento-lago", ["ana@correo.com", "luis@correo.com", "mia@correo.com"],
+            "cruz_grande")
+        self.assertEqual(vista["estado"], "terminada")
+        ganadores = vista["ganadores"]
+        self.assertEqual([g["puesto"] for g in ganadores], [1, 2, 3])
+        for g in ganadores:
+            self.assertTrue(g["nombre"])
+            self.assertTrue(g["premio_texto"])
+            self.assertGreater(g["premio"], 0)
+        # El primer puesto cobra más que el segundo, y el segundo más que el tercero.
+        premios = [g["premio"] for g in ganadores]
+        self.assertEqual(premios, sorted(premios, reverse=True))
+
+    def test_el_anuncio_de_ganadores_se_queda_unos_segundos(self):
+        # Tras cantar bingo, la partida terminada se deja a la vista para poder
+        # leer el anuncio, en vez de abrir la revancha de inmediato.
+        vista = self._jugar_hasta_bingo("sala-zulia", ["ana@correo.com", "luis@correo.com"],
+                                        "carton_lleno")
+        self.assertEqual(vista["estado"], "terminada")
+        self.assertTrue(vista["ganadores"])
+        _, otra = self.pedir("/api/partida")
+        self.assertEqual(otra["estado"], "terminada")
+        self.assertEqual(len(otra["ganadores"]), len(vista["ganadores"]))
+
+    def test_la_lista_de_jugadores_va_del_mas_cerca_al_mas_lejos(self):
+        # La mesa ordena por fichas que faltan: el que está más cerca, primero.
+        tokens = {c: self.usuario(c, recarga="50") for c in ("ana@correo.com", "luis@correo.com")}
+        for c in tokens:
+            self.pedir("/api/carton", {"cantidad": 1, "sala": "sala-zulia"}, tokens[c])
+        self.pedir("/api/bola", {}, tokens["ana@correo.com"])
+        _, vista = self.pedir("/api/partida")
+        faltan = [f["faltan"] for f in vista["a_cuanto_estan"]]
+        self.assertEqual(faltan, sorted(faltan))
+
 
 if __name__ == "__main__":
     unittest.main()

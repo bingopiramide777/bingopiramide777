@@ -807,6 +807,7 @@ async function refrescarPartida() {
     if (aviso) aviso.hidden = p.tipo_juego !== "carton_lleno";
     pintarBolas(p.bolas_sacadas);
     pintarOponentes(p.a_cuanto_estan);
+    pintarAnuncioGanadores(p.ganadores, p.estado);
     const mio = (p.a_cuanto_estan || []).find(
       (f) => f.jugador === (localStorage.getItem("bp777_correo") || ""));
     refrescarCercania(mio ? mio.faltan : null);
@@ -1455,7 +1456,7 @@ function conectarBotones() {
       const res = await post("/api/bingo", { carton: carton.carton, sala: salaActual });
       avisar(t("jugador.bingo_premio",
         { puesto: res.nombre_puesto || t("jugador.ganaste"), premio: res.premio_texto }), "bien");
-      lanzarConfeti();
+      // El confeti lo lanza el anuncio de ganadores al refrescar la partida.
       carton = null;
       misCartones = [];
       $("#btn-bingo").disabled = true;
@@ -1505,18 +1506,21 @@ function pintarOponentes(filas) {
     return;
   }
   caja.innerHTML = "";
-  filas.forEach((f) => {
+  filas.forEach((f, i) => {
     const yo = f.jugador === (localStorage.getItem("bp777_correo") || "");
     const clase = ["oponente"];
     if (yo) clase.push("oponente--yo");
     // Cerca de cantar: 1 o 2 fichas. Se resalta en verde; a 0, en rojo.
     if (f.faltan === 0) clase.push("oponente--gana");
     else if (f.faltan <= 2) clase.push("oponente--cerca");
+    // El primero de la lista es el que está más cerca de cantar.
+    if (i === 0) clase.push("oponente--lider");
     const texto = f.faltan === 0 ? t("jugador.bingo")
       : t("jugador.faltan", { n: f.faltan, ficha: f.faltan === 1 ? t("jugador.ficha") : t("jugador.fichas") });
     const nombre = f.nombre || (f.correo || f.jugador).split("@")[0];
     caja.insertAdjacentHTML("beforeend", `
       <div class="${clase.join(" ")}">
+        <span class="oponente__puesto" aria-hidden="true">${i + 1}</span>
         ${avatarHTML(f)}
         <div class="oponente__datos">
           <div class="oponente__nombre">${yo ? t("jugador.tu") : nombre}</div>
@@ -1527,6 +1531,48 @@ function pintarOponentes(filas) {
         <span class="oponente__faltan">${texto}</span>
       </div>`);
   });
+}
+
+/* Anuncio de los ganadores: aparece arriba de la mesa en cuanto alguien canta
+   bingo y se queda hasta que la partida se reabra. */
+let ultimoAnuncio = "";
+function pintarAnuncioGanadores(ganadores, estado) {
+  const caja = $("#anuncio-ganadores");
+  if (!caja) return;
+  const lista = ganadores || [];
+  if (!lista.length) {
+    caja.hidden = true;
+    caja.innerHTML = "";
+    ultimoAnuncio = "";
+    return;
+  }
+  const yo = localStorage.getItem("bp777_correo") || "";
+  const filas = lista.map((g) => {
+    const nombre = g.nombre || (g.correo || "").split("@")[0];
+    const esYo = g.correo === yo;
+    const puesto = t("puesto." + g.puesto) === "puesto." + g.puesto
+      ? `${g.puesto}º` : t("puesto." + g.puesto);
+    return `<li class="ganador-partida${esYo ? " ganador-partida--yo" : ""}">
+      <span class="ganador-partida__puesto">${puesto}</span>
+      ${avatarHTML(g)}
+      <span class="ganador-partida__nombre">${esYo ? t("jugador.tu") : nombre}</span>
+      <span class="ganador-partida__premio">${g.premio_texto || ""}</span>
+    </li>`;
+  }).join("");
+  const cerrada = estado === "terminada";
+  caja.innerHTML = `
+    <div class="ganadores-partida__cabecera">
+      <span class="ganadores-partida__icono" aria-hidden="true">🏆</span>
+      <strong class="ganadores-partida__titulo">${cerrada ? t("ganadores.final") : t("ganadores.en_vivo")}</strong>
+    </div>
+    <ul class="ganadores-partida__lista">${filas}</ul>`;
+  caja.hidden = false;
+  // Solo lanzamos confeti cuando aparece un ganador nuevo.
+  const firma = lista.map((g) => g.puesto + ":" + g.correo).join(",");
+  if (firma !== ultimoAnuncio) {
+    ultimoAnuncio = firma;
+    lanzarConfeti();
+  }
 }
 
 /* --- cuenta atrás de la partida --- */
