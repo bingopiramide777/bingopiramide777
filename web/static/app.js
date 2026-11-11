@@ -1730,9 +1730,15 @@ async function comprobarSesion() {
 // Si el navegador revive la página desde su caché (botón atrás), se comprueba
 // otra vez la sesión: no puede reaparecer un panel que ya no toca.
 window.addEventListener("pageshow", (e) => {
-  if (e.persisted) comprobarSesion();
+  if (e.persisted && token) { comprobarSesion(); refrescarBilletera(); }
 });
-window.addEventListener("focus", () => { if (token) comprobarSesion(); });
+// Al volver a la pestaña (por ejemplo, tras firmar en la app de la billetera)
+// se revalida la sesión y la billetera: así el estado se pone al día sin recargar.
+window.addEventListener("focus", () => {
+  if (!token) return;
+  comprobarSesion();
+  refrescarBilletera();
+});
 
 pintarCartonDemo();
 pintarSesion();
