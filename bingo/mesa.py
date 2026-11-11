@@ -119,9 +119,24 @@ class MesaBingo:
             "bolas_sacadas": list(partida.bombo.sacadas),
             "ganador": partida.ganador,
             "plazas": partida.plazas,
-            "ganadores": list(partida.ganadores),
+            "ganadores": self.ganadores_con_premio(partida_id),
             "a_cuanto_estan": self.a_cuanto_estan(partida_id),
         }
+
+    def ganadores_con_premio(self, partida_id: str) -> list[dict]:
+        """Los ganadores de la partida, en orden de puesto, con lo que cobra cada uno.
+
+        El premio sale del mismo reparto que paga la mesa, así que lo que anuncia
+        el panel coincide al céntimo con lo acreditado en la cuenta.
+        """
+        partida = self._partida(partida_id)
+        premios = self.reparto_de(partida_id).get("premios") or []
+        filas = []
+        for g in partida.ganadores:
+            puesto = g.get("puesto", len(filas) + 1)
+            premio = premios[puesto - 1] if puesto - 1 < len(premios) else 0
+            filas.append({**g, "premio": premio})
+        return filas
 
     def a_cuanto_estan(self, partida_id: str) -> list[dict]:
         """Transparencia: cuántas fichas le faltan a cada jugador para cantar.

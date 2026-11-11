@@ -39,6 +39,10 @@ RAIZ_WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 CORREO_ADMIN_POR_DEFECTO = "bingopiramide777@gmail.com"
 NOMBRES_PUESTO = ("Primer lugar", "Segundo lugar", "Tercer lugar")
 
+# Segundos que se deja a la vista el anuncio de ganadores antes de abrir la
+# revancha en la misma sala.
+ESPERA_ANUNCIO_GANADORES = 20
+
 
 class Juego:
     """Estado de la aplicación: base de datos, usuarios, monedero, bingo y retiros.
@@ -76,6 +80,9 @@ class Juego:
         self._partida = None
         self._partida_id = ""
         self._partida_sala = "sala-zulia"
+        # Reloj por partida terminada: se deja a la vista unos segundos para que
+        # se lea el anuncio de ganadores antes de abrir la revancha.
+        self._espera_anuncio: dict[str, float] = {}
         self.clave_admin = clave_admin or os.environ.get("BINGO_ADMIN_CLAVE") or ""
         self._crear_admin()
 
@@ -180,6 +187,11 @@ class Juego:
             for i, pct in enumerate(porcentajes)
         ]
         aforo = sala.aforo
+        ganadores = []
+        for g in self.mesa.ganadores_con_premio(partida.id):
+            fila = {**g, **self._jugador_json(g.get("correo", ""))}
+            fila["premio_texto"] = a_texto(g.get("premio", 0))
+            ganadores.append(fila)
         return {
             "id": sala.id,
             "nombre": sala.nombre,
@@ -196,7 +208,7 @@ class Juego:
             "bote_texto": a_texto(bote),
             "premios": premios,
             "cartones": len(partida.cartones),
-            "ganadores": list(partida.ganadores),
+            "ganadores": ganadores,
             "plazas": partida.plazas,
             "estado": partida.estado,
             "tipo_juego": sala.tipo_juego,
@@ -295,17 +307,25 @@ class Juego:
                 "ganadores": list(partida.ganadores),
             }
 
-    def partida(self, sala_id: str | None = None):
+    def partida(self, sala_id: str | None = None, esperar_anuncio: bool = True):
         """Devuelve la partida abierta de una sala, abriendo una nueva si no hay.
 
         Cada sala lleva su propia partida. Se apoya en la base de datos: si el
         servidor se reinicia en mitad de una partida, se recupera en vez de
         empezar de cero.
+
+        Cuando una partida acaba de terminar se deja a la vista un momento
+        (esperar_anuncio) para que se lea el anuncio de ganadores antes de abrir
+        la revancha. Las compras y el bombo piden la partida con
+        esperar_anuncio=False para no quedarse esperando.
         """
         sala_id = sala_id or self._partida_sala
         with self.candado:
             self._partida_sala = sala_id
             partida = self.mesa.sala.partidas.get(self._partida_id) if self._partida_id else None
+            if (esperar_anuncio and partida is not None and partida.sala == sala_id
+                    and partida.estado == "terminada" and self._en_espera_de_anuncio(partida)):
+                return partida
             if partida is None or partida.estado == "terminada" or partida.sala != sala_id:
                 # Buscar en memoria antes de la base: si la partida sigue
                 # cargada, rehidratarla lanzaría "ya existe".
@@ -315,6 +335,22 @@ class Juego:
                 self._partida = partida
                 self._partida_id = partida.id
             return partida
+
+    def _en_espera_de_anuncio(self, partida) -> bool:
+        """True mientras se deja a la vista una partida terminada.
+
+        La primera vez que se ve la partida terminada se marca el reloj; a partir
+        de ahí se muestra hasta que pasa la ventana de espera.
+        """
+        visto = self._espera_anuncio.get(partida.id)
+        if visto is None:
+            self._espera_anuncio[partida.id] = time.time()
+            # Se limpian las marcas viejas para que el diccionario no crezca.
+            limite = time.time() - ESPERA_ANUNCIO_GANADORES * 4
+            for pid in [k for k, v in self._espera_anuncio.items() if v < limite]:
+                self._espera_anuncio.pop(pid, None)
+            return True
+        return time.time() - visto < ESPERA_ANUNCIO_GANADORES
 
     def reabrir_partida(self, sala_id: str) -> None:
         """Ajusta la partida abierta de una sala al juego/precio/puestos nuevos.
@@ -693,9 +729,13 @@ class Manejador(BaseHTTPRequestHandler):
         }
 
     def _enriquecer_mesa(self, vista: dict) -> dict:
-        """Añade nombre y foto a la lista 'a cuánto están' de la mesa."""
+        """Añade nombre y foto a la lista 'a cuánto están' y a los ganadores."""
         for fila in vista.get("a_cuanto_estan", []):
             fila.update(self._jugador_json(fila["jugador"]))
+        for g in vista.get("ganadores", []):
+            correo = g.get("correo", "")
+            g.update(self._jugador_json(correo))
+            g["premio_texto"] = a_texto(g.get("premio", 0))
         return vista
 
     def _retiro_json(self, r) -> dict:
@@ -1357,7 +1397,7 @@ class Manejador(BaseHTTPRequestHandler):
                     cuantos = 1
                 cuantos = max(1, min(cuantos, 10))
                 with self.juego.candado:
-                    partida = self.juego.partida(datos.get("sala") or None)
+                    partida = self.juego.partida(datos.get("sala") or None, esperar_anuncio=False)
                     # Aforo: cuántos jugadores distintos caben. Cupo: cuántos cartones.
                     self.juego.comprobar_aforo(partida, jugador)
                     # Tope por jugador: se comprueba antes de comprar nada, para no
@@ -1390,7 +1430,7 @@ class Manejador(BaseHTTPRequestHandler):
                 return
             try:
                 with self.juego.candado:
-                    partida = self.juego.partida(datos.get("sala") or None)
+                    partida = self.juego.partida(datos.get("sala") or None, esperar_anuncio=False)
                     if partida.abierta:
                         self.juego.mesa.sala.empezar(partida.id)
                     bola = self.juego.mesa.sala.sacar_bola(partida.id)
@@ -1411,7 +1451,7 @@ class Manejador(BaseHTTPRequestHandler):
                 return
             try:
                 with self.juego.candado:
-                    partida = self.juego.partida(datos.get("sala") or None)
+                    partida = self.juego.partida(datos.get("sala") or None, esperar_anuncio=False)
                     res = self.juego.mesa.resolver_cantada(partida.id, jugador, datos.get("carton", ""))
                     # El premio de la partida es la suma de todos los puestos.
                     partida.premio = sum(res.get("premios") or [res["premio"]])

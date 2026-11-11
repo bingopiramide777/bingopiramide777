@@ -678,6 +678,11 @@ input[type="text"], input[type="email"], input[type="password"], select {
   .mesa { grid-template-columns: 1fr; }
   .mesa__izq { order: 2; }
   .mesa__der { order: 1; }
+  /* Los jugadores (a cuánto están) van arriba de las bolitas, para ver de un
+     vistazo quién está más cerca de cantar mientras salen las bolas. */
+  .mesa__izq { display: flex; flex-direction: column; }
+  .mesa__izq .bombo { order: 2; }
+  .mesa__izq .tarjeta { order: 1; }
 }
 
 /* Botón que parece un enlace de texto */
@@ -904,6 +909,12 @@ input[type="text"], input[type="email"], input[type="password"], select {
   border-radius: 12px; padding: .55rem .7rem; font-size: .9rem;
 }
 .oponente--yo { border-color: rgba(255, 107, 0, .55); background: rgba(255, 107, 0, .08); }
+/* El líder va primero y con un borde dorado, para que se vea de un vistazo. */
+.oponente--lider { border-color: rgba(247, 201, 72, .55); }
+.oponente__puesto {
+  flex: 0 0 1.5rem; text-align: center; font-weight: 800; font-size: .82rem;
+  color: var(--dorado); font-variant-numeric: tabular-nums;
+}
 .oponente__avatar {
   width: 32px; height: 32px; border-radius: 50%; flex: 0 0 32px;
   display: flex; align-items: center; justify-content: center;
@@ -946,6 +957,39 @@ input[type="text"], input[type="email"], input[type="password"], select {
   color: var(--dorado-claro);
 }
 .cuenta-atras--ya { background: rgba(0, 200, 83, .18); border-color: rgba(0, 200, 83, .5); color: var(--verde); }
+
+/* Anuncio de ganadores: pestaña que aparece en cuanto se canta bingo. */
+.ganadores-partida {
+  margin-top: 1.2rem; padding: 1rem 1.2rem; border-radius: var(--radio);
+  background:
+    radial-gradient(420px 180px at 15% 0%, rgba(247, 201, 72, .28), transparent 70%),
+    linear-gradient(150deg, var(--morado-600), var(--morado-800));
+  border: 1px solid rgba(247, 201, 72, .6);
+  box-shadow: var(--brillo-dorado);
+  animation: subir .4s ease-out;
+}
+@keyframes subir { from { transform: translateY(12px); opacity: 0; } }
+.ganadores-partida__cabecera { display: flex; align-items: center; gap: .5rem; }
+.ganadores-partida__icono { font-size: 1.4rem; }
+.ganadores-partida__titulo {
+  font-size: 1.1rem; font-weight: 800; color: var(--dorado-claro);
+  letter-spacing: .02em;
+}
+.ganadores-partida__lista { list-style: none; margin: .8rem 0 0; padding: 0; display: grid; gap: .5rem; }
+.ganador-partida {
+  display: flex; align-items: center; gap: .6rem;
+  background: rgba(0, 0, 0, .28); border: 1px solid var(--borde);
+  border-radius: 12px; padding: .5rem .7rem;
+}
+.ganador-partida--yo { border-color: rgba(255, 107, 0, .6); background: rgba(255, 107, 0, .12); }
+.ganador-partida__puesto {
+  flex: 0 0 auto; font-size: .72rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .06em; color: #1a1a23;
+  background: linear-gradient(135deg, var(--dorado), var(--naranja));
+  padding: .15rem .5rem; border-radius: 999px;
+}
+.ganador-partida__nombre { flex: 1; font-weight: 700; min-width: 0; }
+.ganador-partida__premio { font-weight: 800; color: var(--verde); white-space: nowrap; }
 
 /* Interruptor de automarcar. */
 .automarcar {
